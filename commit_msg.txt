@@ -1,0 +1,7 @@
+feat(dimensioning): 實作複合式雙向標註與標準化直徑排版
+
+- 導入基線標註法 (Baseline Dimensioning)，以中線劃分左右雙向基準，避免閉環尺寸鏈
+- 移除過度積極的特徵過濾機制，完整保留溝槽等關鍵幾何端點
+- 重寫左側直徑標註，改為標準水平平行延伸線，並移除右側錯誤的段差串聯標註
+- 新增 convert_ref_to_pdf.py 批次轉檔腳本，並加入 subprocess 防護機制
+- 修改 backend/server.py 支援動態熱重載
