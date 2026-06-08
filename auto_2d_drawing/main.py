@@ -81,14 +81,18 @@ def generate_drawing(step_path, output_name=None,
         w, h = vd['size']
         print(f"  ✓ {vn}: {vis_count} 可見邊 + {hid_count} 隱藏邊, 尺寸 {w:.1f}×{h:.1f}")
 
-    # === 階段 4: 建立 DXF 文件 ===
-    print("[4/6] 建立 DXF 文件...")
+    # === 階段 4: 建立 DXF 文件與預先提取標註 ===
+    print("[4/6] 建立 DXF 文件與預先提取標註...")
     doc = setup_document()
     msp = doc.modelspace()
 
-    # 佈局計算
+    # 預先提取所有尺寸標註任務 (但不繪製)
+    dim_engine = DimensionEngine(features, None)
+    all_tasks = dim_engine.extract_all_tasks(view_data, part_type)
+
+    # 佈局計算 (考慮標註佔用的空間)
     view_sizes = {vn: vd['size'] for vn, vd in view_data.items()}
-    layout = DrawingLayout(view_sizes)
+    layout = DrawingLayout(view_sizes, all_tasks)
     print(f"  ✓ 比例: {layout.get_scale_text()}")
 
     # 圖框
@@ -119,8 +123,9 @@ def generate_drawing(step_path, output_name=None,
         drawer.draw_view_label(msp, ox, oy, VIEW_CONFIG[vn]["label"])
 
     # 尺寸標註
-    dim_engine = DimensionEngine(features, layout)
-    dim_engine.annotate_all_views(msp, view_data=view_data)
+    dim_engine.layout = layout
+    dim_engine.layout_engine.layout = layout
+    dim_engine.render_pre_extracted_tasks(msp, all_tasks, view_data)
     print("  ✓ 三視圖與標註完成")
 
     # === 階段 6: 輸出 ===

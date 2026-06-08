@@ -37,7 +37,8 @@ class FanExtractor(BaseExtractor):
         if is_polar_face:
             return self._extract_polar_face(vis_edges, circles, bbox, view_name)
         else:
-            return self._extract_side_profile(vis_edges, view_name)
+            hid_edges = vd.get('hidden', [])
+            return self._extract_side_profile(vis_edges, hid_edges, view_name)
 
     def _extract_polar_face(self, vis_edges, circles, bbox, view_name):
         """圓形端面視圖: 中心十字線、同心圓直徑、環形陣列偵測"""
@@ -189,15 +190,17 @@ class FanExtractor(BaseExtractor):
 
         return tasks
 
-    def _extract_side_profile(self, vis_edges, view_name):
-        """側面視圖: 使用基線分層標註以標示所有階梯深度的頂點，避免擁擠重疊"""
+    def _extract_side_profile(self, vis_edges, hid_edges, view_name):
+        """側面視圖: 結合可見邊與隱藏邊，使用基線分層標註以標示所有階梯深度的頂點，避免擁擠重疊"""
         tasks = []
+        all_edges = vis_edges + hid_edges
 
-        h_verts = self._find_contour_vertices(vis_edges, axis='x')
+        # 風扇右視圖通常包含許多細微的階梯深度，允許提取更多頂點 (max_vertices=20)
+        h_verts = self._find_contour_vertices(all_edges, axis='x', max_vertices=20)
         if len(h_verts) >= 2:
             tasks.extend(self._build_baseline_tasks(h_verts, axis='x', side="BOTTOM", view_name=view_name))
 
-        v_verts = self._find_contour_vertices(vis_edges, axis='y')
+        v_verts = self._find_contour_vertices(all_edges, axis='y', max_vertices=20)
         if len(v_verts) >= 2:
             tasks.extend(self._build_baseline_tasks(v_verts, axis='y', side="RIGHT", view_name=view_name))
 

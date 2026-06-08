@@ -171,3 +171,72 @@ def extract_assembly(step_filepath, output_dir=None):
         json.dump(tree, f, indent=4, ensure_ascii=False)
 
     return {"tree": tree, "parts": parts, "output_dir": output_dir}
+
+
+def extract_tree_only(step_filepath):
+    """
+    僅解析 STEP 組合件樹狀結構，不寫入任何 STL/STEP 實體檔案。
+    """
+    app = XCAFApp_Application.GetApplication()
+    doc = TDocStd_Document("MDTV-XCAF")
+    app.NewDocument("MDTV-XCAF", doc)
+
+    reader = STEPCAFControl_Reader()
+    reader.SetColorMode(True)
+    reader.SetNameMode(True)
+    if reader.ReadFile(step_filepath) != 1:
+        return {"name": "Root", "children": [{"name": "[零件] Single Part"}]}
+    reader.Transfer(doc)
+
+    shape_tool = XCAFDoc_DocumentTool.ShapeTool(doc.Main())
+    free_shapes = TDF_LabelSequence()
+    shape_tool.GetFreeShapes(free_shapes)
+
+    count_dict = {}
+    cache = {}
+
+    def _get_part_name(label):
+        base_name = get_label_name(label)
+        if not base_name:
+            base_name = "Part"
+        count_dict[base_name] = count_dict.get(base_name, 0) + 1
+        part_name = f"{base_name}_{count_dict[base_name]}"
+        return part_name
+
+    def _process(label):
+        name = get_label_name(label)
+        node_id = get_label_id(label)
+        info = {"name": name, "children": []}
+
+        if shape_tool.IsReference(label):
+            ref_label = TDF_Label()
+            try:
+                shape_tool.GetReferredShape(label, ref_label)
+            except TypeError:
+                res = shape_tool.GetReferredShape(label)
+                ref_label = res[1] if isinstance(res, tuple) else res
+            info["name"] = f"[實例] {name}"
+            child = _process(ref_label)
+            info["children"].append(child)
+            info["file_prefix"] = child.get("file_prefix")
+        elif shape_tool.IsAssembly(label):
+            info["name"] = f"[組件] {name}"
+            comps = TDF_LabelSequence()
+            shape_tool.GetComponents(label, comps)
+            for i in range(1, comps.Length() + 1):
+                info["children"].append(_process(comps.Value(i)))
+        else:
+            info["name"] = f"[零件] {name}"
+            if node_id in cache:
+                info["file_prefix"] = cache[node_id]
+            else:
+                fp = _get_part_name(label)
+                info["file_prefix"] = fp
+                cache[node_id] = fp
+        return info
+
+    tree_root = {"name": "Root", "children": []}
+    for i in range(1, free_shapes.Length() + 1):
+        tree_root["children"].append(_process(free_shapes.Value(i)))
+
+    return tree_root

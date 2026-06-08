@@ -7,45 +7,96 @@ from config import PAPER_SIZES, MARGIN, VIEW_CONFIG
 class DrawingLayout:
     """三視圖佈局管理器 — 第三角投影法"""
 
-    def __init__(self, view_sizes, paper="A3"):
+    def __init__(self, view_sizes, tasks_dict=None, paper="A3"):
         """
         Args:
             view_sizes: {'front': (w,h), 'top': (w,h), 'right': (w,h)}
+            tasks_dict: {'front': [tasks...], ...} 提前提取出的標註任務
             paper: 'A3' or 'A4'
         """
         self.paper_w, self.paper_h = PAPER_SIZES[paper]
         self.margin = MARGIN
         self.view_sizes = view_sizes
+        self.tasks_dict = tasks_dict or {}
         self.title_h = 60    # 標題欄區域高度
         self.revision_h = 30  # 版次欄區域高度
+        
+        # 來自 LayoutEngine 的排版參數 (需同步)
+        self.ext_gap = 12.0
+        self.layer_spacing = 8.0
+        
         self._calculate_scale()
 
+    def _get_view_padding(self, view_name):
+        """
+        估算某視圖四周標註所需的空間 (單位: mm 圖紙空間)
+        回傳 (pad_top, pad_bottom, pad_left, pad_right)
+        """
+        tasks = self.tasks_dict.get(view_name, [])
+        if not tasks:
+            return (0, 0, 0, 0)
+            
+        def get_layers(side, dim_type="LINEAR"):
+            baseline_tasks = [t for t in tasks if t.baseline == side and t.rank == 1 and t.dim_type == dim_type]
+            return len(set(t.value for t in baseline_tasks)) if baseline_tasks else 0
+            
+        def get_overall(side):
+            # 簡化: 假設只要有 rank=2 就是整體標註 (最外層)
+            return 1 if any(t for t in tasks if t.rank >= 2 and getattr(t, 'side', None) == side) else 0
+
+        # 計算各方向的層數 = baseline 分層數 + overall 總標註
+        layers_bottom = get_layers("BOTTOM") + get_overall("BOTTOM")
+        layers_top = get_layers("TOP") + get_overall("TOP")
+        layers_left = get_layers("LEFT") + get_overall("LEFT")
+        layers_right = get_layers("RIGHT") + get_overall("RIGHT")
+        
+        # 基礎邊界 (即使沒有標註也保留些微空間給標籤與引線)
+        pad_base = 15.0
+        
+        pad_bottom = pad_base + (self.ext_gap + layers_bottom * self.layer_spacing if layers_bottom > 0 else 0)
+        pad_top    = pad_base + (self.ext_gap + layers_top * self.layer_spacing if layers_top > 0 else 0)
+        pad_left   = pad_base + (self.ext_gap + layers_left * self.layer_spacing if layers_left > 0 else 0)
+        pad_right  = pad_base + (self.ext_gap + layers_right * self.layer_spacing if layers_right > 0 else 0)
+        
+        # 標籤空間
+        pad_bottom += 15.0 # 視圖文字標籤
+        
+        return (pad_top, pad_bottom, pad_left, pad_right)
+
     def _calculate_scale(self):
-        """自動計算最佳縮放比例與動態排版間距"""
-        fw, fh = self.view_sizes.get('front', (100, 100))
+        """自動計算最佳縮放比例與動態排版間距，並考慮標註空間"""
+        fw, fh = self.view_sizes.get('front', (0, 0))
         rw, rh = self.view_sizes.get('right', (0, 0))
         tw, th = self.view_sizes.get('top', (0, 0))
 
-        has_right = rw > 1.0
-        has_top = th > 1.0
+        has_right = rw > 0.1
+        has_top = tw > 0.1
+
+        # 取得各視圖的所需 Padding (top, bottom, left, right)
+        f_pt, f_pb, f_pl, f_pr = self._get_view_padding('front')
+        r_pt, r_pb, r_pl, r_pr = self._get_view_padding('right')
+        t_pt, t_pb, t_pl, t_pr = self._get_view_padding('top')
+
+        # 組合總 Padding
+        margin_left = f_pl
+        margin_bottom = f_pb
+        
+        # 決定右側邊界
+        margin_right = r_pr if has_right else f_pr
+        # 決定頂部邊界
+        margin_top = t_pt if has_top else f_pt
 
         # 圖框內可用區域
         draw_w = self.paper_w - 2 * self.margin
         draw_h = self.paper_h - 2 * self.margin - self.title_h - self.revision_h
 
-        # 預留邊界空間給最外圍的尺寸標註
-        margin_left = 35.0
-        margin_bottom = 35.0
-        margin_right = 35.0 if not has_right else 15.0
-        margin_top = 35.0 if not has_top else 15.0
-
         avail_w = draw_w - margin_left - margin_right
         avail_h = draw_h - margin_bottom - margin_top
 
-        # 動態間距：依據可用空間比例分配，但也設定安全上下限
-        # 保障前視圖與其他視圖之間有足夠的引線空間
-        gap_x = max(50.0, min(90.0, avail_w * 0.25)) if has_right else 0.0
-        gap_y = max(50.0, min(90.0, avail_h * 0.25)) if has_top else 0.0
+        # 動態間距：包含兩個視圖之間的 Padding (前視圖的右 Pad + 右視圖的左 Pad)
+        # 再加上一些基礎視覺間距 (30.0)
+        gap_x = (f_pr + r_pl + 30.0) if has_right else 0.0
+        gap_y = (f_pt + t_pb + 30.0) if has_top else 0.0
 
         fw_total = fw + rw if has_right else fw
         fh_total = fh + th if has_top else fh

@@ -228,7 +228,8 @@ class ShaftExtractor(BaseExtractor):
             dia = seg["diameter"]
             ctrl_letter = chr(65 + ctrl_idx)
             ctrl_idx += 1
-            tol = "±0.05" if dia < 10 else "±0.10"
+            # 公差未來由外部 ML API 提供
+            tol = ""
 
             side = "LEFT" if is_horizontal else "BOTTOM"
 
