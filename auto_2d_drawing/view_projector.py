@@ -137,10 +137,43 @@ class ViewProjector:
                 pts.append((p.X(), p.Y()))
         return pts
 
-    def project_all_views(self, shape):
+    def _cut_half(self, shape):
+        """用布林運算切掉 +X 半部，用於產生剖面圖"""
+        from OCC.Core.Bnd import Bnd_Box
+        from OCC.Core.BRepBndLib import brepbndlib_Add
+        from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
+        from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut
+        from OCC.Core.gp import gp_Pnt
+        
+        bbox = Bnd_Box()
+        brepbndlib_Add(shape, bbox)
+        xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
+        
+        cx = (xmin + xmax) / 2.0
+        
+        # 建立涵蓋 +X 半邊的巨大方塊
+        pad = 10.0
+        p1 = gp_Pnt(cx, ymin - pad, zmin - pad)
+        p2 = gp_Pnt(xmax + pad, ymax + pad, zmax + pad)
+        
+        cut_box = BRepPrimAPI_MakeBox(p1, p2).Shape()
+        
+        # 布林相減
+        cut_algo = BRepAlgoAPI_Cut(shape, cut_box)
+        cut_algo.Build()
+        
+        if cut_algo.IsDone():
+            return cut_algo.Shape()
+        return shape
+
+    def project_all_views(self, shape, cut_half_right=False):
         """
         投影所有三視圖，回傳結構化資料。
         
+        Args:
+            shape: TopoDS_Shape
+            cut_half_right: 若為 True，會將 shape 切一半再投影右視圖，以產生剖面
+            
         Returns:
             dict: {
                 'front': {'visible': [...], 'hidden': [...], 'bbox': (x0,y0,x1,y1), 'size': (w,h)},
@@ -150,7 +183,15 @@ class ViewProjector:
         """
         result = {}
         for vn in ['front', 'top', 'right']:
-            vis_comp, hid_comp, outline_v, outline_h = self.project(shape, vn)
+            target_shape = shape
+            if vn == 'right' and cut_half_right:
+                try:
+                    target_shape = self._cut_half(shape)
+                except Exception as e:
+                    print(f"Cut failed: {e}")
+                    target_shape = shape
+
+            vis_comp, hid_comp, outline_v, outline_h = self.project(target_shape, vn)
             vis_edges = self.extract_edges(vis_comp)
             hid_edges = self.extract_edges(hid_comp)
             

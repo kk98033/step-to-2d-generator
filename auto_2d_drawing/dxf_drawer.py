@@ -21,32 +21,49 @@ class DrawingLayout:
         self._calculate_scale()
 
     def _calculate_scale(self):
-        """自動計算最佳縮放比例"""
+        """自動計算最佳縮放比例與動態排版間距"""
         fw, fh = self.view_sizes.get('front', (100, 100))
-        rw, rh = self.view_sizes.get('right', (100, 100))
-        tw, th = self.view_sizes.get('top', (100, 100))
+        rw, rh = self.view_sizes.get('right', (0, 0))
+        tw, th = self.view_sizes.get('top', (0, 0))
 
-        # 可用繪圖區域 (扣除邊距、標題欄、版次欄、標註空間)
-        annotation_space = 50  # 左/下留給尺寸標註的空間
-        draw_w = self.paper_w - 2 * self.margin - annotation_space - 20
-        draw_h = self.paper_h - 2 * self.margin - self.title_h - self.revision_h - annotation_space
+        has_right = rw > 1.0
+        has_top = th > 1.0
 
-        # 三視圖佈局所需空間 (未縮放的原始尺寸)
-        gap = 30  # 視圖間距 (原始尺寸)
-        needed_w = fw + gap + rw
-        needed_h = fh + gap + th
+        # 圖框內可用區域
+        draw_w = self.paper_w - 2 * self.margin
+        draw_h = self.paper_h - 2 * self.margin - self.title_h - self.revision_h
 
-        if needed_w <= 0:
-            needed_w = 1
-        if needed_h <= 0:
-            needed_h = 1
+        # 預留邊界空間給最外圍的尺寸標註
+        margin_left = 35.0
+        margin_bottom = 35.0
+        margin_right = 35.0 if not has_right else 15.0
+        margin_top = 35.0 if not has_top else 15.0
 
-        self.scale = min(draw_w / needed_w, draw_h / needed_h)
-        self.gap = gap * self.scale
+        avail_w = draw_w - margin_left - margin_right
+        avail_h = draw_h - margin_bottom - margin_top
+
+        # 動態間距：依據可用空間比例分配，但也設定安全上下限
+        # 保障前視圖與其他視圖之間有足夠的引線空間
+        gap_x = max(50.0, min(90.0, avail_w * 0.25)) if has_right else 0.0
+        gap_y = max(50.0, min(90.0, avail_h * 0.25)) if has_top else 0.0
+
+        fw_total = fw + rw if has_right else fw
+        fh_total = fh + th if has_top else fh
+
+        scale_x = (avail_w - gap_x) / fw_total if fw_total > 0 else 1.0
+        scale_y = (avail_h - gap_y) / fh_total if fh_total > 0 else 1.0
+
+        # 取得較嚴格的縮放比例
+        self.scale = min(scale_x, scale_y)
 
         # 限制縮放範圍
         self.scale = min(self.scale, 5.0)
         self.scale = max(self.scale, 0.05)
+
+        self.gap_x = gap_x
+        self.gap_y = gap_y
+        self.start_x = self.margin + margin_left
+        self.start_y = self.margin + self.title_h + margin_bottom
 
     def get_scale_text(self):
         """回傳比例文字 (如 '1:2', '2:1')"""
@@ -65,21 +82,15 @@ class DrawingLayout:
           [front]   在左下
           [right]   在前視圖正右方
         """
-        m = self.margin + 20
-        by = m + self.title_h + 20   # 基線 (標題欄上方)
         s = self.scale
-        g = self.gap
         fw, fh = self.view_sizes.get('front', (100, 100))
-        tw, th = self.view_sizes.get('top', (100, 100))
 
         if view_name == 'front':
-            return m, by
+            return self.start_x, self.start_y
         elif view_name == 'top':
-            # 俯視圖水平對齊前視圖的左側
-            return m, by + fh * s + g
+            return self.start_x, self.start_y + fh * s + self.gap_y
         elif view_name == 'right':
-            # 右側視圖垂直對齊前視圖的底部
-            return m + fw * s + g, by
+            return self.start_x + fw * s + self.gap_x, self.start_y
         return 0, 0
 
     def get_scaled_size(self, view_name):

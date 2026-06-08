@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, File, Folder, FolderOpen, Loader2, CheckCircle, ChevronRight, ChevronDown, AlertTriangle, BookOpen, ArrowLeft, Home } from 'lucide-react';
+import { FileText, File, Folder, FolderOpen, Loader2, CheckCircle, ChevronRight, ChevronDown, AlertTriangle, BookOpen, ArrowLeft, Home, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
 import axios from 'axios';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
@@ -126,6 +126,49 @@ function TreeNode({ node, onSelect, selectedPart }: any) {
   );
 }
 
+// --- Example Tree Node ---
+function ExampleTreeNode({ node, onSelect, selectedExample }: any) {
+  const [expanded, setExpanded] = useState(node.name === '業主範例圖 (Reference)');
+  const isLeaf = node.type === 'file';
+  const isSelected = selectedExample?.url === node.url;
+
+  return (
+    <div style={{ paddingLeft: node.name === '業主範例圖 (Reference)' ? 0 : 16 }}>
+      <div
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!isLeaf) setExpanded(!expanded);
+          else onSelect(node);
+        }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '6px 8px',
+          cursor: 'pointer',
+          borderRadius: 6,
+          fontSize: 13,
+          background: isSelected ? '#3B82F6' : 'transparent',
+          color: isSelected ? '#fff' : '#ccc',
+          marginBottom: 2
+        }}
+        onMouseEnter={(e) => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = '#1a1a1a'; }}
+        onMouseLeave={(e) => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+      >
+        {!isLeaf ? (expanded ? <ChevronDown size={14} style={{ marginRight: 4 }} /> : <ChevronRight size={14} style={{ marginRight: 4 }} />) : <span style={{ width: 18 }} />}
+        {!isLeaf ? (expanded ? <FolderOpen size={16} style={{ marginRight: 8, color: '#eab308' }} /> : <Folder size={16} style={{ marginRight: 8, color: '#eab308' }} />) : <FileText size={16} style={{ marginRight: 8, color: '#a78bfa' }} />}
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.display_name || node.name}</span>
+      </div>
+      {expanded && !isLeaf && node.children && (
+        <div>
+          {node.children.map((child: any, idx: number) => (
+            <ExampleTreeNode key={idx} node={child} onSelect={onSelect} selectedExample={selectedExample} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Main App ---
 function App() {
   const [file, setFile] = useState<globalThis.File | null>(null);
@@ -137,8 +180,20 @@ function App() {
   const [results, setResults] = useState<any>(null);
   const [selectedPart, setSelectedPart] = useState<string | null>(null);
   const [existingModels, setExistingModels] = useState<any[]>([]);
-  const [examplePdfs, setExamplePdfs] = useState<any[]>([]);
+  const [exampleTree, setExampleTree] = useState<any>(null);
   const [selectedExample, setSelectedExample] = useState<any>(null);
+  const [zoom, setZoom] = useState(1);
+
+  // Loading dots
+  const [dots, setDots] = useState('');
+  useEffect(() => {
+    if (status === 'processing') {
+      const id = setInterval(() => {
+        setDots(d => d.length >= 3 ? '' : d + '.');
+      }, 500);
+      return () => clearInterval(id);
+    }
+  }, [status]);
 
   // --- Resizable Sidebar State ---
   const [sidebarWidth, setSidebarWidth] = useState<number | 'max-content'>('max-content');
@@ -171,7 +226,7 @@ function App() {
         setExistingModels(res.data.models || []);
       }).catch(err => console.error(err));
       axios.get(`${API_BASE}/api/examples`).then(res => {
-        setExamplePdfs(res.data.examples || []);
+        setExampleTree(res.data.example_tree || null);
       }).catch(err => console.error(err));
     }
   }, [status]);
@@ -247,11 +302,20 @@ function App() {
     }
   };
 
-  // --- Landing Page ---
-  if (status === 'idle' || !status) {
+  // --- Initial Upload Page ---
+  if (status === 'idle') {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#0A0A0A' }}>
-        <div style={{ maxWidth: 440, width: '100%', background: '#171717', padding: 32, borderRadius: 12, border: '1px solid #262626', boxShadow: '0 25px 50px rgba(0,0,0,0.5)', textAlign: 'center' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0A0A0A', padding: 24, overflowY: 'auto' }}>
+        {/* FC Logo and Title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 40, margin: '0 auto' }}>
+          <div style={{ width: 48, height: 48, background: '#3B82F6', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 22, boxShadow: '0 4px 20px rgba(59,130,246,0.4)' }}>
+            FC
+          </div>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: '#fff', margin: 0, letterSpacing: 0.5 }}>Auto 2D Drawing System</h1>
+        </div>
+
+        {/* Upload Container */}
+        <div style={{ maxWidth: 480, width: '100%', background: '#171717', padding: 32, borderRadius: 12, border: '1px solid #262626', boxShadow: '0 25px 50px rgba(0,0,0,0.5)', textAlign: 'center', margin: '0 auto' }}>
           <div style={{ width: 64, height: 64, background: 'rgba(59,130,246,0.1)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
             <File color="#3B82F6" size={32} />
           </div>
@@ -295,25 +359,18 @@ function App() {
             </div>
           )}
 
-          {examplePdfs.length > 0 && (
+          {exampleTree && (
             <div style={{ textAlign: 'left', borderTop: '1px solid #262626', paddingTop: 24, marginTop: 16 }}>
               <h3 style={{ fontSize: 12, fontWeight: 600, color: '#666', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>
                 <BookOpen size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
-                業主範例圖 (Reference)
+                公司範例圖 (Reference)
               </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 200, overflowY: 'auto' }}>
-                {examplePdfs.map((ex: any) => (
-                  <button
-                    key={ex.filename}
-                    onClick={() => { setSelectedExample(ex); setStatus('viewing_example'); }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: 12, borderRadius: 8, background: '#1a1a2e', border: '1px solid #2d2d4a', color: '#ccc', cursor: 'pointer', fontSize: 13 }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#2d2d4a'; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = '#1a1a2e'; }}
-                  >
-                    <FileText color="#a78bfa" size={16} />
-                    <span>{ex.display_name}</span>
-                  </button>
-                ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 300, overflowY: 'auto', background: '#111', padding: 8, borderRadius: 8, border: '1px solid #2d2d4a' }}>
+                <ExampleTreeNode 
+                  node={exampleTree} 
+                  onSelect={(node: any) => { setSelectedExample(node); setStatus('viewing_example'); }} 
+                  selectedExample={selectedExample} 
+                />
               </div>
             </div>
           )}
@@ -329,49 +386,72 @@ function App() {
         <header style={{ height: 56, borderBottom: '1px solid #262626', background: '#171717', display: 'flex', alignItems: 'center', padding: '0 16px', justifyContent: 'space-between', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button
-              onClick={() => { setStatus(null); setSelectedExample(null); }}
+              onClick={() => { setStatus('idle'); setSelectedExample(null); setZoom(1); }}
               style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', background: '#333', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 13 }}
             >
               <ArrowLeft size={16} /> 返回
             </button>
             <BookOpen size={18} color="#a78bfa" />
-            <span style={{ fontWeight: 600, fontSize: 16 }}>業主範例圖</span>
+            <span style={{ fontWeight: 600, fontSize: 16 }}>公司範例圖</span>
           </div>
           <span style={{ fontSize: 14, color: '#aaa' }}>{selectedExample.display_name}</span>
         </header>
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
           {/* Left: Example list */}
-          <div style={{ width: 280, borderRight: '1px solid #262626', background: '#111', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ width: 340, borderRight: '1px solid #262626', background: '#111', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: 12, borderBottom: '1px solid #262626', fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 1 }}>
-              範例圖清單
+              範例圖目錄
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
-              {examplePdfs.map((ex: any) => (
-                <div
-                  key={ex.filename}
-                  onClick={() => setSelectedExample(ex)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 12, marginBottom: 4,
-                    background: selectedExample?.filename === ex.filename ? '#3B82F6' : 'transparent',
-                    color: selectedExample?.filename === ex.filename ? '#fff' : '#aaa',
-                  }}
-                  onMouseEnter={(e) => { if (selectedExample?.filename !== ex.filename) (e.currentTarget as HTMLDivElement).style.background = '#1a1a1a'; }}
-                  onMouseLeave={(e) => { if (selectedExample?.filename !== ex.filename) (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
-                >
-                  <FileText size={14} color={selectedExample?.filename === ex.filename ? '#fff' : '#a78bfa'} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ex.display_name}</span>
-                </div>
-              ))}
+              {exampleTree && (
+                <ExampleTreeNode 
+                  node={exampleTree} 
+                  onSelect={(node: any) => setSelectedExample(node)} 
+                  selectedExample={selectedExample} 
+                />
+              )}
             </div>
           </div>
-          {/* Right: PDF Viewer */}
-          <div style={{ flex: 1, display: 'flex', background: '#111' }}>
-            <iframe
-              key={selectedExample.filename}
-              src={`${API_BASE}${selectedExample.url}#view=FitH`}
-              title="Example PDF"
-              style={{ width: '100%', height: '100%', border: 'none' }}
-            />
+          {/* Right: PDF/SVG Viewer */}
+          <div style={{ flex: 1, display: 'flex', background: '#111', position: 'relative' }}>
+            {/* Zoom Controls */}
+            {selectedExample.url.endsWith('.svg') && (
+              <div style={{ position: 'absolute', right: 20, top: 20, zIndex: 10, display: 'flex', gap: 8, background: '#222', padding: 8, borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+                <button onClick={() => setZoom(z => z + 0.2)} style={{ background: '#333', border: 'none', color: '#fff', borderRadius: 4, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><ZoomIn size={16} /></button>
+                <button onClick={() => setZoom(1)} style={{ background: '#333', border: 'none', color: '#fff', borderRadius: 4, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 12, fontWeight: 'bold' }}>1x</button>
+                <button onClick={() => setZoom(z => Math.max(0.2, z - 0.2))} style={{ background: '#333', border: 'none', color: '#fff', borderRadius: 4, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><ZoomOut size={16} /></button>
+              </div>
+            )}
+            
+            <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-start', padding: 24 }}>
+              {selectedExample.url.endsWith('.svg') ? (
+                <img
+                  key={selectedExample.filename}
+                  src={`${API_BASE}${selectedExample.url}`}
+                  alt="Example SVG"
+                  style={{ 
+                    width: `${100 * zoom}%`, 
+                    minWidth: 400,
+                    maxWidth: 'none',
+                    height: 'auto',
+                    flexShrink: 0,
+                    margin: 'auto',
+                    transition: 'width 0.2s cubic-bezier(0.25, 0.8, 0.25, 1)', 
+                    objectFit: 'contain',
+                    background: '#fff', // White background for SVG transparency
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+                    borderRadius: 4
+                  }}
+                />
+              ) : (
+                <iframe
+                  key={selectedExample.filename}
+                  src={`${API_BASE}${selectedExample.url}#view=FitH`}
+                  title="Example PDF"
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                />
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -387,11 +467,23 @@ function App() {
           <Loader2 size={48} color="#3B82F6" style={{ display: 'block', margin: '0 auto 24px', animation: 'spin 1s linear infinite' }} />
           <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>{status === 'uploading' ? '上傳中...' : '處理中...'}</h2>
           <div style={{ width: '100%', background: '#333', borderRadius: 999, height: 12, marginBottom: 8, overflow: 'hidden' }}>
-            <div style={{ background: '#3B82F6', height: 12, borderRadius: 999, transition: 'width 0.3s', width: `${percent}%` }} />
+            <div style={{ 
+              backgroundSize: '1.5rem 1.5rem',
+              backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.15) 75%, transparent 75%, transparent)', 
+              backgroundColor: '#3B82F6', 
+              height: 12, 
+              borderRadius: 999, 
+              transition: 'width 0.3s', 
+              width: `${Math.max(2, percent)}%`,
+              animation: 'progress-stripes 1s linear infinite'
+            }} />
           </div>
-          <p style={{ fontSize: 13, color: '#888' }}>{progressMsg}</p>
+          <p style={{ fontSize: 13, color: '#888', minHeight: 20 }}>{progressMsg}{dots}</p>
         </div>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <style>{`
+          @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes progress-stripes { from { background-position: 1.5rem 0; } to { background-position: 0 0; } }
+        `}</style>
       </div>
     );
   }
