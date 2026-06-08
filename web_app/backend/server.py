@@ -143,8 +143,72 @@ async def get_results(job_id: str):
     return {
         "tree": job.get("result"),
         "parts_map": job.get("parts_map", {}),
-        "output_dir": job.get("output_dir")
+        "output_dir": job.get("output_dir"),
+        "diff_result": job.get("diff_result"),
+        "stats": job.get("stats"),
+        "tree_old": job.get("tree_old"),
+        "tree_new": job.get("tree_new")
     }
+
+# === 模型比對 API ===
+def run_compare_job(job_id: str, old_path: str, new_path: str):
+    try:
+        from auto_2d_drawing.compare_models import compare_step_files
+        output_dir_name = f"diff_{job_id[:8]}"
+        output_dir = os.path.join(OUTPUT_DIR, output_dir_name)
+        
+        results = compare_step_files(old_path, new_path, output_dir)
+        
+        # 提取非路徑的資料
+        stats = results.pop('stats', None)
+        tree_old = results.pop('tree_old', None)
+        tree_new = results.pop('tree_new', None)
+        
+        # 將本地路徑轉換為 URL
+        diff_urls = {}
+        for key, path in results.items():
+            if isinstance(path, str) and path.endswith('.stl'):
+                filename = os.path.basename(path)
+                diff_urls[key] = f"/api/files/{output_dir_name}/{filename}"
+            
+        jobs[job_id]["diff_result"] = diff_urls
+        jobs[job_id]["stats"] = stats
+        jobs[job_id]["tree_old"] = tree_old
+        jobs[job_id]["tree_new"] = tree_new
+        jobs[job_id]["output_dir"] = output_dir_name
+        jobs[job_id]["status"] = "completed"
+        jobs[job_id]["message"] = "比對完成"
+        
+    except Exception as e:
+        jobs[job_id]["status"] = "error"
+        jobs[job_id]["message"] = f"比對發生錯誤: {str(e)}"
+        
+@app.post("/api/compare")
+async def compare_files(file_old: UploadFile = File(...), file_new: UploadFile = File(...)):
+    job_id = str(uuid.uuid4())
+    
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    old_path = os.path.join(MODELS_DIR, f"old_{job_id[:8]}_{file_old.filename}")
+    new_path = os.path.join(MODELS_DIR, f"new_{job_id[:8]}_{file_new.filename}")
+    
+    with open(old_path, "wb") as buffer:
+        shutil.copyfileobj(file_old.file, buffer)
+    with open(new_path, "wb") as buffer:
+        shutil.copyfileobj(file_new.file, buffer)
+        
+    jobs[job_id] = {
+        "status": "running",
+        "total": 0,
+        "current": 0,
+        "message": "已接收比對檔案，準備開始分析差異...",
+        "filename": f"{file_old.filename} vs {file_new.filename}",
+        "result": None,
+        "output_dir": None,
+        "is_diff": True
+    }
+    
+    executor.submit(run_compare_job, job_id, old_path, new_path)
+    return {"job_id": job_id}
 
 @app.get("/api/models")
 async def list_models():
@@ -253,7 +317,33 @@ if os.path.exists(FRONTEND_DIR):
 else:
     print(f"Warning: Frontend dist directory not found at {FRONTEND_DIR}. Please run 'npm run build' in frontend folder.")
 
+# === 公差設定 API (預留給未來機器學習外部模組) ===
+from pydantic import BaseModel
+from typing import Dict, Optional
+
+class ToleranceConfig(BaseModel):
+    default_tolerance: Optional[str] = "±0.1"
+    feature_overrides: Optional[Dict[str, str]] = {}
+
+# 在記憶體中暫存公差設定
+global_tolerances = ToleranceConfig(
+    default_tolerance="±0.1",
+    feature_overrides={"shaft": "±0.05", "hole": "±0.02"}
+)
+
+@app.get("/api/tolerances")
+async def get_tolerances():
+    """取得目前的公差設定"""
+    return global_tolerances.dict()
+
+@app.post("/api/tolerances")
+async def update_tolerances(config: ToleranceConfig):
+    """從外部更新公差設定"""
+    global global_tolerances
+    global_tolerances = config
+    return {"status": "success", "message": "Tolerances updated.", "data": global_tolerances.dict()}
+
 if __name__ == "__main__":
     import uvicorn
-    # Trigger reload 18 — Hierarchical Examples API + Loading Animation
+    # Trigger reload 22 — Force reload for backend stats & tree_diff
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)

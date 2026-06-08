@@ -27,7 +27,7 @@ class BaseExtractor(ABC):
         """
         raise NotImplementedError
 
-    def _find_contour_vertices(self, edges, axis='x', tol=0.15):
+    def _find_contour_vertices(self, edges, axis='x', tol=0.15, max_vertices=15):
         """
         從投影後的 2D 邊緣中找出所有頂點 (輪廓轉折點)。
         這是一個通用的工具方法，所有子類別都可以使用。
@@ -36,6 +36,7 @@ class BaseExtractor(ABC):
             edges: 邊緣列表 (來自 ViewProjector)
             axis: 'x' 或 'y'
             tol: 聚類容差
+            max_vertices: 允許的最大特徵頂點數，若超過將強制擴大容差合併
 
         Returns:
             sorted list of positions (投影座標系)
@@ -67,7 +68,6 @@ class BaseExtractor(ABC):
         base_tol = max(tol, total_range * 0.005)
 
         # 迭代聚類 — 如果頂點太多就加大容差
-        max_vertices = 10
         current_tol = base_tol
 
         for attempt in range(10):

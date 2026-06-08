@@ -28,33 +28,61 @@ class DimensionEngine:
         self.classifier = PartClassifier()
         self.layout_engine = LayoutEngine(layout)
 
-    def annotate_all_views(self, msp, view_data=None, part_type=None):
+    def extract_all_tasks(self, view_data, part_type=None):
         """
-        為所有視圖自動標註尺寸。
-
-        Args:
-            msp: DXF modelspace
-            view_data: 三視圖的投影資料 dict
-            part_type: 指定的零件分類 (若未提供則自動重新分類)
+        預先提取所有視圖的標註任務，但不渲染。
+        回傳結構: {'front': [tasks...], 'top': [tasks...], 'right': [tasks...]}
         """
         if not view_data:
-            return
+            return {}
 
-        # 1. 判斷零件類型
         if not part_type:
             part_type = self.classifier.classify(self.feat)
         print(f"     DimensionEngine 零件分類: {part_type}")
 
-        # 2. 選擇對應的提取器
         extractor = self._get_extractor(part_type)
+        all_tasks = {}
 
-        # 3. 為每個視圖提取標註任務並渲染
         for view_name in ['front', 'top', 'right']:
             vd = view_data.get(view_name)
             if not vd:
                 continue
+            tasks = extractor.extract(self.feat, vd, view_name)
+            all_tasks[view_name] = tasks
 
-            self.annotate_view(msp, view_name, vd, extractor)
+        return all_tasks
+
+    def render_pre_extracted_tasks(self, msp, all_tasks, view_data):
+        """
+        渲染預先提取的任務到 DXF 模型空間
+        """
+        for view_name, tasks in all_tasks.items():
+            vd = view_data.get(view_name)
+            if not vd or not tasks:
+                continue
+
+            ox, oy = self.layout.get_view_offset(view_name)
+            sw, sh = self.layout.get_scaled_size(view_name)
+            self.layout_engine.render(msp, tasks, ox, oy, sw, sh, vd)
+
+            # 前視圖額外: 規格字串
+            if view_name == 'front':
+                spec = self.feat.get_overall_spec()
+                if spec:
+                    self.layout_engine._add_text(
+                        msp, ox, oy + sh + 6,
+                        f"規格: {spec}", height=2.0, layer='TEXT'
+                    )
+
+    def annotate_all_views(self, msp, view_data=None, part_type=None):
+        """
+        為所有視圖自動標註尺寸 (舊版整合式，用於相容或不需預先計算排版的場景)
+        """
+        if not view_data:
+            return
+
+        all_tasks = self.extract_all_tasks(view_data, part_type)
+        self.render_pre_extracted_tasks(msp, all_tasks, view_data)
 
     def annotate_view(self, msp, view_name, vd, extractor, override_offset=None):
         """

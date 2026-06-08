@@ -140,13 +140,13 @@ class ViewProjector:
     def _cut_half(self, shape):
         """用布林運算切掉 +X 半部，用於產生剖面圖"""
         from OCC.Core.Bnd import Bnd_Box
-        from OCC.Core.BRepBndLib import brepbndlib_Add
+        from OCC.Core.BRepBndLib import brepbndlib
         from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
         from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut
         from OCC.Core.gp import gp_Pnt
         
         bbox = Bnd_Box()
-        brepbndlib_Add(shape, bbox)
+        brepbndlib.Add(shape, bbox)
         xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
         
         cx = (xmin + xmax) / 2.0
