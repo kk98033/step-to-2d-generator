@@ -172,7 +172,7 @@ class DimensionEngine:
     # 標註繪製
     # =========================================================
 
-    def _draw_hdim(self, msp, x1, x2, y, text, layer_offset=0):
+    def _draw_hdim(self, msp, x1, x2, y, text, text_stagger=0.0):
         """繪製水平尺寸標註線"""
         if abs(x2 - x1) < 1.0:
             return
@@ -186,9 +186,13 @@ class DimensionEngine:
         msp.add_line((x2, y), (x2 - arr, y - 0.7), dxfattribs={'layer': 'DIM', 'color': 2})
         # 文字
         tx = (x1 + x2) / 2
-        self._add_text(msp, tx - 3, y + 1.0, text, height=1.5)
+        ty = y + 1.0 + text_stagger
+        self._add_text(msp, tx - (len(text) * 0.55), ty, text, height=1.5)
+        # 如果有交錯偏移，畫一條細細的指示線輔助
+        if abs(text_stagger) > 0.1:
+            msp.add_line((tx, y), (tx, ty - 0.3), dxfattribs={'layer': 'DIM', 'color': 8})
 
-    def _draw_vdim(self, msp, y1, y2, x, text, layer_offset=0):
+    def _draw_vdim(self, msp, y1, y2, x, text, text_stagger=0.0):
         """繪製垂直尺寸標註線"""
         if abs(y2 - y1) < 1.0:
             return
@@ -198,28 +202,22 @@ class DimensionEngine:
         msp.add_line((x, y1), (x - 0.7, y1 + arr), dxfattribs={'layer': 'DIM', 'color': 2})
         msp.add_line((x, y2), (x + 0.7, y2 - arr), dxfattribs={'layer': 'DIM', 'color': 2})
         msp.add_line((x, y2), (x - 0.7, y2 - arr), dxfattribs={'layer': 'DIM', 'color': 2})
-        tx = x + 1.5
+        # 文字
+        tx = x + 1.5 + text_stagger
         ty = (y1 + y2) / 2
-        self._add_text(msp, tx, ty, text, height=1.5)
+        self._add_text(msp, tx, ty - 0.75, text, height=1.5)
+        if abs(text_stagger) > 0.1:
+            msp.add_line((x, ty), (tx - 0.3, ty), dxfattribs={'layer': 'DIM', 'color': 8})
 
     # =========================================================
     # 全組合累進式標註
     # =========================================================
 
     def _dim_progressive(self, msp, vertices_proj, bbox_start, scale, origin,
-                         contour_edge, direction='horizontal', paper_contour_pos=None):
+                         contour_edge, direction='horizontal', paper_contour_pos=None, prefix=""):
         """
-        最長邊 + 相鄰標註法
-        
-        vertices_proj: 投影座標系中的頂點列表 (sorted)
-        direction: 'horizontal' = 下方標 / 'vertical' = 右側標
-        contour_edge: 輪廓邊緣位置 (圖紙座標)
-        
-        標註佈局 (假設頂點 1,2,3,4):
-        Layer 1 (最外層): 1------4   (最長邊 = 總長)
-        Layer 2 (靠近):   1-2         (相鄰)
-        Layer 3 (靠近):      2-3      (相鄰)
-        Layer 4 (靠近):         3-4   (相鄰)
+        雙層標註法: 內層連續標註 (Chain) + 外層總標註 (Overall)
+        加上防重疊 (Anti-Collision) 機制。
         """
         n = len(vertices_proj)
         if n < 2:
@@ -231,33 +229,16 @@ class DimensionEngine:
         else:
             verts_paper = [self._proj_to_paper_y(v, bbox_start, scale, origin) for v in vertices_proj]
 
-        # 產生標註對: 最長邊 + 相鄰對
-        dim_pairs = []
-
-        # 1) 最長邊 (第一個到最後一個) — 放在最外層
-        total_dist = abs(vertices_proj[-1] - vertices_proj[0])
-        total_paper = abs(verts_paper[-1] - verts_paper[0])
-        if total_paper >= 3.0:
-            dim_pairs.append((0, n - 1, total_dist))
-
-        # 2) 相鄰對 (i 到 i+1) — 放在靠近輪廓的層
-        for i in range(n - 1):
-            real_dist = abs(vertices_proj[i + 1] - vertices_proj[i])
-            paper_dist = abs(verts_paper[i + 1] - verts_paper[i])
-            if paper_dist < 3.0:
-                continue
-            dim_pairs.append((i, i + 1, real_dist))
-
-        if not dim_pairs:
-            return
-
-        layer_spacing = 5.0
-        ext_gap = 2.5
-        total_layers = len(dim_pairs)
-        max_extent = ext_gap + total_layers * layer_spacing + 3
+        layer_spacing = 10.0
+        ext_gap = 12.0
+        
+        # 只有內外兩層 (0 = 內側連續標註, 1 = 外側總標註)
+        has_overall = (n > 2)
+        total_layers = 2 if has_overall else 1
+        max_extent = ext_gap + total_layers * layer_spacing + 2
 
         # 繪製延伸線 (從輪廓到標註區域)
-        for vi, vp in enumerate(verts_paper):
+        for vp in verts_paper:
             if direction == 'horizontal':
                 msp.add_line((vp, contour_edge), (vp, contour_edge - max_extent),
                              dxfattribs={'layer': 'DIM', 'color': 2})
@@ -265,19 +246,124 @@ class DimensionEngine:
                 msp.add_line((contour_edge, vp), (contour_edge + max_extent, vp),
                              dxfattribs={'layer': 'DIM', 'color': 2})
 
-        # 繪製各層標註
-        # 最長邊在最外層 (layer 0 = 最遠), 相鄰對在內層 (靠近輪廓)
-        for layer_idx, (si, ei, real_dist) in enumerate(dim_pairs):
-            dim_text = f"{real_dist:.2f}"
-            # 最長邊 (index 0) 放最外層, 相鄰對從內層開始
-            actual_layer = total_layers - 1 - layer_idx if layer_idx == 0 else layer_idx - 1
-
+        # --- Layer 1: 連續標註 (相鄰對) ---
+        inner_layer_pos = contour_edge - ext_gap if direction == 'horizontal' else contour_edge + ext_gap
+        
+        # 文字寬高預估
+        char_width = 1.3
+        
+        for i in range(n - 1):
+            real_dist = abs(vertices_proj[i + 1] - vertices_proj[i])
+            paper_dist = abs(verts_paper[i + 1] - verts_paper[i])
+            
+            if paper_dist < 1.0:
+                continue # 太短不標
+                
+            dim_text = f"{prefix}{real_dist:.2f}"
+            req_space = len(dim_text) * char_width + 1.0
+            
+            # 防遮擋交錯邏輯: 如果線段放不下文字，就上下交錯
+            stagger = 0.0
+            if paper_dist < req_space:
+                # 使用奇偶數索引來交錯，拉開距離避免碰撞
+                stagger = 2.5 if i % 2 == 0 else -2.5
+                
             if direction == 'horizontal':
-                dim_y = contour_edge - ext_gap - actual_layer * layer_spacing
-                self._draw_hdim(msp, verts_paper[si], verts_paper[ei], dim_y, dim_text)
+                self._draw_hdim(msp, verts_paper[i], verts_paper[i+1], inner_layer_pos, dim_text, text_stagger=stagger)
             else:
-                dim_x = contour_edge + ext_gap + actual_layer * layer_spacing
-                self._draw_vdim(msp, verts_paper[si], verts_paper[ei], dim_x, dim_text)
+                self._draw_vdim(msp, verts_paper[i], verts_paper[i+1], inner_layer_pos, dim_text, text_stagger=stagger)
+
+        # --- Layer 2: 總標註 ---
+        if has_overall:
+            total_real_dist = abs(vertices_proj[-1] - vertices_proj[0])
+            total_dim_text = f"{prefix}{total_real_dist:.2f}"
+            outer_layer_pos = inner_layer_pos - layer_spacing if direction == 'horizontal' else inner_layer_pos + layer_spacing
+            
+            if direction == 'horizontal':
+                self._draw_hdim(msp, verts_paper[0], verts_paper[-1], outer_layer_pos, total_dim_text)
+            else:
+                self._draw_vdim(msp, verts_paper[0], verts_paper[-1], outer_layer_pos, total_dim_text)
+
+    def _dim_baseline(self, msp, vertices_proj, bbox_start, scale, origin, contour_edge, prefix=""):
+        """
+        複合式雙向標註 (Dual Base-line Dimensioning):
+        以零件最左端與最右端為雙基準。左側特徵從左向右標，右側特徵從右向左標。
+        這是業界車床加工最標準的做法，避免師傅在現場做減法。
+        """
+        n = len(vertices_proj)
+        if n < 2:
+            return
+
+        layer_spacing = 8.0
+        ext_gap = 12.0
+        
+        base_left_proj = vertices_proj[0]
+        base_right_proj = vertices_proj[-1]
+        
+        # 不主動過濾太近的特徵點，因為基線標註會將它們分層排列，
+        # 自然解決了文字擁擠的問題，保留所有原本的幾何轉折點才能提供完整加工尺寸。
+        filtered_verts_proj = list(vertices_proj)
+            
+        m = len(filtered_verts_proj)
+        if m < 2:
+            return
+
+        midpoint = (base_left_proj + base_right_proj) / 2.0
+        
+        # 分為左基準與右基準
+        left_dims = []   # (proj_pos, real_dist)
+        right_dims = []  # (proj_pos, real_dist)
+        
+        for i in range(1, m - 1):
+            v = filtered_verts_proj[i]
+            if v <= midpoint:
+                left_dims.append((v, v - base_left_proj))
+            else:
+                right_dims.append((v, base_right_proj - v))
+                
+        # 根據距離排序 (從短到長)
+        left_dims.sort(key=lambda x: x[1])
+        right_dims.sort(key=lambda x: x[1])
+        
+        # 計算需要多少層
+        num_layers = max(len(left_dims), len(right_dims))
+        
+        # 最外層延伸線長度 (含總長度層)
+        max_extent = ext_gap + num_layers * layer_spacing + 2
+
+        # 畫基準零點的延伸線 (左右兩端最長)
+        left_paper = self._proj_to_paper_x(base_left_proj, bbox_start, scale, origin)
+        right_paper = self._proj_to_paper_x(base_right_proj, bbox_start, scale, origin)
+        
+        msp.add_line((left_paper, contour_edge), (left_paper, contour_edge - max_extent),
+                     dxfattribs={'layer': 'DIM', 'color': 2})
+        msp.add_line((right_paper, contour_edge), (right_paper, contour_edge - max_extent),
+                     dxfattribs={'layer': 'DIM', 'color': 2})
+
+        # 逐層畫標註
+        for i in range(num_layers):
+            current_layer_pos = contour_edge - ext_gap - i * layer_spacing
+            
+            # 畫左側標註
+            if i < len(left_dims):
+                v_proj, dist = left_dims[i]
+                v_paper = self._proj_to_paper_x(v_proj, bbox_start, scale, origin)
+                msp.add_line((v_paper, contour_edge), (v_paper, current_layer_pos - 2),
+                             dxfattribs={'layer': 'DIM', 'color': 2})
+                self._draw_hdim(msp, left_paper, v_paper, current_layer_pos, f"{prefix}{dist:.2f}")
+                
+            # 畫右側標註
+            if i < len(right_dims):
+                v_proj, dist = right_dims[i]
+                v_paper = self._proj_to_paper_x(v_proj, bbox_start, scale, origin)
+                msp.add_line((v_paper, contour_edge), (v_paper, current_layer_pos - 2),
+                             dxfattribs={'layer': 'DIM', 'color': 2})
+                self._draw_hdim(msp, v_paper, right_paper, current_layer_pos, f"{prefix}{dist:.2f}")
+
+        # 畫總長度 (最外層)
+        overall_layer_pos = contour_edge - ext_gap - num_layers * layer_spacing
+        overall_dist = base_right_proj - base_left_proj
+        self._draw_hdim(msp, left_paper, right_paper, overall_layer_pos, f"{prefix}{overall_dist:.2f}")
 
     # =========================================================
     # 視圖標註主邏輯
@@ -306,22 +392,19 @@ class DimensionEngine:
             # 判斷主軸方向 (投影後的形狀)
             if w_real > h_real * 1.2:
                 # 主軸沿水平方向
-                # 1. 水平方向頂點 → 底部累進標註
+                # 1. 水平方向頂點 → 底部基線標註 (Baseline Dimensioning)
                 h_verts = self._find_contour_vertices(vis_edges, bbox, axis='x')
                 if len(h_verts) >= 2:
-                    self._dim_progressive(msp, h_verts, bbox[0], scale, ox,
-                                         contour_edge=oy, direction='horizontal')
-                # 2. 垂直方向頂點 → 右側累進標註 (直徑方向)
-                v_verts = self._find_contour_vertices(vis_edges, bbox, axis='y')
-                if len(v_verts) >= 2:
-                    self._dim_progressive(msp, v_verts, bbox[1], scale, oy,
-                                         contour_edge=ox + sw, direction='vertical')
+                    self._dim_baseline(msp, h_verts, bbox[0], scale, ox, contour_edge=oy)
+                # 垂直方向的串聯標註 (錯把段差當直徑) 已經移除，統一交由左側直徑標註處理
             elif h_real > w_real * 1.2:
-                # 主軸沿垂直方向
+                # 主軸沿垂直方向 (假設為直立擺放)
+                # 目前垂直的基線標註尚未實作，先保留串聯標註，但移除錯誤的 Φ
                 v_verts = self._find_contour_vertices(vis_edges, bbox, axis='y')
                 if len(v_verts) >= 2:
                     self._dim_progressive(msp, v_verts, bbox[1], scale, oy,
                                          contour_edge=ox + sw, direction='vertical')
+                # 水平寬度的串聯標註
                 h_verts = self._find_contour_vertices(vis_edges, bbox, axis='x')
                 if len(h_verts) >= 2:
                     self._dim_progressive(msp, h_verts, bbox[0], scale, ox,
@@ -330,8 +413,7 @@ class DimensionEngine:
                 # 近似正方形 — 兩個方向都標
                 h_verts = self._find_contour_vertices(vis_edges, bbox, axis='x')
                 if len(h_verts) >= 2:
-                    self._dim_progressive(msp, h_verts, bbox[0], scale, ox,
-                                         contour_edge=oy, direction='horizontal')
+                    self._dim_baseline(msp, h_verts, bbox[0], scale, ox, contour_edge=oy)
                 v_verts = self._find_contour_vertices(vis_edges, bbox, axis='y')
                 if len(v_verts) >= 2:
                     self._dim_progressive(msp, v_verts, bbox[1], scale, oy,
@@ -411,24 +493,52 @@ class DimensionEngine:
 
         max_dia = max(s["diameter"] for s in unique_dias)
 
-        # 在前視圖左上方標註各段直徑
+        # 判斷主軸方向以決定要畫在左側還是下方
+        w_real, h_real = vd['size']
+        is_horizontal = w_real > h_real * 1.2
+        scale = self.layout.scale
+
         for i, seg in enumerate(unique_dias[:5]):
             dia = seg["diameter"]
             ctrl = self._next_ctrl_letter()
             tol = "±0.05" if dia < 10 else "±0.10"
 
-            label_x = ox - 5 - i * 10
-            label_y = oy + sh + 3 + i * 5
-
-            # 引線從輪廓到標註
-            dia_ratio = dia / max_dia if max_dia > 0 else 1.0
-            half_w = sw / 2 * dia_ratio
-            cx = ox + sw / 2
-
-            msp.add_line((cx - half_w, oy + sh / 2), (label_x + 8, label_y),
-                         dxfattribs={'layer': 'LEADER', 'color': 2})
-            self._add_text(msp, label_x - 5, label_y + 1, f"({ctrl})Ø{dia:.2f}", height=1.5, layer='DIM')
-            self._add_text(msp, label_x - 5, label_y - 1.5, tol, height=1.0, layer='TOLERANCE')
+            if is_horizontal:
+                # 軸向水平，直徑是垂直的 (Y)
+                # 畫在圖紙左側 (X 軸外部)
+                label_x = ox - 15 - i * 12
+                y_center = oy + sh / 2
+                half_h = (dia * scale) / 2
+                y1 = y_center - half_h
+                y2 = y_center + half_h
+                
+                # 水平延伸線
+                msp.add_line((ox, y1), (label_x, y1), dxfattribs={'layer': 'DIM', 'color': 2})
+                msp.add_line((ox, y2), (label_x, y2), dxfattribs={'layer': 'DIM', 'color': 2})
+                
+                # 垂直標註線
+                self._draw_vdim(msp, y1, y2, label_x, f"({ctrl})Φ{dia:.2f}")
+                
+                # 公差文字放在文字右側一點
+                self._add_text(msp, label_x + 1.5, y_center - 2.5, tol, height=1.0, layer='TOLERANCE', color=4)
+            else:
+                # 軸向垂直，直徑是水平的 (X)
+                # 畫在圖紙下方 (Y 軸外部)
+                label_y = oy - 15 - i * 12
+                x_center = ox + sw / 2
+                half_w = (dia * scale) / 2
+                x1 = x_center - half_w
+                x2 = x_center + half_w
+                
+                # 垂直延伸線
+                msp.add_line((x1, oy), (x1, label_y), dxfattribs={'layer': 'DIM', 'color': 2})
+                msp.add_line((x2, oy), (x2, label_y), dxfattribs={'layer': 'DIM', 'color': 2})
+                
+                # 水平標註線
+                self._draw_hdim(msp, x1, x2, label_y, f"({ctrl})Φ{dia:.2f}")
+                
+                # 公差文字
+                self._add_text(msp, x_center + 1.5, label_y - 1.5, tol, height=1.0, layer='TOLERANCE', color=4)
 
     def _add_text(self, msp, x, y, text, height=1.8, layer='DIM', color=None):
         attribs = {'layer': layer, 'insert': (x, y), 'style': 'CHINESE'}
