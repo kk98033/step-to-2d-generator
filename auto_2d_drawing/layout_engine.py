@@ -1,0 +1,602 @@
+"""
+通用排版引擎 (Layout Engine) — 零件無關
+
+接收 List[DimensionTask]，計算排版位置，處理碰撞偵測，最終渲染到 DXF。
+這個引擎完全不需要知道零件是軸還是風扇。
+"""
+from config import DIM_STYLE
+
+
+class LayoutEngine:
+    """通用尺寸標註排版引擎"""
+
+    def __init__(self, drawing_layout):
+        """
+        Args:
+            drawing_layout: DrawingLayout 實例 (包含 scale 等資訊)
+        """
+        self.layout = drawing_layout
+        self.layer_spacing = 8.0
+        self.ext_gap = 12.0
+
+    # =================================================================
+    # 主入口
+    # =================================================================
+
+    def render(self, msp, tasks, ox, oy, sw, sh, vd):
+        """
+        接收標註任務列表，排版並渲染到 DXF modelspace。
+
+        Args:
+            msp: DXF modelspace
+            tasks: List[DimensionTask]
+            ox, oy: 視圖在圖紙上的偏移座標
+            sw, sh: 視圖的縮放後寬高
+            vd: 視圖投影資料
+        """
+        if not tasks:
+            return
+
+        bbox = vd['bbox'] if vd else (0, 0, sw, sh)
+        scale = self.layout.scale
+
+        # 按 side 或 dim_type 分組
+        bottom_tasks = [t for t in tasks if t.side == "BOTTOM" and t.dim_type == "LINEAR"]
+        right_tasks = [t for t in tasks if t.side == "RIGHT" and t.dim_type == "LINEAR"]
+        left_tasks = [t for t in tasks if t.side == "LEFT" and t.dim_type == "DIAMETER" and not t.center]
+        top_tasks = [t for t in tasks if t.side == "TOP" and t.dim_type == "LINEAR"]
+        
+        # 極座標與特殊任務
+        centerline_tasks = [t for t in tasks if t.dim_type == "CENTERLINES"]
+        polar_dia_tasks = [t for t in tasks if t.dim_type == "DIAMETER" and t.center]
+        angular_tasks = [t for t in tasks if t.dim_type == "ANGULAR"]
+        leader_tasks = [t for t in tasks if t.dim_type == "LEADER"]
+        note_tasks = [t for t in tasks if t.dim_type == "NOTE"]
+
+        # 渲染各方向
+        if bottom_tasks:
+            self._render_horizontal(msp, bottom_tasks, ox, oy, sw, sh, bbox, scale, side="BOTTOM")
+        if top_tasks:
+            self._render_horizontal(msp, top_tasks, ox, oy, sw, sh, bbox, scale, side="TOP")
+        if right_tasks:
+            self._render_vertical(msp, right_tasks, ox, oy, sw, sh, bbox, scale, side="RIGHT")
+        if left_tasks:
+            self._render_left_diameters(msp, left_tasks, ox, oy, sw, sh, bbox, scale)
+            
+        # 渲染極座標與特殊任務
+        if centerline_tasks:
+            self._render_centerlines(msp, centerline_tasks, ox, oy, bbox, scale)
+        if polar_dia_tasks:
+            self._render_diameters_polar(msp, polar_dia_tasks, ox, oy, bbox, scale)
+        if angular_tasks:
+            self._render_angular(msp, angular_tasks, ox, oy, bbox, scale)
+        if leader_tasks:
+            self._render_leaders(msp, leader_tasks, ox, oy, bbox, scale)
+        if note_tasks:
+            self._render_notes(msp, note_tasks, ox, oy, bbox, scale)
+
+    # =================================================================
+    # 水平標註渲染 (BOTTOM / TOP)
+    # =================================================================
+
+    def _render_horizontal(self, msp, tasks, ox, oy, sw, sh, bbox, scale, side="BOTTOM"):
+        """渲染水平方向的標註 (底部或頂部)"""
+        # 分離基線標註和串聯標註
+        left_baseline = [t for t in tasks if t.baseline == "LEFT" and t.rank == 1]
+        right_baseline = [t for t in tasks if t.baseline == "RIGHT" and t.rank == 1]
+        overall = [t for t in tasks if t.rank == 2]
+        chain = [t for t in tasks if t.baseline == "NONE" and t.rank == 1]
+
+        has_baseline = bool(left_baseline or right_baseline)
+
+        if has_baseline:
+            # === 雙向基線標註 ===
+            left_baseline.sort(key=lambda t: t.value)
+            right_baseline.sort(key=lambda t: t.value)
+
+            num_layers = max(len(left_baseline), len(right_baseline))
+            max_extent = self.ext_gap + num_layers * self.layer_spacing + 2
+
+            contour_edge = oy if side == "BOTTOM" else oy + sh
+
+            # 找出左右邊界的圖紙座標
+            all_x_proj = set()
+            for t in tasks:
+                all_x_proj.add(t.start_proj[0])
+                all_x_proj.add(t.end_proj[0])
+
+            if not all_x_proj:
+                return
+
+            x_min_proj = min(all_x_proj)
+            x_max_proj = max(all_x_proj)
+            left_paper = self._proj_to_paper_x(x_min_proj, bbox[0], scale, ox)
+            right_paper = self._proj_to_paper_x(x_max_proj, bbox[0], scale, ox)
+
+            # 畫左右基準延伸線
+            sign = -1 if side == "BOTTOM" else 1
+            msp.add_line(
+                (left_paper, contour_edge),
+                (left_paper, contour_edge + sign * max_extent),
+                dxfattribs={'layer': 'DIM', 'color': 2}
+            )
+            msp.add_line(
+                (right_paper, contour_edge),
+                (right_paper, contour_edge + sign * max_extent),
+                dxfattribs={'layer': 'DIM', 'color': 2}
+            )
+
+            # 逐層渲染
+            for i in range(num_layers):
+                layer_pos = contour_edge + sign * (self.ext_gap + i * self.layer_spacing)
+
+                # 左側基準標註
+                if i < len(left_baseline):
+                    t = left_baseline[i]
+                    end_paper = self._proj_to_paper_x(t.end_proj[0], bbox[0], scale, ox)
+                    msp.add_line(
+                        (end_paper, contour_edge),
+                        (end_paper, layer_pos + sign * (-2)),
+                        dxfattribs={'layer': 'DIM', 'color': 2}
+                    )
+                    self._draw_hdim(msp, left_paper, end_paper, layer_pos, t.display_text)
+
+                # 右側基準標註
+                if i < len(right_baseline):
+                    t = right_baseline[i]
+                    start_paper = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
+                    msp.add_line(
+                        (start_paper, contour_edge),
+                        (start_paper, layer_pos + sign * (-2)),
+                        dxfattribs={'layer': 'DIM', 'color': 2}
+                    )
+                    self._draw_hdim(msp, start_paper, right_paper, layer_pos, t.display_text)
+
+            # 總長度 (最外層)
+            if overall:
+                t = overall[0]
+                overall_pos = contour_edge + sign * (self.ext_gap + num_layers * self.layer_spacing)
+                self._draw_hdim(msp, left_paper, right_paper, overall_pos, t.display_text)
+
+        elif chain:
+            # === 串聯標註 ===
+            contour_edge = oy if side == "BOTTOM" else oy + sh
+            sign = -1 if side == "BOTTOM" else 1
+
+            has_overall = bool(overall)
+            total_layers = 2 if has_overall else 1
+            max_extent = self.ext_gap + total_layers * self.layer_spacing + 2
+
+            # 收集所有端點的圖紙座標
+            all_papers = set()
+            for t in chain + overall:
+                all_papers.add(self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox))
+                all_papers.add(self._proj_to_paper_x(t.end_proj[0], bbox[0], scale, ox))
+
+            # 畫延伸線
+            for vp in all_papers:
+                msp.add_line(
+                    (vp, contour_edge),
+                    (vp, contour_edge + sign * max_extent),
+                    dxfattribs={'layer': 'DIM', 'color': 2}
+                )
+
+            # 內層: 相鄰對
+            inner_pos = contour_edge + sign * self.ext_gap
+            char_width = 1.3
+            for idx, t in enumerate(chain):
+                p1 = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
+                p2 = self._proj_to_paper_x(t.end_proj[0], bbox[0], scale, ox)
+                paper_dist = abs(p2 - p1)
+                stagger = 0.0
+                req_space = len(t.display_text) * char_width + 1.0
+                if paper_dist < req_space:
+                    stagger = 2.5 if idx % 2 == 0 else -2.5
+                self._draw_hdim(msp, p1, p2, inner_pos, t.display_text, text_stagger=stagger)
+
+            # 外層: 總長度
+            if overall:
+                t = overall[0]
+                outer_pos = inner_pos + sign * self.layer_spacing
+                p1 = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
+                p2 = self._proj_to_paper_x(t.end_proj[0], bbox[0], scale, ox)
+                self._draw_hdim(msp, p1, p2, outer_pos, t.display_text)
+
+        elif overall:
+            # 只有總尺寸
+            contour_edge = oy if side == "BOTTOM" else oy + sh
+            sign = -1 if side == "BOTTOM" else 1
+            t = overall[0]
+            p1 = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
+            p2 = self._proj_to_paper_x(t.end_proj[0], bbox[0], scale, ox)
+            pos = contour_edge + sign * self.ext_gap
+            # 延伸線
+            msp.add_line((p1, contour_edge), (p1, pos + sign * (-2)), dxfattribs={'layer': 'DIM', 'color': 2})
+            msp.add_line((p2, contour_edge), (p2, pos + sign * (-2)), dxfattribs={'layer': 'DIM', 'color': 2})
+            self._draw_hdim(msp, p1, p2, pos, t.display_text)
+
+    # =================================================================
+    # 垂直標註渲染 (RIGHT / LEFT for linear)
+    # =================================================================
+
+    def _render_vertical(self, msp, tasks, ox, oy, sw, sh, bbox, scale, side="RIGHT"):
+        """渲染垂直方向的線性標註"""
+        top_baseline = [t for t in tasks if t.baseline == "TOP" and t.rank == 1]
+        bottom_baseline = [t for t in tasks if t.baseline == "BOTTOM" and t.rank == 1]
+        overall = [t for t in tasks if t.rank == 2 and t.dim_type == "LINEAR"]
+        chain = [t for t in tasks if t.baseline == "NONE" and t.rank == 1 and t.dim_type == "LINEAR"]
+
+        has_baseline = bool(top_baseline or bottom_baseline)
+
+        if has_baseline:
+            # === 基線標註 (分層標註) ===
+            top_baseline.sort(key=lambda t: t.value)
+            bottom_baseline.sort(key=lambda t: t.value)
+
+            num_layers = max(len(top_baseline), len(bottom_baseline))
+            max_extent = self.ext_gap + num_layers * self.layer_spacing + 2
+
+            contour_edge = ox + sw if side == "RIGHT" else ox
+            sign = 1 if side == "RIGHT" else -1
+
+            # 找出上下邊界的圖紙座標
+            all_y_proj = set()
+            for t in tasks:
+                all_y_proj.add(t.start_proj[1])
+                all_y_proj.add(t.end_proj[1])
+
+            if not all_y_proj:
+                return
+
+            y_min_proj = min(all_y_proj)
+            y_max_proj = max(all_y_proj)
+            bottom_paper = self._proj_to_paper_y(y_min_proj, bbox[1], scale, oy)
+            top_paper = self._proj_to_paper_y(y_max_proj, bbox[1], scale, oy)
+
+            # 畫上下基準延伸線
+            msp.add_line(
+                (contour_edge, bottom_paper),
+                (contour_edge + sign * max_extent, bottom_paper),
+                dxfattribs={'layer': 'DIM', 'color': 2}
+            )
+            msp.add_line(
+                (contour_edge, top_paper),
+                (contour_edge + sign * max_extent, top_paper),
+                dxfattribs={'layer': 'DIM', 'color': 2}
+            )
+
+            # 逐層渲染
+            for i in range(num_layers):
+                layer_pos = contour_edge + sign * (self.ext_gap + i * self.layer_spacing)
+
+                # 底部基準標註
+                if i < len(bottom_baseline):
+                    t = bottom_baseline[i]
+                    end_paper = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy)
+                    msp.add_line(
+                        (contour_edge, end_paper),
+                        (layer_pos + sign * (-2), end_paper),
+                        dxfattribs={'layer': 'DIM', 'color': 2}
+                    )
+                    self._draw_vdim(msp, bottom_paper, end_paper, layer_pos, t.display_text)
+
+                # 頂部基準標註
+                if i < len(top_baseline):
+                    t = top_baseline[i]
+                    start_paper = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy)
+                    msp.add_line(
+                        (contour_edge, start_paper),
+                        (layer_pos + sign * (-2), start_paper),
+                        dxfattribs={'layer': 'DIM', 'color': 2}
+                    )
+                    self._draw_vdim(msp, start_paper, top_paper, layer_pos, t.display_text)
+
+            # 總長度 (最外層)
+            if overall:
+                t = overall[0]
+                overall_pos = contour_edge + sign * (self.ext_gap + num_layers * self.layer_spacing)
+                self._draw_vdim(msp, bottom_paper, top_paper, overall_pos, t.display_text)
+
+        elif chain:
+            # === 串聯標註 ===
+            contour_edge = ox + sw if side == "RIGHT" else ox
+            sign = 1 if side == "RIGHT" else -1
+
+            has_overall = bool(overall)
+            total_layers = 2 if has_overall else 1
+            max_extent = self.ext_gap + total_layers * self.layer_spacing + 2
+
+            # 收集端點
+            all_papers = set()
+            for t in chain + overall:
+                all_papers.add(self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy))
+                all_papers.add(self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy))
+
+            # 延伸線
+            for vp in all_papers:
+                msp.add_line(
+                    (contour_edge, vp),
+                    (contour_edge + sign * max_extent, vp),
+                    dxfattribs={'layer': 'DIM', 'color': 2}
+                )
+
+            # 內層
+            inner_pos = contour_edge + sign * self.ext_gap
+            char_width = 1.3
+            for idx, t in enumerate(chain):
+                p1 = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy)
+                p2 = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy)
+                paper_dist = abs(p2 - p1)
+                stagger = 0.0
+                req_space = len(t.display_text) * char_width + 1.0
+                if paper_dist < req_space:
+                    stagger = 2.5 if idx % 2 == 0 else -2.5
+                self._draw_vdim(msp, p1, p2, inner_pos, t.display_text, text_stagger=stagger)
+
+            # 外層
+            if overall:
+                t = overall[0]
+                outer_pos = inner_pos + sign * self.layer_spacing
+                p1 = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy)
+                p2 = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy)
+                self._draw_vdim(msp, p1, p2, outer_pos, t.display_text)
+
+        elif overall:
+            t = overall[0]
+            contour_edge = ox + sw if side == "RIGHT" else ox
+            sign = 1 if side == "RIGHT" else -1
+            pos = contour_edge + sign * self.ext_gap
+            p1 = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy)
+            p2 = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy)
+            msp.add_line((contour_edge, p1), (pos + sign * (-2), p1), dxfattribs={'layer': 'DIM', 'color': 2})
+            msp.add_line((contour_edge, p2), (pos + sign * (-2), p2), dxfattribs={'layer': 'DIM', 'color': 2})
+            self._draw_vdim(msp, p1, p2, pos, t.display_text)
+
+    # =================================================================
+    # 左側直徑標註渲染 (特殊: 水平延伸線 + 垂直尺寸線)
+    # =================================================================
+
+    def _render_left_diameters(self, msp, tasks, ox, oy, sw, sh, bbox, scale):
+        """渲染左側的直徑標註 (水平延伸線 + 垂直尺寸線)"""
+        dia_tasks = [t for t in tasks if t.dim_type == "DIAMETER"]
+        if not dia_tasks:
+            return
+
+        for i, t in enumerate(dia_tasks[:5]):
+            label_x = ox - 15 - i * 12
+            y_center = oy + sh / 2
+            half_h = (t.value * scale) / 2
+            y1 = y_center - half_h
+            y2 = y_center + half_h
+
+            # 水平延伸線
+            msp.add_line((ox, y1), (label_x, y1), dxfattribs={'layer': 'DIM', 'color': 2})
+            msp.add_line((ox, y2), (label_x, y2), dxfattribs={'layer': 'DIM', 'color': 2})
+
+            # 垂直尺寸線
+            self._draw_vdim(msp, y1, y2, label_x, t.display_text)
+
+            # 公差
+            if t.tolerance:
+                self._add_text(msp, label_x + 1.5, y_center - 2.5, t.tolerance,
+                               height=1.0, layer='TOLERANCE', color=4)
+
+    # =================================================================
+    # 極座標與圓形標註渲染 (CENTERLINES, DIAMETER, ANGULAR)
+    # =================================================================
+
+    def _render_centerlines(self, msp, tasks, ox, oy, bbox, scale):
+        """渲染中心十字線與 PCD 圓"""
+        for t in tasks:
+            cx = self._proj_to_paper_x(t.center[0], bbox[0], scale, ox)
+            cy = self._proj_to_paper_y(t.center[1], bbox[1], scale, oy)
+            r = t.radius * scale
+            
+            if getattr(t, 'text', '') == "PCD_CIRCLE":
+                # 畫輔助虛線圓
+                msp.add_circle((cx, cy), r, dxfattribs={'layer': 'CENTER2', 'color': 8, 'linetype': 'CENTER2'})
+            else:
+                # 畫十字
+                msp.add_line((cx - r, cy), (cx + r, cy), dxfattribs={'layer': 'CENTER2', 'color': 3, 'linetype': 'CENTER2'})
+                msp.add_line((cx, cy - r), (cx, cy + r), dxfattribs={'layer': 'CENTER2', 'color': 3, 'linetype': 'CENTER2'})
+
+    def _render_diameters_polar(self, msp, tasks, ox, oy, bbox, scale):
+        """渲染傾斜拉出的直徑標註"""
+        import math
+        for t in tasks:
+            cx = self._proj_to_paper_x(t.center[0], bbox[0], scale, ox)
+            cy = self._proj_to_paper_y(t.center[1], bbox[1], scale, oy)
+            r_paper = t.radius * scale
+            ang_rad = math.radians(t.angle)
+            
+            # 從中心出發
+            dx = r_paper * math.cos(ang_rad)
+            dy = r_paper * math.sin(ang_rad)
+            p1 = (cx, cy)
+            p2 = (cx + dx, cy + dy)
+            
+            # 拉伸線
+            ext_len = 10.0
+            p3 = (cx + (r_paper + ext_len) * math.cos(ang_rad), 
+                  cy + (r_paper + ext_len) * math.sin(ang_rad))
+            
+            msp.add_line(p1, p3, dxfattribs={'layer': 'DIM', 'color': 2})
+            
+            # 水平尾巴
+            tail_dir = 1 if math.cos(ang_rad) > 0 else -1
+            p4 = (p3[0] + tail_dir * 15, p3[1])
+            msp.add_line(p3, p4, dxfattribs={'layer': 'DIM', 'color': 2})
+            
+            # 箭頭 (指向中心)
+            arr = 1.5
+            arr_dx = -math.cos(ang_rad) * arr
+            arr_dy = -math.sin(ang_rad) * arr
+            sdx = -math.sin(ang_rad) * arr * 0.4
+            sdy = math.cos(ang_rad) * arr * 0.4
+            
+            arr_tip = p2
+            arr_base = (arr_tip[0] - arr_dx, arr_tip[1] - arr_dy)
+            msp.add_line(arr_tip, (arr_base[0] + sdx, arr_base[1] + sdy), dxfattribs={'layer': 'DIM', 'color': 2})
+            msp.add_line(arr_tip, (arr_base[0] - sdx, arr_base[1] - sdy), dxfattribs={'layer': 'DIM', 'color': 2})
+            
+            # 文字
+            tx = p3[0] + tail_dir * 1.5
+            ty = p3[1] + 1.0
+            if tail_dir < 0:
+                tx -= len(t.display_text) * 1.5
+            self._add_text(msp, tx, ty, t.display_text)
+
+    def _render_angular(self, msp, tasks, ox, oy, bbox, scale):
+        """渲染角度標註"""
+        import math
+        for t in tasks:
+            cx = self._proj_to_paper_x(t.center[0], bbox[0], scale, ox)
+            cy = self._proj_to_paper_y(t.center[1], bbox[1], scale, oy)
+            r_paper = t.radius * scale
+            
+            a1_rad = math.radians(t.angle)
+            a2_rad = math.radians(t.angle + t.value)
+            
+            # 畫引導線
+            h1 = (cx + r_paper * math.cos(a1_rad), cy + r_paper * math.sin(a1_rad))
+            h2 = (cx + r_paper * math.cos(a2_rad), cy + r_paper * math.sin(a2_rad))
+            
+            msp.add_line((cx, cy), h1, dxfattribs={'layer': 'CENTER2', 'color': 8, 'linetype': 'CENTER2'})
+            msp.add_line((cx, cy), h2, dxfattribs={'layer': 'CENTER2', 'color': 8, 'linetype': 'CENTER2'})
+            
+            try:
+                # 放在半徑的 60% 處
+                dim_r = r_paper * 0.6
+                base_ang = (a1_rad + a2_rad) / 2
+                base = (cx + dim_r * math.cos(base_ang), cy + dim_r * math.sin(base_ang))
+                
+                dim = msp.add_angular_dim_3p(
+                    base=base,
+                    center=(cx, cy),
+                    p1=h1,
+                    p2=h2,
+                    dimstyle=DIM_STYLE["name"],
+                    override={'dimtxt': 2.0, 'dimasz': 1.5, 'dimclrt': 2}
+                )
+                
+                # 覆蓋文字
+                if t.display_text:
+                    dim.dxf.text = t.display_text
+                dim.render()
+            except Exception as e:
+                print(f"Angular dim error: {e}")
+
+    def _render_leaders(self, msp, tasks, ox, oy, bbox, scale):
+        """渲染單箭頭引線與停機坪"""
+        import math
+        overall_r_paper = max(bbox[2] - bbox[0], bbox[3] - bbox[1]) / 2.0 * scale
+        
+        for t in tasks:
+            # 起點 (圓周或特徵邊緣)
+            if t.center and t.radius:
+                cx = self._proj_to_paper_x(t.center[0], bbox[0], scale, ox)
+                cy = self._proj_to_paper_y(t.center[1], bbox[1], scale, oy)
+                r_paper = t.radius * scale
+            else:
+                cx = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
+                cy = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy)
+                r_paper = 0
+                
+            ang_rad = math.radians(t.angle)
+            
+            # 從特徵邊緣出發
+            p1 = (cx + r_paper * math.cos(ang_rad), cy + r_paper * math.sin(ang_rad))
+            
+            # 拉伸線
+            # 強制讓引線拉伸到整個零件邊界之外，防止文字與葉片重疊
+            ext_len = max(15.0, (overall_r_paper - r_paper) + 12.0)
+            p2 = (cx + (r_paper + ext_len) * math.cos(ang_rad), 
+                  cy + (r_paper + ext_len) * math.sin(ang_rad))
+            
+            msp.add_line(p1, p2, dxfattribs={'layer': 'DIM', 'color': 2})
+            
+            # 水平停機坪 (Landing line)
+            tail_dir = 1 if math.cos(ang_rad) > 0 else -1
+            text_len = len(t.display_text) * 1.8 # 估算文字寬度
+            landing_len = max(10, text_len + 2)
+            p3 = (p2[0] + tail_dir * landing_len, p2[1])
+            msp.add_line(p2, p3, dxfattribs={'layer': 'DIM', 'color': 2})
+            
+            # 箭頭 (指向特徵)
+            arr = 2.0
+            arr_dx = math.cos(ang_rad) * arr
+            arr_dy = math.sin(ang_rad) * arr
+            sdx = -math.sin(ang_rad) * arr * 0.3
+            sdy = math.cos(ang_rad) * arr * 0.3
+            
+            arr_tip = p1
+            arr_base = (arr_tip[0] + arr_dx, arr_tip[1] + arr_dy)
+            msp.add_line(arr_tip, (arr_base[0] + sdx, arr_base[1] + sdy), dxfattribs={'layer': 'DIM', 'color': 2})
+            msp.add_line(arr_tip, (arr_base[0] - sdx, arr_base[1] - sdy), dxfattribs={'layer': 'DIM', 'color': 2})
+            
+            # 文字 (放在停機坪上方)
+            tx = p2[0] + tail_dir * 1.0
+            ty = p2[1] + 1.0
+            if tail_dir < 0:
+                tx -= text_len
+            self._add_text(msp, tx, ty, t.display_text, height=2.0, layer='DIM', color=2)
+
+    def _render_notes(self, msp, tasks, ox, oy, bbox, scale):
+        """渲染全域工藝註解"""
+        # 放於圖紙左下角或指定位置
+        start_y = oy + 20
+        start_x = ox + 10
+        for i, t in enumerate(tasks):
+            self._add_text(msp, start_x, start_y + i * 5, t.display_text, height=2.5, layer='DIM', color=3)
+
+    # =================================================================
+    # 座標轉換
+    # =================================================================
+
+    def _proj_to_paper_x(self, proj_x, bbox_x0, scale, ox):
+        return ox + (proj_x - bbox_x0) * scale
+
+    def _proj_to_paper_y(self, proj_y, bbox_y0, scale, oy):
+        return oy + (proj_y - bbox_y0) * scale
+
+    # =================================================================
+    # 底層繪圖工具
+    # =================================================================
+
+    def _draw_hdim(self, msp, x1, x2, y, text, text_stagger=0.0):
+        """繪製水平尺寸標註線"""
+        if abs(x2 - x1) < 1.0:
+            return
+        msp.add_line((x1, y), (x2, y), dxfattribs={'layer': 'DIM', 'color': 2})
+        arr = min(1.5, abs(x2 - x1) * 0.08)
+        msp.add_line((x1, y), (x1 + arr, y + 0.7), dxfattribs={'layer': 'DIM', 'color': 2})
+        msp.add_line((x1, y), (x1 + arr, y - 0.7), dxfattribs={'layer': 'DIM', 'color': 2})
+        msp.add_line((x2, y), (x2 - arr, y + 0.7), dxfattribs={'layer': 'DIM', 'color': 2})
+        msp.add_line((x2, y), (x2 - arr, y - 0.7), dxfattribs={'layer': 'DIM', 'color': 2})
+        tx = (x1 + x2) / 2
+        ty = y + 1.0 + text_stagger
+        self._add_text(msp, tx - (len(text) * 0.55), ty, text, height=1.5)
+        if abs(text_stagger) > 0.1:
+            msp.add_line((tx, y), (tx, ty - 0.3), dxfattribs={'layer': 'DIM', 'color': 8})
+
+    def _draw_vdim(self, msp, y1, y2, x, text, text_stagger=0.0):
+        """繪製垂直尺寸標註線"""
+        if abs(y2 - y1) < 1.0:
+            return
+        msp.add_line((x, y1), (x, y2), dxfattribs={'layer': 'DIM', 'color': 2})
+        arr = min(1.5, abs(y2 - y1) * 0.08)
+        msp.add_line((x, y1), (x + 0.7, y1 + arr), dxfattribs={'layer': 'DIM', 'color': 2})
+        msp.add_line((x, y1), (x - 0.7, y1 + arr), dxfattribs={'layer': 'DIM', 'color': 2})
+        msp.add_line((x, y2), (x + 0.7, y2 - arr), dxfattribs={'layer': 'DIM', 'color': 2})
+        msp.add_line((x, y2), (x - 0.7, y2 - arr), dxfattribs={'layer': 'DIM', 'color': 2})
+        tx = x + 1.5 + text_stagger
+        ty = (y1 + y2) / 2
+        self._add_text(msp, tx, ty - 0.75, text, height=1.5)
+        if abs(text_stagger) > 0.1:
+            msp.add_line((x, ty), (tx - 0.3, ty), dxfattribs={'layer': 'DIM', 'color': 8})
+
+    def _add_text(self, msp, x, y, text, height=1.8, layer='DIM', color=None):
+        attribs = {'layer': layer, 'insert': (x, y), 'style': 'CHINESE'}
+        if color:
+            attribs['color'] = color
+        msp.add_text(text, height=height, dxfattribs=attribs)

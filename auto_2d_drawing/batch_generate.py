@@ -27,15 +27,21 @@ def generate_single(step_path, output_dir, output_name,
     # 1. 讀取
     shape = load_step(step_path)
     
-    # 2. 特徵提取
+    # 2. 特徵提取與分類
     features = FeatureExtractor(shape)
     summary = features.summary()
+    
+    from part_classifier import PartClassifier
+    classifier = PartClassifier()
+    part_type = classifier.classify(features)
+    
     print(f"     BBox: {summary['bounding_box']['W']:.1f} x {summary['bounding_box']['H']:.1f} x {summary['bounding_box']['D']:.1f}")
-    print(f"     孔洞: {summary['holes_count']}, 軸: {summary['shafts_count']}")
+    print(f"     孔洞: {summary['holes_count']}, 軸: {summary['shafts_count']} (分類: {part_type})")
     
     # 3. 投影
     projector = ViewProjector()
-    view_data = projector.project_all_views(shape)
+    cut_half_right = (part_type == "FAN")
+    view_data = projector.project_all_views(shape, cut_half_right=cut_half_right)
     
     # 4. DXF
     doc = setup_document()

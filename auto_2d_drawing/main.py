@@ -56,9 +56,14 @@ def generate_drawing(step_path, output_name=None,
     print("[2/6] 提取幾何特徵...")
     features = FeatureExtractor(shape)
     summary = features.summary()
+    
+    from part_classifier import PartClassifier
+    classifier = PartClassifier()
+    part_type = classifier.classify(features)
+    
     print(f"  ✓ Bounding Box: {summary['bounding_box']}")
     print(f"  ✓ 規格: {summary['spec']}")
-    print(f"  ✓ 孔洞: {summary['holes_count']}個, 軸: {summary['shafts_count']}個, 圓角: {summary['fillets_count']}個")
+    print(f"  ✓ 孔洞: {summary['holes_count']}個, 軸: {summary['shafts_count']}個, 圓角: {summary['fillets_count']}個 (分類: {part_type})")
 
     # 儲存特徵資料
     feat_path = os.path.join(OUTPUT_DIR, f"{output_name}_features.json")
@@ -68,7 +73,8 @@ def generate_drawing(step_path, output_name=None,
     # === 階段 3: HLR 三視圖投影 ===
     print("[3/6] HLR 三視圖投影...")
     projector = ViewProjector()
-    view_data = projector.project_all_views(shape)
+    cut_half_right = (part_type == "FAN")
+    view_data = projector.project_all_views(shape, cut_half_right=cut_half_right)
     for vn, vd in view_data.items():
         vis_count = len(vd['visible'])
         hid_count = len(vd['hidden'])
@@ -194,13 +200,12 @@ def export_single_views(shape, features, view_data, output_dir, output_name):
         
         # 標註 — 使用單獨的 DimensionEngine 只標這一個視圖
         dim_engine = DimensionEngine(features, layout)
-        # 建立假的 view_data 只包含當前視圖（放在 front 位置）
-        fake_view_data = {
-            'front': vd,
-            'top': {'visible': [], 'hidden': [], 'bbox': (0,0,0,0), 'size': (0.01, 0.01)},
-            'right': {'visible': [], 'hidden': [], 'bbox': (0,0,0,0), 'size': (0.01, 0.01)},
-        }
-        dim_engine.annotate_all_views(msp, view_data=fake_view_data)
+        
+        # 由於是單一視圖，LayoutEngine 認為該視圖位於 ox, oy (front 的位置)
+        # 呼叫 annotate_view 並覆蓋排版座標
+        part_type = dim_engine.classifier.classify(features)
+        extractor = dim_engine._get_extractor(part_type)
+        dim_engine.annotate_view(msp, vn, vd, extractor, override_offset=(ox, oy))
         
         # 不加圖框 — 白底視圖 + 標註
         

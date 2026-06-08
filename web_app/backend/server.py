@@ -222,18 +222,29 @@ if os.path.exists(EXAMPLE_DIR):
 
 @app.get("/api/examples")
 async def list_examples():
-    """列出 reference/example_output 下的所有 PDF 檔案"""
-    examples = []
-    if os.path.exists(EXAMPLE_DIR):
-        for filename in sorted(os.listdir(EXAMPLE_DIR)):
-            if filename.lower().endswith('.pdf'):
-                display_name = clean_example_filename(filename)
-                examples.append({
-                    "filename": filename,
-                    "display_name": display_name,
-                    "url": f"/api/examples/files/{filename}"
-                })
-    return {"examples": examples}
+    """列出 reference/example_output 下的所有 PDF 檔案，並維持資料夾結構"""
+    def _build_tree(current_path, name):
+        node = {"name": name, "type": "folder", "children": []}
+        if os.path.isdir(current_path):
+            for entry in sorted(os.listdir(current_path)):
+                entry_path = os.path.join(current_path, entry)
+                if os.path.isdir(entry_path):
+                    child = _build_tree(entry_path, entry)
+                    if child["children"]:  # 略過空資料夾
+                        node["children"].append(child)
+                elif entry.lower().endswith(('.pdf', '.svg')):
+                    rel_path = os.path.relpath(entry_path, EXAMPLE_DIR)
+                    node["children"].append({
+                        "name": clean_example_filename(entry),
+                        "display_name": clean_example_filename(entry),
+                        "type": "file",
+                        "url": f"/api/examples/files/{rel_path.replace(os.sep, '/')}",
+                        "filename": entry
+                    })
+        return node
+
+    tree = _build_tree(EXAMPLE_DIR, "公司範例圖 (Reference)") if os.path.exists(EXAMPLE_DIR) else None
+    return {"example_tree": tree}
 
 # === 前端網頁路由 ===
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
@@ -244,5 +255,5 @@ else:
 
 if __name__ == "__main__":
     import uvicorn
-    # Trigger reload 5
+    # Trigger reload 18 — Hierarchical Examples API + Loading Animation
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
