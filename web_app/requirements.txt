@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+python-multipart
+ezdxf
+matplotlib
+# pythonocc-core 需要透過 conda 安裝
+# conda install -c conda-forge pythonocc-core

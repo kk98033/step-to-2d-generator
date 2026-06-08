@@ -1,0 +1,31 @@
+# === Python & Environments ===
+__pycache__/
+*.py[cod]
+*$py.class
+pyoccenv/
+pyoccenv.zip
+*.zip
+
+# === Frontend (React/Vite) ===
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+
+# === IDE & OS ===
+.vscode/
+.idea/
+.DS_Store
+
+# === Application Data (Do not commit models and generated outputs) ===
+auto_2d_drawing/output/
+auto_2d_drawing/reference/
+web_app/backend/models/
+*.stp
+*.step
+*.stl
+*.pdf
+*.png
+
+# === Logs ===
+*.log
