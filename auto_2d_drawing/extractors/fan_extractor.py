@@ -24,6 +24,12 @@ class FanExtractor(BaseExtractor):
         bbox = vd['bbox']
         w_real, h_real = vd['size']
 
+        # 右視圖強制使用側面輪廓標註 (不管有沒有圓形投影)
+        # 因為右視圖在工程圖上應該顯示與前視圖正交的剖面/側面
+        if view_name == 'right':
+            hid_edges = vd.get('hidden', [])
+            return self._extract_side_profile(vis_edges, hid_edges, view_name)
+
         # 動態判斷：如果這個視圖有投影出大圓形，代表這是「正面/端面」，套用極座標邏輯
         # 否則套用側面的線性邊界邏輯
         circles = [e for e in vis_edges if e['type'] == 'circle']

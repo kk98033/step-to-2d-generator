@@ -317,6 +317,7 @@ function App() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [progressMsg, setProgressMsg] = useState("");
+  const [logs, setLogs] = useState<string[]>([]);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
 
   const [results, setResults] = useState<any>(null);
@@ -380,6 +381,28 @@ function App() {
   const [sidebarWidth, setSidebarWidth] = useState<number>(320);
   const isResizing = useRef(false);
 
+  // --- Sync Scroll State ---
+  const treeOldRef = useRef<HTMLDivElement>(null);
+  const treeNewRef = useRef<HTMLDivElement>(null);
+  const isSyncingLeftScroll = useRef(false);
+  const isSyncingRightScroll = useRef(false);
+
+  const handleTreeOldScroll = (e: any) => {
+    if (!isSyncingLeftScroll.current && treeNewRef.current) {
+      isSyncingRightScroll.current = true;
+      treeNewRef.current.scrollTop = e.target.scrollTop;
+    }
+    isSyncingLeftScroll.current = false;
+  };
+
+  const handleTreeNewScroll = (e: any) => {
+    if (!isSyncingRightScroll.current && treeOldRef.current) {
+      isSyncingLeftScroll.current = true;
+      treeOldRef.current.scrollTop = e.target.scrollTop;
+    }
+    isSyncingRightScroll.current = false;
+  };
+
   const handleMouseMove = React.useCallback((e: MouseEvent) => {
     if (!isResizing.current) return;
     setSidebarWidth(Math.max(260, Math.min(e.clientX, window.innerWidth - 50)));
@@ -421,6 +444,9 @@ function App() {
           const res = await axios.get(`${API_BASE}/api/status/${jobId}`);
           setProgressMsg(res.data.message);
           setProgress({ current: res.data.current, total: res.data.total });
+          if (res.data.logs) {
+            setLogs(res.data.logs);
+          }
 
           if (res.data.status === 'completed') {
             clearInterval(interval);
@@ -711,10 +737,24 @@ function App() {
             }} />
           </div>
           <p style={{ fontSize: 13, color: '#888', minHeight: 20 }}>{progressMsg}{dots}</p>
+          {logs.length > 0 && (
+            <div style={{ marginTop: 24, textAlign: 'left', background: '#0a0a0a', border: '1px solid #333', borderRadius: 8, padding: 12, height: 160, overflowY: 'auto', fontSize: 12, color: '#aaa', fontFamily: 'monospace' }}>
+              {logs.map((log, idx) => (
+                <div key={idx} style={{ marginBottom: 4 }}>
+                  <span style={{ color: '#3B82F6', marginRight: 8 }}>[{new Date().toLocaleTimeString()}]</span>
+                  {log}
+                </div>
+              ))}
+              {status === 'processing' && (
+                <div style={{ animation: 'pulse 1.5s infinite', color: '#666', marginTop: 8 }}>_</div>
+              )}
+            </div>
+          )}
         </div>
         <style>{`
           @keyframes spin { to { transform: rotate(360deg); } }
           @keyframes progress-stripes { from { background-position: 1.5rem 0; } to { background-position: 0 0; } }
+          @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
         `}</style>
       </div>
     );
@@ -838,13 +878,21 @@ function App() {
                 <div style={{ display: 'flex', gap: 16, height: '100%', overflow: 'hidden' }}>
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                     <h3 style={{ fontSize: 13, fontWeight: 600, color: '#aaa', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>舊版模型樹</h3>
-                    <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 8, background: '#1a1a1a', borderRadius: 8 }}>
+                    <div 
+                      ref={treeOldRef} 
+                      onScroll={handleTreeOldScroll}
+                      style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 8, background: '#1a1a1a', borderRadius: 8, scrollBehavior: 'auto' }}
+                    >
                       {diffedTreeOld ? <TreeNode node={diffedTreeOld} onSelect={()=>{}} selectedPart={null} /> : <div style={{ fontSize: 12, color: '#888' }}>無資料</div>}
                     </div>
                   </div>
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                     <h3 style={{ fontSize: 13, fontWeight: 600, color: '#aaa', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>新版模型樹</h3>
-                    <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 8, background: '#1a1a1a', borderRadius: 8 }}>
+                    <div 
+                      ref={treeNewRef} 
+                      onScroll={handleTreeNewScroll}
+                      style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 8, background: '#1a1a1a', borderRadius: 8, scrollBehavior: 'auto' }}
+                    >
                       {diffedTreeNew ? <TreeNode node={diffedTreeNew} onSelect={()=>{}} selectedPart={null} /> : <div style={{ fontSize: 12, color: '#888' }}>無資料</div>}
                     </div>
                   </div>

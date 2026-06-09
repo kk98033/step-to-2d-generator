@@ -43,7 +43,7 @@ def get_solid_or_shell(shape):
     # 這裡簡化處理：假設 shape 本身就是實體或 Shell
     return shape
 
-def compare_step_files(old_step_path, new_step_path, output_dir):
+def compare_step_files(old_step_path, new_step_path, output_dir, progress_callback=None):
     """
     比對兩個 STEP 檔案，產出 added.stl, removed.stl, unchanged.stl
     回傳產生的檔案路徑字典。
@@ -57,7 +57,9 @@ def compare_step_files(old_step_path, new_step_path, output_dir):
     if not shape_old or not shape_new:
         raise ValueError("無法讀取 STEP 檔案中的有效形狀")
         
-    print(f"正在執行布林運算比對: {os.path.basename(old_step_path)} vs {os.path.basename(new_step_path)}")
+    msg = f"正在讀取並比對模型: {os.path.basename(old_step_path)} vs {os.path.basename(new_step_path)}"
+    print(msg)
+    if progress_callback: progress_callback(msg)
     
     # 2. 計算差異 (Boolean Operations)
     # BRepAlgoAPI_Cut(S1, S2) => S1 - S2
@@ -80,23 +82,31 @@ def compare_step_files(old_step_path, new_step_path, output_dir):
 
     results = {}
     
-    print("  -> 轉換舊版模型 (Old) 為網格...")
+    msg = "  -> 轉換舊版模型 (Old) 為網格..."
+    print(msg)
+    if progress_callback: progress_callback(msg)
     BRepMesh_IncrementalMesh(shape_old, 0.1)
     writer.Write(shape_old, removed_stl)
     if os.path.exists(removed_stl) and os.path.getsize(removed_stl) > 0:
         results['removed'] = removed_stl
             
-    print("  -> 轉換新版模型 (New) 為網格...")
+    msg = "  -> 轉換新版模型 (New) 為網格..."
+    print(msg)
+    if progress_callback: progress_callback(msg)
     BRepMesh_IncrementalMesh(shape_new, 0.1)
     writer.Write(shape_new, added_stl)
     if os.path.exists(added_stl) and os.path.getsize(added_stl) > 0:
         results['added'] = added_stl
         
-    print("  -> 計算幾何數據差異...")
+    msg = "  -> 計算幾何數據差異..."
+    print(msg)
+    if progress_callback: progress_callback(msg)
     old_stats = get_shape_stats(shape_old)
     new_stats = get_shape_stats(shape_new)
     
-    print("  -> 擷取組合樹狀結構...")
+    msg = "  -> 擷取組合樹狀結構..."
+    print(msg)
+    if progress_callback: progress_callback(msg)
     tree_old = extract_tree_only(old_step_path)
     tree_new = extract_tree_only(new_step_path)
     

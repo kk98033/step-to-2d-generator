@@ -128,7 +128,13 @@ async def upload_file(file: UploadFile = File(...)):
 async def get_status(job_id: str):
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
-    return jobs[job_id]
+    job = jobs[job_id]
+    return {
+        "status": job["status"],
+        "message": job["message"],
+        "progress": {"current": job.get("current", 0), "total": job.get("total", 0)},
+        "logs": job.get("logs", [])
+    }
 
 
 @app.get("/api/results/{job_id}")
@@ -157,7 +163,13 @@ def run_compare_job(job_id: str, old_path: str, new_path: str):
         output_dir_name = f"diff_{job_id[:8]}"
         output_dir = os.path.join(OUTPUT_DIR, output_dir_name)
         
-        results = compare_step_files(old_path, new_path, output_dir)
+        def progress_cb(msg):
+            jobs[job_id]["message"] = msg
+            if "logs" not in jobs[job_id]:
+                jobs[job_id]["logs"] = []
+            jobs[job_id]["logs"].append(msg)
+            
+        results = compare_step_files(old_path, new_path, output_dir, progress_callback=progress_cb)
         
         # 提取非路徑的資料
         stats = results.pop('stats', None)
@@ -204,7 +216,8 @@ async def compare_files(file_old: UploadFile = File(...), file_new: UploadFile =
         "filename": f"{file_old.filename} vs {file_new.filename}",
         "result": None,
         "output_dir": None,
-        "is_diff": True
+        "is_diff": True,
+        "logs": []
     }
     
     executor.submit(run_compare_job, job_id, old_path, new_path)
