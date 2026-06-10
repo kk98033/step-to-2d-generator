@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, File, Folder, FolderOpen, Loader2, CheckCircle, ChevronRight, ChevronDown, AlertTriangle, BookOpen, ArrowLeft, Home, ZoomIn, ZoomOut, Maximize } from 'lucide-react';
+import { FileText, File, Folder, FolderOpen, Loader2, CheckCircle, ChevronRight, ChevronDown, AlertTriangle, BookOpen, ArrowLeft, Home, ZoomIn, ZoomOut } from 'lucide-react';
 import axios from 'axios';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
@@ -443,7 +443,11 @@ function App() {
         try {
           const res = await axios.get(`${API_BASE}/api/status/${jobId}`);
           setProgressMsg(res.data.message);
-          setProgress({ current: res.data.current, total: res.data.total });
+          const nextProgress = res.data.progress || {};
+          setProgress({
+            current: nextProgress.current ?? res.data.current ?? 0,
+            total: nextProgress.total ?? res.data.total ?? 0,
+          });
           if (res.data.logs) {
             setLogs(res.data.logs);
           }
@@ -781,9 +785,9 @@ function App() {
 
   // --- Diff Result State ---
   if (results?.diff_result) {
-    const diffUrls = {};
+    const diffUrls: Record<string, string> = {};
     for (const [k, v] of Object.entries(results.diff_result)) {
-      diffUrls[k] = `${API_BASE}${v}`;
+      diffUrls[k] = `${API_BASE}${String(v)}`;
     }
 
     return (
@@ -830,17 +834,18 @@ function App() {
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', cursor: 'pointer' }}>
                     <input type="checkbox" checked={visibleLayers.added} onChange={(e) => setVisibleLayers(prev => ({ ...prev, added: e.target.checked }))} />
                     <div style={{ width: 12, height: 12, background: '#22c55e', borderRadius: 2 }} />
-                    <span style={{ fontSize: 14 }}>新增區域 (New)</span>
+                    <span style={{ fontSize: 14 }}>新版模型 (New)</span>
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', cursor: 'pointer' }}>
                     <input type="checkbox" checked={visibleLayers.removed} onChange={(e) => setVisibleLayers(prev => ({ ...prev, removed: e.target.checked }))} />
                     <div style={{ width: 12, height: 12, background: '#ef4444', borderRadius: 2 }} />
-                    <span style={{ fontSize: 14 }}>舊版區域 (Old)</span>
+                    <span style={{ fontSize: 14 }}>舊版模型 (Old)</span>
                   </label>
                   
                   <div style={{ marginTop: 24, padding: 12, background: '#1a1a1a', borderRadius: 8, fontSize: 12, color: '#888', lineHeight: 1.5 }}>
-                    <p style={{ marginBottom: 8 }}><strong>綠色</strong>代表新版增加的實體材料。</p>
-                    <p style={{ marginBottom: 8 }}><strong>紅色</strong>代表被移除的實體材料。</p>
+                    <p style={{ marginBottom: 8 }}><strong>綠色</strong>代表新版模型。</p>
+                    <p style={{ marginBottom: 8 }}><strong>紅色</strong>代表舊版模型。</p>
+                    <p style={{ margin: 0 }}>目前為快速視覺疊圖，實際新增或移除區域需由工程師判讀。</p>
                   </div>
                 </>
               )}

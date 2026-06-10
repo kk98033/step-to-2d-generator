@@ -16,7 +16,14 @@ Uploads a single STEP file for 2D drawing generation.
   ```
 
 ### 2. `POST /api/compare`
-Uploads two STEP files for 3D geometric and structural diffing.
+Uploads two STEP files for fast visual comparison and structural tree diffing.
+
+Current implementation uses **Fast Visual Diff Mode**:
+- `added` is the full new model STL shown in green.
+- `removed` is the full old model STL shown in red.
+- It does not currently compute exact Boolean added/removed/unchanged solids.
+- Volume, surface area, bounding box, and assembly tree differences are still reported as numerical/contextual aids.
+
 - **Content-Type**: `multipart/form-data`
 - **Body Parameters**:
   - `file_old`: The older version of the `.step` file.
@@ -55,7 +62,6 @@ Fetches the detailed results of a completed job.
   ```json
   {
     "diff_result": {
-      "unchanged": "/api/files/.../unchanged.stl",
       "added": "/api/files/.../added.stl",
       "removed": "/api/files/.../removed.stl"
     },
@@ -78,7 +84,56 @@ Serves statically generated files (STL, PDF, DXF, PNG).
 
 ---
 
-### 6. `POST /api/tolerances`
+### 6. `GET /api/models`
+Lists previously generated model output folders under the output directory.
+- **Returns**:
+  ```json
+  {
+    "models": [
+      { "id": "model_batch", "name": "model" }
+    ]
+  }
+  ```
+
+### 7. `GET /api/model/{model_id}`
+Loads an already generated model without re-running STEP processing.
+- **Path Parameters**:
+  - `model_id`: The output folder id returned by `/api/models`.
+- **Returns**:
+  ```json
+  {
+    "tree": { "name": "Assembly", "children": [...] },
+    "parts_map": {
+      "_full_assembly": {
+        "png": "/api/files/model_batch/model_assembly.png",
+        "pdf": "/api/files/model_batch/model_assembly.pdf",
+        "dxf": "/api/files/model_batch/model_assembly.dxf",
+        "stl": "/api/files/model_batch/_parts/_full_assembly.stl",
+        "front_pdf": "/api/files/model_batch/model_assembly_front.pdf",
+        "top_pdf": "/api/files/model_batch/model_assembly_top.pdf",
+        "right_pdf": "/api/files/model_batch/model_assembly_right.pdf"
+      }
+    },
+    "output_dir": "model_batch"
+  }
+  ```
+
+### 8. `GET /api/examples`
+Lists reference example PDF/SVG files if the local example directory exists.
+- **Returns**:
+  ```json
+  {
+    "example_tree": {
+      "name": "公司範例圖 (Reference)",
+      "type": "folder",
+      "children": [...]
+    }
+  }
+  ```
+
+---
+
+### 9. `POST /api/tolerances`
 Updates the global tolerance configuration for 2D dimension generation. Designed to be called by external ML prediction models.
 - **Content-Type**: `application/json`
 - **Body Schema**:
@@ -96,7 +151,7 @@ Updates the global tolerance configuration for 2D dimension generation. Designed
   { "status": "success", "message": "Tolerances updated." }
   ```
 
-### 7. `GET /api/tolerances`
+### 10. `GET /api/tolerances`
 Retrieves the current global tolerance configuration.
 - **Returns**:
   ```json
