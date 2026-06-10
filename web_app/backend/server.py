@@ -31,6 +31,65 @@ app.mount("/api/files", StaticFiles(directory=OUTPUT_DIR), name="files")
 jobs = {}
 executor = ThreadPoolExecutor(max_workers=2)
 
+
+def _api_file_url(output_dir_name: str, *parts: str) -> str:
+    return "/api/files/" + "/".join([output_dir_name, *parts])
+
+
+def _add_if_exists(entry: dict, key: str, output_dir_name: str, output_dir: str, *parts: str):
+    path = os.path.join(output_dir, *parts)
+    if os.path.exists(path):
+        entry[key] = _api_file_url(output_dir_name, *parts)
+
+
+def _build_output_entry(output_dir_name: str, output_dir: str, base: str, stl_name: str) -> dict:
+    entry = {}
+    _add_if_exists(entry, "png", output_dir_name, output_dir, f"{base}.png")
+    _add_if_exists(entry, "pdf", output_dir_name, output_dir, f"{base}.pdf")
+    _add_if_exists(entry, "dxf", output_dir_name, output_dir, f"{base}.dxf")
+    _add_if_exists(entry, "stl", output_dir_name, output_dir, "_parts", stl_name)
+    _add_if_exists(entry, "front_pdf", output_dir_name, output_dir, f"{base}_front.pdf")
+    _add_if_exists(entry, "top_pdf", output_dir_name, output_dir, f"{base}_top.pdf")
+    _add_if_exists(entry, "right_pdf", output_dir_name, output_dir, f"{base}_right.pdf")
+    return entry
+
+
+def build_parts_map(output_dir: str, output_dir_name: str) -> dict:
+    """Build frontend file links for generated assembly and part drawings."""
+    parts_map = {}
+    parts_dir = os.path.join(output_dir, "_parts")
+    part_prefixes = []
+    if os.path.exists(parts_dir):
+        part_prefixes = [
+            os.path.splitext(filename)[0]
+            for filename in os.listdir(parts_dir)
+            if filename.lower().endswith(".stp") and filename != "_full_assembly.stp"
+        ]
+
+    for filename in os.listdir(output_dir):
+        if not filename.lower().endswith(".png"):
+            continue
+
+        base = filename[:-4]
+        if base.endswith(("_front", "_top", "_right")):
+            continue
+
+        if base.endswith("_assembly"):
+            parts_map["_full_assembly"] = _build_output_entry(
+                output_dir_name, output_dir, base, "_full_assembly.stl"
+            )
+            continue
+
+        for part_prefix in part_prefixes:
+            if filename.endswith(f"_{part_prefix}.png"):
+                parts_map[part_prefix] = _build_output_entry(
+                    output_dir_name, output_dir, base, f"{part_prefix}.stl"
+                )
+                break
+
+    return parts_map
+
+
 def run_job(job_id: str, file_path: str):
     def progress_callback(total, current, message):
         jobs[job_id]["total"] = total
@@ -61,36 +120,7 @@ def run_job(job_id: str, file_path: str):
         if os.path.exists(tree_path):
             with open(tree_path, "r", encoding="utf-8") as f:
                 jobs[job_id]["result"] = json.load(f)
-        # Build parts mapping
-        parts_map = {}
-        for filename in os.listdir(output_dir):
-            if filename.endswith(".png"):
-                # Format: {model_name}_part{idx}_{part_name}.png or {model_name}_assembly.png
-                base = filename[:-4]
-                if "_part" in base:
-                    part_name = base.split("_", 2)[-1] # assuming model_name doesn't contain "_part" easily, or part_name is at the end. Actually part_name is Node_...
-                    # Better way: find the part_name that matches the end of the filename
-                    for tree_part in os.listdir(os.path.join(output_dir, "_parts")):
-                        if tree_part.endswith(".stp"):
-                            tp_name = tree_part[:-4]
-                            if filename.endswith(f"_{tp_name}.png"):
-                                parts_map[tp_name] = {
-                                    "png": f"/api/files/{output_dir_name}/{filename}",
-                                    "stl": f"/api/files/{output_dir_name}/_parts/{tp_name}.stl",
-                                    "front_pdf": f"/api/files/{output_dir_name}/{base}_front.pdf",
-                                    "top_pdf": f"/api/files/{output_dir_name}/{base}_top.pdf",
-                                    "right_pdf": f"/api/files/{output_dir_name}/{base}_right.pdf"
-                                }
-                elif "assembly" in base:
-                    parts_map["_full_assembly"] = {
-                        "png": f"/api/files/{output_dir_name}/{filename}",
-                        "stl": f"/api/files/{output_dir_name}/_parts/_full_assembly.stl",
-                        "front_pdf": f"/api/files/{output_dir_name}/{base}_front.pdf",
-                        "top_pdf": f"/api/files/{output_dir_name}/{base}_top.pdf",
-                        "right_pdf": f"/api/files/{output_dir_name}/{base}_right.pdf"
-                    }
-                    
-        jobs[job_id]["parts_map"] = parts_map
+        jobs[job_id]["parts_map"] = build_parts_map(output_dir, output_dir_name)
         jobs[job_id]["output_dir"] = output_dir_name
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["message"] = "處理完成"
@@ -111,7 +141,7 @@ async def upload_file(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, buffer)
         
     jobs[job_id] = {
-        "status": "running",
+        "status": "processing",
         "total": 0,
         "current": 0,
         "message": "已接收檔案，準備開始處理...",
@@ -209,7 +239,7 @@ async def compare_files(file_old: UploadFile = File(...), file_new: UploadFile =
         shutil.copyfileobj(file_new.file, buffer)
         
     jobs[job_id] = {
-        "status": "running",
+        "status": "processing",
         "total": 0,
         "current": 0,
         "message": "已接收比對檔案，準備開始分析差異...",
@@ -252,33 +282,7 @@ async def get_model(model_id: str):
         with open(tree_path, "r", encoding="utf-8") as f:
             tree_data = json.load(f)
             
-    # 建立 parts_map
-    parts_map = {}
-    for filename in os.listdir(output_dir):
-        if filename.endswith(".png"):
-            base = filename[:-4]
-            if "_part" in base:
-                parts_dir = os.path.join(output_dir, "_parts")
-                if os.path.exists(parts_dir):
-                    for tree_part in os.listdir(parts_dir):
-                        if tree_part.endswith(".stp"):
-                            tp_name = tree_part[:-4]
-                            if filename.endswith(f"_{tp_name}.png"):
-                                parts_map[tp_name] = {
-                                    "png": f"/api/files/{model_id}/{filename}",
-                                    "stl": f"/api/files/{model_id}/_parts/{tp_name}.stl",
-                                    "front_pdf": f"/api/files/{model_id}/{base}_front.pdf",
-                                    "top_pdf": f"/api/files/{model_id}/{base}_top.pdf",
-                                    "right_pdf": f"/api/files/{model_id}/{base}_right.pdf"
-                                }
-            elif "assembly" in base:
-                parts_map["_full_assembly"] = {
-                    "png": f"/api/files/{model_id}/{filename}",
-                    "stl": f"/api/files/{model_id}/_parts/_full_assembly.stl",
-                    "front_pdf": f"/api/files/{model_id}/{base}_front.pdf",
-                    "top_pdf": f"/api/files/{model_id}/{base}_top.pdf",
-                    "right_pdf": f"/api/files/{model_id}/{base}_right.pdf"
-                }
+    parts_map = build_parts_map(output_dir, model_id)
                 
     return {
         "tree": tree_data,
