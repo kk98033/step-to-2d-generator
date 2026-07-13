@@ -29,3 +29,7 @@ web_app/backend/models/
 
 # === Logs ===
 *.log
+
+# === Internal project notes (do not push) ===
+auto_2d_drawing/任務進度.md
+auto_2d_drawing/業主圖面標準分析報告.md

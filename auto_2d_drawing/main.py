@@ -19,6 +19,7 @@ from dxf_drawer import DrawingLayout, DxfDrawer
 from dimension_engine import DimensionEngine
 from title_block import setup_document, TitleBlock
 from pdf_exporter import export_pdf, export_png
+from feature_layer import build_feature_records, build_projected_feature_records, draw_feature_overlay
 from config import OUTPUT_DIR, MODELS_DIR, VIEW_CONFIG
 
 
@@ -59,7 +60,9 @@ def generate_drawing(step_path, output_name=None,
     
     from part_classifier import PartClassifier
     classifier = PartClassifier()
-    part_type = classifier.classify(features)
+    part_hint = f"{output_name} {part_name} {drawing_no} {model_code}"
+    part_type = classifier.classify(features, part_hint)
+    summary["part_type"] = part_type
     
     print(f"  ✓ Bounding Box: {summary['bounding_box']}")
     print(f"  ✓ 規格: {summary['spec']}")
@@ -73,8 +76,14 @@ def generate_drawing(step_path, output_name=None,
     # === 階段 3: HLR 三視圖投影 ===
     print("[3/6] HLR 三視圖投影...")
     projector = ViewProjector()
-    cut_half_right = (part_type == "FAN")
-    view_data = projector.project_all_views(shape, cut_half_right=cut_half_right)
+    cut_half_right = part_type in ("FAN", "FAN_HOUSING")
+    if part_type == "FAN_HOUSING":
+        view_names = ['front', 'top', 'right', 'left']
+    elif part_type == "STAMPED_FAN_BASE":
+        view_names = ['front', 'back', 'top', 'right']
+    else:
+        view_names = ['front', 'top', 'right']
+    view_data = projector.project_all_views(shape, cut_half_right=cut_half_right, view_names=view_names)
     for vn, vd in view_data.items():
         vis_count = len(vd['visible'])
         hid_count = len(vd['hidden'])
@@ -87,11 +96,11 @@ def generate_drawing(step_path, output_name=None,
     msp = doc.modelspace()
 
     # 預先提取所有尺寸標註任務 (但不繪製)
-    dim_engine = DimensionEngine(features, None)
+    dim_engine = DimensionEngine(features, None, part_hint=part_hint)
     all_tasks = dim_engine.extract_all_tasks(view_data, part_type)
 
     # 佈局計算 (考慮標註佔用的空間)
-    view_sizes = {vn: vd['size'] for vn, vd in view_data.items()}
+    view_sizes = {vn: view_data[vn]['size'] for vn in ['front', 'top', 'right'] if vn in view_data}
     layout = DrawingLayout(view_sizes, all_tasks)
     print(f"  ✓ 比例: {layout.get_scale_text()}")
 
@@ -109,6 +118,7 @@ def generate_drawing(step_path, output_name=None,
     # === 階段 5: 繪製三視圖 + 標註 ===
     print("[5/6] 繪製三視圖與標註...")
     drawer = DxfDrawer()
+    draw_hidden = part_type not in ("FAN_HOUSING", "STAMPED_FAN_BASE")
     for vn in ['front', 'top', 'right']:
         ox, oy = layout.get_view_offset(vn)
         sw, sh = layout.get_scaled_size(vn)
@@ -117,8 +127,11 @@ def generate_drawing(step_path, output_name=None,
 
         # 繪製可見邊 (實線)
         drawer.draw_edges(msp, vd['visible'], ox, oy, layout.scale, bbox_x0, bbox_y0, 'VISIBLE')
+        if part_type in ("FAN_HOUSING", "STAMPED_FAN_BASE"):
+            drawer.draw_bbox_outline(msp, ox, oy, layout.scale, vd['bbox'], 'VISIBLE')
         # 繪製隱藏邊 (虛線)
-        drawer.draw_edges(msp, vd['hidden'], ox, oy, layout.scale, bbox_x0, bbox_y0, 'HIDDEN')
+        if draw_hidden:
+            drawer.draw_edges(msp, vd['hidden'], ox, oy, layout.scale, bbox_x0, bbox_y0, 'HIDDEN')
         # 視圖標籤
         drawer.draw_view_label(msp, ox, oy, VIEW_CONFIG[vn]["label"])
 
@@ -140,9 +153,20 @@ def generate_drawing(step_path, output_name=None,
     export_pdf(doc, msp, pdf_path, dark_bg=True)
     export_png(doc, msp, png_path, dark_bg=True)
 
+    feature_records = build_projected_feature_records(view_data, part_type)
+    feature_records.extend(build_feature_records(features, part_type))
+    feature_json_path = os.path.join(OUTPUT_DIR, f"{output_name}_feature_records.json")
+    with open(feature_json_path, 'w', encoding='utf-8') as f:
+        json.dump(feature_records, f, indent=2, ensure_ascii=False)
+    draw_feature_overlay(msp, layout, feature_records, view_data)
+    feature_dxf_path = os.path.join(OUTPUT_DIR, f"{output_name}_features_view.dxf")
+    feature_pdf_path = os.path.join(OUTPUT_DIR, f"{output_name}_features_view.pdf")
+    doc.saveas(feature_dxf_path)
+    export_pdf(doc, msp, feature_pdf_path, dark_bg=True)
+
     # === 額外: 獨立視圖輸出 ===
     print("  >> 生成獨立視圖...")
-    export_single_views(shape, features, view_data, OUTPUT_DIR, output_name)
+    export_single_views(shape, features, view_data, OUTPUT_DIR, output_name, part_type=part_type, part_hint=part_hint)
 
     print(f"\n{'='*60}")
     print(f"  完成! 輸出檔案:")
@@ -155,7 +179,7 @@ def generate_drawing(step_path, output_name=None,
     return dxf_path, pdf_path, png_path
 
 
-def export_single_views(shape, features, view_data, output_dir, output_name):
+def export_single_views(shape, features, view_data, output_dir, output_name, part_type=None, part_hint=None):
     """
     為每個三視圖 (front, top, right) 各自匯出一份獨立的 PDF/PNG。
     每張只包含該視圖的輪廓 + 標註。
@@ -170,11 +194,13 @@ def export_single_views(shape, features, view_data, output_dir, output_name):
     os.makedirs(output_dir, exist_ok=True)
     view_labels = {
         'front': '前視圖 FRONT VIEW',
+        'back': '背面視圖 BACK VIEW',
         'top': '俯視圖 TOP VIEW',
         'right': '右側視圖 RIGHT VIEW',
+        'left': '左側視圖 LEFT VIEW',
     }
     
-    for vn in ['front', 'top', 'right']:
+    for vn in [v for v in ['front', 'back', 'top', 'right', 'left'] if v in view_data]:
         vd = view_data[vn]
         w, h = vd['size']
         
@@ -200,16 +226,19 @@ def export_single_views(shape, features, view_data, output_dir, output_name):
         
         drawer = DxfDrawer()
         drawer.draw_edges(msp, vd['visible'], ox, oy, layout.scale, bbox_x0, bbox_y0, 'VISIBLE')
-        drawer.draw_edges(msp, vd['hidden'], ox, oy, layout.scale, bbox_x0, bbox_y0, 'HIDDEN')
+        if part_type in ("FAN_HOUSING", "STAMPED_FAN_BASE"):
+            drawer.draw_bbox_outline(msp, ox, oy, layout.scale, vd['bbox'], 'VISIBLE')
+        if part_type not in ("FAN_HOUSING", "STAMPED_FAN_BASE"):
+            drawer.draw_edges(msp, vd['hidden'], ox, oy, layout.scale, bbox_x0, bbox_y0, 'HIDDEN')
         drawer.draw_view_label(msp, ox, oy, view_labels[vn])
         
         # 標註 — 使用單獨的 DimensionEngine 只標這一個視圖
-        dim_engine = DimensionEngine(features, layout)
+        dim_engine = DimensionEngine(features, layout, part_hint=part_hint)
         
         # 由於是單一視圖，LayoutEngine 認為該視圖位於 ox, oy (front 的位置)
         # 呼叫 annotate_view 並覆蓋排版座標
-        part_type = dim_engine.classifier.classify(features)
-        extractor = dim_engine._get_extractor(part_type)
+        view_part_type = part_type or dim_engine.classifier.classify(features, part_hint)
+        extractor = dim_engine._get_extractor(view_part_type)
         dim_engine.annotate_view(msp, vn, vd, extractor, override_offset=(ox, oy))
         
         # 不加圖框 — 白底視圖 + 標註

@@ -166,7 +166,7 @@ class ViewProjector:
             return cut_algo.Shape()
         return shape
 
-    def project_all_views(self, shape, cut_half_right=False):
+    def project_all_views(self, shape, cut_half_right=False, view_names=None):
         """
         投影所有三視圖，回傳結構化資料。
         
@@ -182,7 +182,10 @@ class ViewProjector:
             }
         """
         result = {}
-        for vn in ['front', 'top', 'right']:
+        if view_names is None:
+            view_names = ['front', 'top', 'right']
+
+        for vn in view_names:
             target_shape = shape
             if vn == 'right' and cut_half_right:
                 try:

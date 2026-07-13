@@ -12,6 +12,7 @@ from dxf_drawer import DrawingLayout, DxfDrawer
 from dimension_engine import DimensionEngine
 from title_block import setup_document, TitleBlock
 from pdf_exporter import export_pdf, export_png
+from feature_layer import build_feature_records, build_projected_feature_records, draw_feature_overlay
 from config import OUTPUT_DIR, MODELS_DIR, VIEW_CONFIG
 from main import export_single_views
 
@@ -33,21 +34,29 @@ def generate_single(step_path, output_dir, output_name,
     
     from part_classifier import PartClassifier
     classifier = PartClassifier()
-    part_type = classifier.classify(features)
+    part_hint = f"{output_name} {part_name} {drawing_no} {model_code}"
+    part_type = classifier.classify(features, part_hint)
+    summary["part_type"] = part_type
     
     print(f"     BBox: {summary['bounding_box']['W']:.1f} x {summary['bounding_box']['H']:.1f} x {summary['bounding_box']['D']:.1f}")
     print(f"     孔洞: {summary['holes_count']}, 軸: {summary['shafts_count']} (分類: {part_type})")
     
     # 3. 投影
     projector = ViewProjector()
-    cut_half_right = (part_type == "FAN")
-    view_data = projector.project_all_views(shape, cut_half_right=cut_half_right)
+    cut_half_right = part_type in ("FAN", "FAN_HOUSING")
+    if part_type == "FAN_HOUSING":
+        view_names = ['front', 'top', 'right', 'left']
+    elif part_type == "STAMPED_FAN_BASE":
+        view_names = ['front', 'back', 'top', 'right']
+    else:
+        view_names = ['front', 'top', 'right']
+    view_data = projector.project_all_views(shape, cut_half_right=cut_half_right, view_names=view_names)
     
     # 4. DXF
     doc = setup_document()
     msp = doc.modelspace()
     
-    view_sizes = {vn: vd['size'] for vn, vd in view_data.items()}
+    view_sizes = {vn: view_data[vn]['size'] for vn in ['front', 'top', 'right'] if vn in view_data}
     layout = DrawingLayout(view_sizes)
     
     # 圖框
@@ -62,18 +71,22 @@ def generate_single(step_path, output_dir, output_name,
     
     # 5. 繪製三視圖
     drawer = DxfDrawer()
+    draw_hidden = part_type not in ("FAN_HOUSING", "STAMPED_FAN_BASE")
     for vn in ['front', 'top', 'right']:
         ox, oy = layout.get_view_offset(vn)
         sw, sh = layout.get_scaled_size(vn)
         vd = view_data[vn]
         bbox_x0, bbox_y0 = vd['bbox'][0], vd['bbox'][1]
         drawer.draw_edges(msp, vd['visible'], ox, oy, layout.scale, bbox_x0, bbox_y0, 'VISIBLE')
-        drawer.draw_edges(msp, vd['hidden'], ox, oy, layout.scale, bbox_x0, bbox_y0, 'HIDDEN')
+        if part_type in ("FAN_HOUSING", "STAMPED_FAN_BASE"):
+            drawer.draw_bbox_outline(msp, ox, oy, layout.scale, vd['bbox'], 'VISIBLE')
+        if draw_hidden:
+            drawer.draw_edges(msp, vd['hidden'], ox, oy, layout.scale, bbox_x0, bbox_y0, 'HIDDEN')
         drawer.draw_view_label(msp, ox, oy, VIEW_CONFIG[vn]["label"])
     
     # 6. 標註 (傳入 view_data 讓標註引擎使用正確的投影尺寸)
-    dim_engine = DimensionEngine(features, layout)
-    dim_engine.annotate_all_views(msp, view_data=view_data)
+    dim_engine = DimensionEngine(features, layout, part_hint=part_hint)
+    dim_engine.annotate_all_views(msp, view_data=view_data, part_type=part_type)
     
     # 7. 輸出
     dxf_path = os.path.join(output_dir, f"{output_name}.dxf")
@@ -83,6 +96,17 @@ def generate_single(step_path, output_dir, output_name,
     doc.saveas(dxf_path)
     export_pdf(doc, msp, pdf_path, dark_bg=True)
     export_png(doc, msp, png_path, dark_bg=True)
+
+    feature_records = build_projected_feature_records(view_data, part_type)
+    feature_records.extend(build_feature_records(features, part_type))
+    feature_json_path = os.path.join(output_dir, f"{output_name}_feature_records.json")
+    with open(feature_json_path, 'w', encoding='utf-8') as f:
+        json.dump(feature_records, f, indent=2, ensure_ascii=False)
+    draw_feature_overlay(msp, layout, feature_records, view_data)
+    feature_dxf_path = os.path.join(output_dir, f"{output_name}_features_view.dxf")
+    feature_pdf_path = os.path.join(output_dir, f"{output_name}_features_view.pdf")
+    doc.saveas(feature_dxf_path)
+    export_pdf(doc, msp, feature_pdf_path, dark_bg=True)
     
     # 特徵 JSON
     feat_path = os.path.join(output_dir, f"{output_name}_features.json")
@@ -93,7 +117,7 @@ def generate_single(step_path, output_dir, output_name,
     
     # 額外生成三視圖的獨立檔案
     print(f"     >> 生成獨立視圖...")
-    export_single_views(shape, features, view_data, output_dir, output_name)
+    export_single_views(shape, features, view_data, output_dir, output_name, part_type=part_type, part_hint=part_hint)
     
     return dxf_path, pdf_path, png_path
 

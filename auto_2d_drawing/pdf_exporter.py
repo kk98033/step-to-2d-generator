@@ -2,6 +2,8 @@
 PDF/SVG 輸出模組 — 使用 ezdxf SVG 後端將 DXF 渲染為 SVG 以避免 matplotlib 崩潰
 """
 import os
+import shutil
+import subprocess
 from ezdxf.addons.drawing import RenderContext, Frontend
 from ezdxf.addons.drawing.svg import SVGBackend
 from ezdxf.addons.drawing import layout
@@ -41,11 +43,27 @@ def export_svg(doc, msp, output_path, paper="A3", dark_bg=True):
 
 def export_pdf(doc, msp, output_path, paper="A3", dpi=150, dark_bg=True):
     """
-    為避免 Matplotlib 崩潰，改為呼叫 export_svg 並將副檔名改為 .svg。
-    若系統中有 rsvg-convert 等工具可考慮在此處轉換，目前直接產出 SVG。
+    先用 ezdxf 產 SVG，再用 librsvg 的 rsvg-convert 轉成 PDF。
+    若執行環境沒有 rsvg-convert，保留 SVG 作為可預覽輸出。
     """
     svg_path = output_path.replace('.pdf', '.svg')
     export_svg(doc, msp, svg_path, paper, dark_bg)
+
+    converter = shutil.which("rsvg-convert")
+    if not converter:
+        print(f"PDF skipped: rsvg-convert not found. SVG kept at {svg_path}")
+        return
+
+    try:
+        subprocess.run(
+            [converter, "-f", "pdf", "-o", output_path, svg_path],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        print(f"PDF saved: {output_path}")
+    except Exception as e:
+        print(f"PDF skipped: rsvg-convert failed ({e}). SVG kept at {svg_path}")
 
 def export_png(doc, msp, output_path, paper="A3", dpi=200, dark_bg=True):
     """暫不實作 PNG，避免 matplotlib 崩潰"""

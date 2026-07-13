@@ -4,7 +4,7 @@ import uuid
 import json
 import shutil
 from concurrent.futures import ThreadPoolExecutor
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
+from fastapi import FastAPI, UploadFile, File, Body, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -46,11 +46,22 @@ def _build_output_entry(output_dir_name: str, output_dir: str, base: str, stl_na
     entry = {}
     _add_if_exists(entry, "png", output_dir_name, output_dir, f"{base}.png")
     _add_if_exists(entry, "pdf", output_dir_name, output_dir, f"{base}.pdf")
+    _add_if_exists(entry, "svg", output_dir_name, output_dir, f"{base}.svg")
     _add_if_exists(entry, "dxf", output_dir_name, output_dir, f"{base}.dxf")
     _add_if_exists(entry, "stl", output_dir_name, output_dir, "_parts", stl_name)
     _add_if_exists(entry, "front_pdf", output_dir_name, output_dir, f"{base}_front.pdf")
+    _add_if_exists(entry, "back_pdf", output_dir_name, output_dir, f"{base}_back.pdf")
     _add_if_exists(entry, "top_pdf", output_dir_name, output_dir, f"{base}_top.pdf")
     _add_if_exists(entry, "right_pdf", output_dir_name, output_dir, f"{base}_right.pdf")
+    _add_if_exists(entry, "left_pdf", output_dir_name, output_dir, f"{base}_left.pdf")
+    _add_if_exists(entry, "front_svg", output_dir_name, output_dir, f"{base}_front.svg")
+    _add_if_exists(entry, "back_svg", output_dir_name, output_dir, f"{base}_back.svg")
+    _add_if_exists(entry, "top_svg", output_dir_name, output_dir, f"{base}_top.svg")
+    _add_if_exists(entry, "right_svg", output_dir_name, output_dir, f"{base}_right.svg")
+    _add_if_exists(entry, "left_svg", output_dir_name, output_dir, f"{base}_left.svg")
+    _add_if_exists(entry, "features_pdf", output_dir_name, output_dir, f"{base}_features_view.pdf")
+    _add_if_exists(entry, "features_svg", output_dir_name, output_dir, f"{base}_features_view.svg")
+    _add_if_exists(entry, "features_json", output_dir_name, output_dir, f"{base}_feature_records.json")
     return entry
 
 
@@ -67,11 +78,12 @@ def build_parts_map(output_dir: str, output_dir_name: str) -> dict:
         ]
 
     for filename in os.listdir(output_dir):
-        if not filename.lower().endswith(".png"):
+        lower_name = filename.lower()
+        if not lower_name.endswith((".png", ".pdf", ".svg", ".dxf")):
             continue
 
-        base = filename[:-4]
-        if base.endswith(("_front", "_top", "_right")):
+        base = os.path.splitext(filename)[0]
+        if base.endswith(("_front", "_back", "_top", "_right", "_left", "_features_view")):
             continue
 
         if base.endswith("_assembly"):
@@ -81,13 +93,92 @@ def build_parts_map(output_dir: str, output_dir_name: str) -> dict:
             continue
 
         for part_prefix in part_prefixes:
-            if filename.endswith(f"_{part_prefix}.png"):
+            if base.endswith(f"_{part_prefix}"):
                 parts_map[part_prefix] = _build_output_entry(
                     output_dir_name, output_dir, base, f"{part_prefix}.stl"
                 )
                 break
 
     return parts_map
+
+
+def _safe_output_dir(model_id: str) -> str:
+    if not model_id or model_id != os.path.basename(model_id):
+        raise HTTPException(status_code=400, detail="Invalid model_id")
+
+    output_dir = os.path.abspath(os.path.join(OUTPUT_DIR, model_id))
+    output_root = os.path.abspath(OUTPUT_DIR)
+    if os.path.commonpath([output_root, output_dir]) != output_root:
+        raise HTTPException(status_code=400, detail="Invalid model_id")
+    if not os.path.isdir(output_dir):
+        raise HTTPException(status_code=404, detail="Model output not found")
+    return output_dir
+
+
+def _safe_part_id(part_id: str) -> str:
+    if not part_id or part_id != os.path.basename(part_id):
+        raise HTTPException(status_code=400, detail="Invalid part_id")
+    return part_id
+
+
+def _view_urls(entry: dict) -> dict:
+    views = {}
+    for view_name in ("front", "back", "top", "right", "left"):
+        view_entry = {}
+        for ext in ("pdf", "svg"):
+            key = f"{view_name}_{ext}"
+            if key in entry:
+                view_entry[ext] = entry[key]
+        if view_entry:
+            views[view_name] = view_entry
+    return views
+
+
+def _annotation_path(output_dir: str, part_id: str) -> str:
+    return os.path.join(output_dir, "_annotations", f"{part_id}_annotations.json")
+
+
+def _build_drawing_package(model_id: str) -> dict:
+    output_dir = _safe_output_dir(model_id)
+    parts_map = build_parts_map(output_dir, model_id)
+    parts = {}
+
+    for part_id, entry in parts_map.items():
+        package_entry = {
+            "part_id": part_id,
+            "main": {
+                key: entry[key]
+                for key in ("pdf", "svg", "png", "dxf", "stl")
+                if key in entry
+            },
+            "views": _view_urls(entry),
+            "feature_layer": {
+                key.replace("features_", ""): entry[key]
+                for key in ("features_pdf", "features_svg", "features_json")
+                if key in entry
+            },
+        }
+
+        annotations_path = _annotation_path(output_dir, part_id)
+        if os.path.exists(annotations_path):
+            package_entry["external_annotations"] = _api_file_url(
+                model_id, "_annotations", os.path.basename(annotations_path)
+            )
+
+        parts[part_id] = package_entry
+
+    tree_path = os.path.join(output_dir, "_parts", "assembly_tree.json")
+    tree_data = None
+    if os.path.exists(tree_path):
+        with open(tree_path, "r", encoding="utf-8") as f:
+            tree_data = json.load(f)
+
+    return {
+        "model_id": model_id,
+        "output_dir": model_id,
+        "tree": tree_data,
+        "parts": parts,
+    }
 
 
 def run_job(job_id: str, file_path: str):
@@ -290,42 +381,257 @@ async def get_model(model_id: str):
         "output_dir": model_id
     }
 
+
+@app.get("/api/drawings/{model_id}")
+async def get_drawing_package(model_id: str):
+    """取得外部對接用的工程圖套件：合圖、三視圖、STL、特徵標註檔。"""
+    return _build_drawing_package(model_id)
+
+
+@app.get("/api/drawings/{model_id}/parts/{part_id}/features")
+async def get_part_features(model_id: str, part_id: str):
+    """取得指定零件/組合件的特徵標註候選資料。"""
+    output_dir = _safe_output_dir(model_id)
+    part_id = _safe_part_id(part_id)
+    parts_map = build_parts_map(output_dir, model_id)
+    if part_id not in parts_map:
+        raise HTTPException(status_code=404, detail="Part not found")
+
+    features_url = parts_map[part_id].get("features_json")
+    if not features_url:
+        raise HTTPException(status_code=404, detail="Feature records not found")
+
+    features_path = os.path.join(output_dir, os.path.basename(features_url))
+    if not os.path.exists(features_path):
+        raise HTTPException(status_code=404, detail="Feature records not found")
+
+    with open(features_path, "r", encoding="utf-8") as f:
+        records = json.load(f)
+
+    return {
+        "model_id": model_id,
+        "part_id": part_id,
+        "features_url": features_url,
+        "records": records,
+    }
+
+
+@app.get("/api/drawings/{model_id}/parts/{part_id}/annotations")
+async def get_part_annotations(model_id: str, part_id: str):
+    """取得外部系統回傳並已儲存的標註資訊。"""
+    output_dir = _safe_output_dir(model_id)
+    part_id = _safe_part_id(part_id)
+    annotations_path = _annotation_path(output_dir, part_id)
+    if not os.path.exists(annotations_path):
+        raise HTTPException(status_code=404, detail="Annotations not found")
+
+    with open(annotations_path, "r", encoding="utf-8") as f:
+        annotations = json.load(f)
+
+    return {
+        "model_id": model_id,
+        "part_id": part_id,
+        "annotations": annotations,
+    }
+
+
+@app.post("/api/drawings/{model_id}/parts/{part_id}/annotations")
+async def save_part_annotations(
+    model_id: str,
+    part_id: str,
+    annotations: Dict[str, Any] = Body(...),
+):
+    """接收外部系統回傳的標註資訊，儲存在該模型輸出資料夾內。"""
+    output_dir = _safe_output_dir(model_id)
+    part_id = _safe_part_id(part_id)
+    parts_map = build_parts_map(output_dir, model_id)
+    if part_id not in parts_map:
+        raise HTTPException(status_code=404, detail="Part not found")
+
+    annotations_dir = os.path.join(output_dir, "_annotations")
+    os.makedirs(annotations_dir, exist_ok=True)
+    annotations_path = _annotation_path(output_dir, part_id)
+    with open(annotations_path, "w", encoding="utf-8") as f:
+        json.dump(annotations, f, indent=2, ensure_ascii=False)
+
+    return {
+        "status": "success",
+        "message": "Annotations saved.",
+        "model_id": model_id,
+        "part_id": part_id,
+        "annotations_url": _api_file_url(model_id, "_annotations", os.path.basename(annotations_path)),
+    }
+
 # === 範例圖 API ===
 EXAMPLE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                            "auto_2d_drawing", "reference", "example_output")
+NEW_EXAMPLE_DIR = r"F:\School\力致\new_data"
+PROCESSED_FAN_20260625_DIR_NAME = "fan_20260625_autodraw"
+PROCESSED_FAN_20260625_DIR = os.path.join(OUTPUT_DIR, PROCESSED_FAN_20260625_DIR_NAME)
 
 def clean_example_filename(filename):
     """清理檔名作為顯示名稱 — 直接使用原始檔名（去掉副檔名）"""
     return os.path.splitext(filename)[0]
 
+def build_file_tree(current_path, name, base_dir, url_prefix, allowed_exts):
+    node = {"name": name, "type": "folder", "children": []}
+    if os.path.isdir(current_path):
+        for entry in sorted(os.listdir(current_path)):
+            entry_path = os.path.join(current_path, entry)
+            if os.path.isdir(entry_path):
+                child = build_file_tree(entry_path, entry, base_dir, url_prefix, allowed_exts)
+                if child["children"]:
+                    node["children"].append(child)
+            elif entry.lower().endswith(allowed_exts):
+                rel_path = os.path.relpath(entry_path, base_dir)
+                node["children"].append({
+                    "name": clean_example_filename(entry),
+                    "display_name": entry,
+                    "type": "file",
+                    "url": f"{url_prefix}/{rel_path.replace(os.sep, '/')}",
+                    "filename": entry
+                })
+    return node
+
+VIEW_SUFFIX_LABELS = {
+    "_features_view": "特徵圖層",
+    "_front": "前視圖",
+    "_back": "背面視圖",
+    "_top": "俯視圖",
+    "_right": "右側視圖",
+    "_left": "左側視圖",
+}
+VIEW_ORDER = {
+    "main": 0,
+    "_features_view": 1,
+    "_front": 2,
+    "_back": 3,
+    "_top": 4,
+    "_right": 5,
+    "_left": 6,
+    "dxf": 7,
+}
+EXT_PRIORITY = {".pdf": 0, ".svg": 1, ".dxf": 2}
+
+def split_generated_view_name(filename):
+    stem, ext = os.path.splitext(filename)
+    lower_ext = ext.lower()
+    for suffix in VIEW_SUFFIX_LABELS:
+        if stem.endswith(suffix):
+            return stem[:-len(suffix)], suffix, lower_ext
+    return stem, "dxf" if lower_ext == ".dxf" else "main", lower_ext
+
+def build_grouped_processed_tree(current_path, name, base_dir, url_prefix):
+    """Group generated variants so each model is one collapsible node in the UI."""
+    node = {"name": name, "type": "folder", "children": []}
+    if not os.path.isdir(current_path):
+        return node
+
+    file_groups = {}
+    for entry in sorted(os.listdir(current_path)):
+        entry_path = os.path.join(current_path, entry)
+        if os.path.isdir(entry_path):
+            child = build_grouped_processed_tree(entry_path, entry, base_dir, url_prefix)
+            if child["children"]:
+                node["children"].append(child)
+            continue
+
+        ext = os.path.splitext(entry)[1].lower()
+        if ext not in (".pdf", ".svg", ".dxf"):
+            continue
+
+        group_name, variant, ext = split_generated_view_name(entry)
+        file_groups.setdefault(group_name, {})
+
+        # Keep the most viewable artifact for each variant: PDF, then SVG, then DXF.
+        previous = file_groups[group_name].get(variant)
+        if previous and EXT_PRIORITY.get(previous["ext"], 99) <= EXT_PRIORITY.get(ext, 99):
+            continue
+
+        rel_path = os.path.relpath(entry_path, base_dir)
+        file_groups[group_name][variant] = {
+            "ext": ext,
+            "node": {
+                "name": VIEW_SUFFIX_LABELS.get(variant, "DXF" if variant == "dxf" else "合圖"),
+                "display_name": VIEW_SUFFIX_LABELS.get(variant, "DXF" if variant == "dxf" else "合圖"),
+                "type": "file",
+                "url": f"{url_prefix}/{rel_path.replace(os.sep, '/')}",
+                "filename": entry,
+            },
+        }
+
+    for group_name in sorted(file_groups):
+        variants = file_groups[group_name]
+        children = [
+            variants[key]["node"]
+            for key in sorted(variants, key=lambda item: VIEW_ORDER.get(item, 99))
+        ]
+        if len(children) == 1:
+            only_child = dict(children[0])
+            only_child["name"] = group_name
+            only_child["display_name"] = f"{group_name} / {children[0]['display_name']}"
+            node["children"].append(only_child)
+            continue
+
+        node["children"].append({
+            "name": group_name,
+            "display_name": group_name,
+            "type": "folder",
+            "children": children,
+        })
+
+    return node
+
 if os.path.exists(EXAMPLE_DIR):
     app.mount("/api/examples/files", StaticFiles(directory=EXAMPLE_DIR), name="example_files")
 
+if os.path.exists(NEW_EXAMPLE_DIR):
+    app.mount("/api/examples/new_files", StaticFiles(directory=NEW_EXAMPLE_DIR), name="new_example_files")
+
 @app.get("/api/examples")
 async def list_examples():
-    """列出 reference/example_output 下的所有 PDF 檔案，並維持資料夾結構"""
-    def _build_tree(current_path, name):
-        node = {"name": name, "type": "folder", "children": []}
-        if os.path.isdir(current_path):
-            for entry in sorted(os.listdir(current_path)):
-                entry_path = os.path.join(current_path, entry)
-                if os.path.isdir(entry_path):
-                    child = _build_tree(entry_path, entry)
-                    if child["children"]:  # 略過空資料夾
-                        node["children"].append(child)
-                elif entry.lower().endswith(('.pdf', '.svg')):
-                    rel_path = os.path.relpath(entry_path, EXAMPLE_DIR)
-                    node["children"].append({
-                        "name": clean_example_filename(entry),
-                        "display_name": clean_example_filename(entry),
-                        "type": "file",
-                        "url": f"/api/examples/files/{rel_path.replace(os.sep, '/')}",
-                        "filename": entry
-                    })
-        return node
+    """列出範例資料夾下的所有檔案，並維持資料夾結構"""
+    def _build_tree(current_path, name, base_dir, url_prefix):
+        return build_file_tree(
+            current_path,
+            name,
+            base_dir,
+            url_prefix,
+            ('.pdf', '.svg', '.dwg', '.xls', '.xlsx', '.7z', '.zip')
+        )
 
-    tree = _build_tree(EXAMPLE_DIR, "公司範例圖 (Reference)") if os.path.exists(EXAMPLE_DIR) else None
-    return {"example_tree": tree}
+    root_node = {"name": "所有公司範例圖", "type": "folder", "children": []}
+    
+    if os.path.exists(EXAMPLE_DIR):
+        old_tree = _build_tree(EXAMPLE_DIR, "公司範例圖 (舊版)", EXAMPLE_DIR, "/api/examples/files")
+        if old_tree["children"]:
+            root_node["children"].append(old_tree)
+            
+    if os.path.exists(NEW_EXAMPLE_DIR):
+        new_tree = _build_tree(NEW_EXAMPLE_DIR, "公司範例圖 (新版)", NEW_EXAMPLE_DIR, "/api/examples/new_files")
+        if new_tree["children"]:
+            root_node["children"].append(new_tree)
+
+    return {"example_tree": root_node if root_node["children"] else None}
+
+@app.get("/api/processed/fan-20260625")
+async def list_processed_fan_20260625():
+    """列出 FAN 20260625 批次輸出的工程圖，維持原始資料夾結構。"""
+    if not os.path.exists(PROCESSED_FAN_20260625_DIR):
+        return {"processed_tree": None, "manifest": None}
+
+    tree = build_grouped_processed_tree(
+        PROCESSED_FAN_20260625_DIR,
+        "FAN 20260625 已處理工程圖",
+        PROCESSED_FAN_20260625_DIR,
+        f"/api/files/{PROCESSED_FAN_20260625_DIR_NAME}"
+    )
+    manifest = None
+    manifest_path = os.path.join(PROCESSED_FAN_20260625_DIR, "batch_index.json")
+    if os.path.exists(manifest_path):
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+    return {"processed_tree": tree if tree["children"] else None, "manifest": manifest}
 
 # === 前端網頁路由 ===
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
@@ -336,7 +642,7 @@ else:
 
 # === 公差設定 API (預留給未來機器學習外部模組) ===
 from pydantic import BaseModel
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 class ToleranceConfig(BaseModel):
     default_tolerance: Optional[str] = "±0.1"

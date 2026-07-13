@@ -1,110 +1,203 @@
-# 📐 STEP-to-2D Generator (FORCECON Auto 2D Drawing System)
+# STEP-to-2D Generator
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
-![Python](https://img.shields.io/badge/python-3.10%2B-brightgreen.svg)
-![React](https://img.shields.io/badge/react-18-cyan.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-teal.svg)
+FORCECON Auto 2D Drawing System 是一套將 STEP/STP 3D CAD 模型轉成 2D 工程圖的原型系統。專案核心目標是讀取力致 FORCECON 的軸流扇、零件與組合件資料，自動產生可檢視、可下載的 DXF/PDF/PNG 工程圖，並透過 Web 介面提供上傳、模型樹瀏覽、STL 3D 檢視與新舊模型快速比對。
 
-**STEP-to-2D Generator** 是一套專為「力致 (FORCECON)」設計的 3D 模型自動化製圖系統。
-本系統能自動讀取 3D 組合件 (STEP 格式)，透過邊緣提取與特徵辨識，自動生成標準的 2D 三視圖 (俯視、前視、右視)，並自動進行智慧尺寸標註。系統整合了現代化的 Web 介面，支援 3D 模型互動式檢視以及 2D PDF 報告下載。
+目前這份專案比較接近「可展示的工程圖自動化 PoC」，不是已完全產品化的 CAD 系統。文件以下內容以目前程式碼實際狀態為準。
 
----
+## 專案做什麼
 
-## ✨ 核心特色功能
+- 讀取 STEP/STP 3D 模型與組合件。
+- 拆解組合件，輸出各零件 STEP/STL 與 `assembly_tree.json`。
+- 以 OpenCASCADE HLR 產生前視、俯視、右視等 2D 投影。
+- 依零件類型提取幾何特徵與尺寸標註任務。
+- 輸出 FORCECON A3 圖框工程圖：DXF、PDF、PNG。
+- 額外輸出單一視圖 PDF/PNG/DXF 與特徵圖層資料。
+- 提供 FastAPI 後端與 React 前端，支援上傳處理、結果瀏覽與模型比對。
+- 提供綠色版批次腳本，方便在展示電腦上啟動。
 
-1. **自動特徵提取 (Feature Extraction)**
-   - 透過 `pythonocc-core` (OpenCASCADE) 自動識別 3D 模型中的外型輪廓 (Bounding Box)。
-   - 精準抓取隱藏的幾何特徵，包含：圓柱體 (Shafts)、孔洞 (Holes)、圓角 (Fillets) 等參數資訊。
-2. **智慧化 2D 工程圖產生 (Auto 2D Drawing)**
-   - 採用**隱藏線移除 (HLR)** 演算法，精準投射三視圖。
-   - **全新累進式標註演算法**：針對每個視圖智慧篩選頂點，並以「最長邊 + 相鄰邊」的邏輯自動生成對齊的尺寸標註。
-   - 輸出標準的 DXF 圖檔，並利用 `matplotlib` 渲染成高品質無圖框 PDF 與組合 PNG。
-3. **現代化全端 Web 應用 (Modern Web App)**
-   - **後端**：採用 FastAPI，支援非同步多執行緒模型處理 (ThreadPoolExecutor)。
-   - **前端**：基於 React + Vite，搭配 `react-three-fiber` 實作 3D 互動瀏覽器。
-   - **單一通訊埠整合**：後端直接代理並掛載前端打包好的靜態網頁，避免跨域問題，達成「一鍵啟動」。
-4. **綠色免安裝支援 (Portable Environment)**
-   - 內建一鍵打包指令，可將包含複雜 C++ 依賴的 Conda 環境打包帶走。
-   - 在全新、無安裝 Python 或 Conda 的 Windows 電腦上，也能完美「隨插即用」展示與執行。
+## 目前主要功能
 
----
+### 自動 2D 工程圖
 
-## 📂 專案架構
+核心流程位於 `auto_2d_drawing/`：
+
+1. `step_reader.py` 讀取 STEP，必要時拆解組合件。
+2. `feature_extractor.py` 提取 bounding box、孔、軸、圓弧等特徵。
+3. `part_classifier.py` 判斷零件類型。
+4. `view_projector.py` 產生 HLR 投影。
+5. `dimension_engine.py` 派發尺寸標註任務。
+6. `layout_engine.py` 負責標註排版與 DXF 渲染。
+7. `pdf_exporter.py` 將 DXF 轉成 PDF/PNG。
+
+目前已支援的零件分類包含：
+
+- `FAN`：風扇、圓盤、葉片類。
+- `FAN_HOUSING`：風扇外框類。
+- `STAMPED_FAN_BASE`：沖壓底座類。
+- `SHAFT`：軸類。
+- `GENERIC`：一般零件 fallback。
+
+### Web 操作介面
+
+Web 系統位於 `web_app/`：
+
+- 後端：FastAPI，入口是 `web_app/backend/server.py`。
+- 前端：React + TypeScript + Vite，入口是 `web_app/frontend/src/App.tsx`。
+- 前端 build 後，後端會掛載 `web_app/frontend/dist`，可用單一 `http://localhost:8000` 開啟。
+- 開發模式仍可分別啟動後端 `8000` 與前端 Vite `5173`。
+
+### 新舊模型比對
+
+`POST /api/compare` 目前採用快速視覺比對模式：
+
+- 舊模型整體輸出為紅色 STL。
+- 新模型整體輸出為綠色 STL。
+- 回傳 volume、area、bbox 與 assembly tree 差異輔助判讀。
+- 不做精準布林差集，因此紅/綠色不等於真正的新增或移除實體。
+
+這是刻意取捨：複雜工業模型做 OpenCASCADE 布林差集容易耗時過長或失敗。
+
+## 資料夾結構
 
 ```text
-main_app/
-├── auto_2d_drawing/          # 核心 2D 繪圖與幾何運算引擎
-│   ├── batch_generate.py     # 批次處理與特徵抓取主入口
-│   ├── dimension_engine.py   # 智慧尺寸標註演算法核心
-│   ├── feature_extractor.py  # STEP 幾何特徵提取器
-│   └── pdf_exporter.py       # DXF 轉 PDF/PNG 渲染器
-├── web_app/                  # Web 全端系統
-│   ├── backend/              # FastAPI 後端伺服器 (server.py)
-│   ├── frontend/             # React 前端專案 (App.tsx)
-│   └── requirements.txt      # 後端輕量依賴清單
-├── environment.yml           # Conda 環境完整備份清單
-├── 製作綠色版環境.bat         # 一鍵打包免安裝環境腳本
-└── 綠色版一鍵啟動.bat         # 免安裝環境專用啟動腳本
+step-to-2d-generator/
+├── auto_2d_drawing/          # STEP 解析、投影、標註、DXF/PDF 輸出核心
+│   ├── main.py               # 單一模型工程圖入口
+│   ├── batch_generate.py     # 組合件批次處理入口，Web 上傳會呼叫這裡
+│   ├── step_reader.py        # STEP 讀取、組合件拆解、STL 匯出
+│   ├── feature_extractor.py  # 幾何特徵提取
+│   ├── view_projector.py     # HLR 視圖投影
+│   ├── dimension_engine.py   # 標註任務派發
+│   ├── layout_engine.py      # 標註排版與渲染
+│   └── output/               # 產圖輸出目錄
+├── web_app/
+│   ├── backend/server.py     # FastAPI 後端
+│   ├── frontend/             # React 前端
+│   └── 一鍵啟動系統.bat
+├── docs/
+│   ├── api_reference.md
+│   ├── drawing_exchange_api.md
+│   └── project_report.md
+├── models/                   # Web 上傳與測試用模型資料夾
+├── environment.yml           # Conda 環境
+├── 製作綠色版環境.bat
+└── 綠色版一鍵啟動.bat
 ```
 
----
+注意：外層 `F:\School\力致\app\models` 也有大量業主資料；程式設定中的 `MODELS_DIR` 指向內層 `step-to-2d-generator/models`。兩者用途需在後續整理時再統一。
 
-## 🚀 開發環境建置 (Development Setup)
+## 環境需求
 
-如果你要在新電腦上進行**原始碼開發與修改**，請依照以下步驟重建標準開發環境。
+- Windows 環境優先。
+- Conda。
+- Python 3.10+。
+- `pythonocc-core`，建議透過 conda-forge 安裝。
+- Node.js 18+，供前端開發與 build 使用。
 
-### 1. 建立後端 Python 環境
-本專案的 3D 核心極度依賴 `pythonocc-core`，**必須透過 Conda 安裝**：
+建立 Python 環境：
+
 ```bash
-# 透過環境設定檔一鍵還原 (包含 pythonocc-core)
 conda env create -f environment.yml
-
-# 啟動環境
 conda activate pyoccenv
 ```
 
-### 2. 建立前端 Node.js 環境
-確保系統已安裝 Node.js (建議 v18+)，進入前端目錄安裝套件並打包：
+安裝或確認前端套件：
+
 ```bash
 cd web_app/frontend
 npm install
+```
+
+## 啟動方式
+
+### 展示或一般使用
+
+先 build 前端，讓 FastAPI 能掛載靜態頁：
+
+```bash
+cd web_app/frontend
 npm run build
 ```
 
-### 3. 本機開發啟動
-- 後端開發啟動：`cd web_app/backend && python server.py`
-- 前端開發啟動：`cd web_app/frontend && npm run dev`
+再啟動後端：
 
-*(若只需要展示與使用，可以直接雙擊專案內的 `web_app/一鍵啟動系統.bat`)*
+```bash
+cd ../backend
+python server.py
+```
 
----
+開啟：
 
-## 🎒 綠色免安裝版 (Portable Mode)
+```text
+http://localhost:8000
+```
 
-若需要將系統部署到**沒有安裝 Python 與 Conda** 的展示電腦，請使用綠色版方案。
+### 前後端分離開發
 
-### 步驟一：打包環境 (在有 Conda 的母機上)
-1. 點擊執行專案目錄下的 `製作綠色版環境.bat`。
-2. 系統會自動安裝打包工具，並花費 3~5 分鐘產生一個約 1.7GB 的 `pyoccenv.zip`。
+後端：
 
-### 步驟二：轉移與啟動 (在新電腦上)
-1. 將整個專案資料夾與 `pyoccenv.zip` 複製到新電腦。
-2. 將 `pyoccenv.zip` **解壓縮**，並將解壓縮出來的資料夾重新命名為 `pyoccenv` (放在與 `綠色版一鍵啟動.bat` 同一層)。
-3. 點擊 `綠色版一鍵啟動.bat`，系統即會使用隨身環境啟動網頁並自動開啟瀏覽器！
+```bash
+cd web_app/backend
+python server.py
+```
 
----
+前端：
 
-## 📝 核心演算法亮點：尺寸標註 (Dimensioning Algorithm)
+```bash
+cd web_app/frontend
+npm run dev
+```
 
-在 `dimension_engine.py` 中，我們針對工程圖的自動標註進行了最佳化：
-- **邊界框投影**：將複雜 3D 形狀投影至 2D 平面，擷取極值點。
-- **過濾機制**：移除過於相近的重疊頂點 (`merge_tolerance`)，避免標註文字擠成一團。
-- **「最長邊 + 相鄰邊」策略**：拋棄了雜亂的「全排列標註」，改為在外側優先標出整體長度/寬度，並在內側依次標註各相鄰特徵間距，大幅提升圖面可讀性與專業度。
+前端開發網址通常是：
 
----
+```text
+http://localhost:5173
+```
 
-## 🤝 貢獻與維護
-- **後端技術棧**: Python, FastAPI, ezdxf, matplotlib, pythonocc-core
-- **前端技術棧**: React, TypeScript, Vite, Three.js, Tailwind CSS
-- **維護者**: FORCECON 開發團隊
-#
+### 單純跑核心產圖
+
+```bash
+cd auto_2d_drawing
+python main.py
+```
+
+或批次模式。此入口會從 `step-to-2d-generator/models` 尋找檔案名稱：
+
+```bash
+cd auto_2d_drawing
+python batch_generate.py your-model.stp
+```
+
+## 主要 API
+
+完整 API 請見 `docs/api_reference.md`。常用端點：
+
+- `POST /api/upload`：上傳單一 STEP/STP，產生工程圖。
+- `POST /api/compare`：上傳新舊 STEP/STP，做快速視覺比對。
+- `GET /api/status/{job_id}`：查詢背景任務狀態。
+- `GET /api/results/{job_id}`：取得產圖結果。
+- `GET /api/models`：列出已產生模型。
+- `GET /api/model/{model_id}`：載入既有輸出。
+- `GET /api/examples`：列出本機參考圖資料。
+- `GET /api/processed/fan-20260625`：列出特定批次處理結果。
+- `GET/POST /api/tolerances`：取得或更新公差設定。
+
+若要和外部標註/公差系統對接，請優先看 `docs/drawing_exchange_api.md`。該文件說明如何取得三視圖、特徵標註 JSON，以及如何把外部標註結果 POST 回本系統。
+
+## 目前限制與待整理項目
+
+- 自動標註仍大量依賴 heuristic，特殊零件需要逐步補 extractor。
+- 公差 API 已存在，但尚未完整串入所有標註任務。
+- 比對模式不是精準幾何差集。
+- 後端 job 狀態只存在記憶體，server 重啟後會消失。
+- 前端主要邏輯集中在 `App.tsx`，長期應拆 component 與 API service。
+- 輸出風格目前偏暗色 CAD 檢視，白底列印版仍需補強。
+- 外層資料目錄與內層 `models/` 路徑策略尚未完全收斂。
+
+## 建議接手順序
+
+1. 先讀 `專案觀察報告.md` 與本 README，理解外層資料與內層程式邊界。
+2. 再讀 `docs/api_reference.md`，確認 Web 後端能力。
+3. 若要改產圖品質，從 `auto_2d_drawing/dimension_engine.py`、`extractors/`、`layout_engine.py` 開始。
+4. 若要改 Web 介面，先拆 `web_app/frontend/src/App.tsx`。
+5. 若要產品化，優先處理 job 持久化、路徑設定、錯誤日誌與 smoke test。

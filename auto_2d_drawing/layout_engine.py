@@ -84,7 +84,7 @@ class LayoutEngine:
         # 分離基線標註和串聯標註
         left_baseline = [t for t in tasks if t.baseline == "LEFT" and t.rank == 1]
         right_baseline = [t for t in tasks if t.baseline == "RIGHT" and t.rank == 1]
-        overall = [t for t in tasks if t.rank == 2]
+        overall = [t for t in tasks if t.rank >= 2]
         chain = [t for t in tasks if t.baseline == "NONE" and t.rank == 1]
 
         has_baseline = bool(left_baseline or right_baseline)
@@ -152,11 +152,13 @@ class LayoutEngine:
                     )
                     self._draw_hdim(msp, start_paper, right_paper, layer_pos, t.display_text)
 
-            # 總長度 (最外層)
             if overall:
-                t = overall[0]
-                overall_pos = contour_edge + sign * (self.ext_gap + num_layers * self.layer_spacing)
-                self._draw_hdim(msp, left_paper, right_paper, overall_pos, t.display_text)
+                overall.sort(key=lambda t: (t.rank, -t.value))
+                for oi, t in enumerate(overall):
+                    p1 = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
+                    p2 = self._proj_to_paper_x(t.end_proj[0], bbox[0], scale, ox)
+                    overall_pos = contour_edge + sign * (self.ext_gap + (num_layers + oi) * self.layer_spacing)
+                    self._draw_hdim(msp, p1, p2, overall_pos, t.display_text)
 
         elif chain:
             # === 串聯標註 ===
@@ -164,7 +166,7 @@ class LayoutEngine:
             sign = -1 if side == "BOTTOM" else 1
 
             has_overall = bool(overall)
-            total_layers = 2 if has_overall else 1
+            total_layers = 1 + len(overall) if has_overall else 1
             max_extent = self.ext_gap + total_layers * self.layer_spacing + 2
 
             # 收集所有端點的圖紙座標
@@ -194,26 +196,26 @@ class LayoutEngine:
                     stagger = 2.5 if idx % 2 == 0 else -2.5
                 self._draw_hdim(msp, p1, p2, inner_pos, t.display_text, text_stagger=stagger)
 
-            # 外層: 總長度
             if overall:
-                t = overall[0]
-                outer_pos = inner_pos + sign * self.layer_spacing
-                p1 = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
-                p2 = self._proj_to_paper_x(t.end_proj[0], bbox[0], scale, ox)
-                self._draw_hdim(msp, p1, p2, outer_pos, t.display_text)
+                overall.sort(key=lambda t: (t.rank, -t.value))
+                for oi, t in enumerate(overall):
+                    outer_pos = inner_pos + sign * self.layer_spacing * (oi + 1)
+                    p1 = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
+                    p2 = self._proj_to_paper_x(t.end_proj[0], bbox[0], scale, ox)
+                    self._draw_hdim(msp, p1, p2, outer_pos, t.display_text)
 
         elif overall:
             # 只有總尺寸
             contour_edge = oy if side == "BOTTOM" else oy + sh
             sign = -1 if side == "BOTTOM" else 1
-            t = overall[0]
-            p1 = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
-            p2 = self._proj_to_paper_x(t.end_proj[0], bbox[0], scale, ox)
-            pos = contour_edge + sign * self.ext_gap
-            # 延伸線
-            msp.add_line((p1, contour_edge), (p1, pos + sign * (-2)), dxfattribs={'layer': 'DIM', 'color': 2})
-            msp.add_line((p2, contour_edge), (p2, pos + sign * (-2)), dxfattribs={'layer': 'DIM', 'color': 2})
-            self._draw_hdim(msp, p1, p2, pos, t.display_text)
+            overall.sort(key=lambda t: (t.rank, -t.value))
+            for oi, t in enumerate(overall):
+                p1 = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
+                p2 = self._proj_to_paper_x(t.end_proj[0], bbox[0], scale, ox)
+                pos = contour_edge + sign * (self.ext_gap + oi * self.layer_spacing)
+                msp.add_line((p1, contour_edge), (p1, pos + sign * (-2)), dxfattribs={'layer': 'DIM', 'color': 2})
+                msp.add_line((p2, contour_edge), (p2, pos + sign * (-2)), dxfattribs={'layer': 'DIM', 'color': 2})
+                self._draw_hdim(msp, p1, p2, pos, t.display_text)
 
     # =================================================================
     # 垂直標註渲染 (RIGHT / LEFT for linear)
@@ -223,7 +225,7 @@ class LayoutEngine:
         """渲染垂直方向的線性標註"""
         top_baseline = [t for t in tasks if t.baseline == "TOP" and t.rank == 1]
         bottom_baseline = [t for t in tasks if t.baseline == "BOTTOM" and t.rank == 1]
-        overall = [t for t in tasks if t.rank == 2 and t.dim_type == "LINEAR"]
+        overall = [t for t in tasks if t.rank >= 2 and t.dim_type == "LINEAR"]
         chain = [t for t in tasks if t.baseline == "NONE" and t.rank == 1 and t.dim_type == "LINEAR"]
 
         has_baseline = bool(top_baseline or bottom_baseline)
@@ -291,11 +293,13 @@ class LayoutEngine:
                     )
                     self._draw_vdim(msp, start_paper, top_paper, layer_pos, t.display_text)
 
-            # 總長度 (最外層)
             if overall:
-                t = overall[0]
-                overall_pos = contour_edge + sign * (self.ext_gap + num_layers * self.layer_spacing)
-                self._draw_vdim(msp, bottom_paper, top_paper, overall_pos, t.display_text)
+                overall.sort(key=lambda t: (t.rank, -t.value))
+                for oi, t in enumerate(overall):
+                    p1 = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy)
+                    p2 = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy)
+                    overall_pos = contour_edge + sign * (self.ext_gap + (num_layers + oi) * self.layer_spacing)
+                    self._draw_vdim(msp, p1, p2, overall_pos, t.display_text)
 
         elif chain:
             # === 串聯標註 ===
@@ -303,7 +307,7 @@ class LayoutEngine:
             sign = 1 if side == "RIGHT" else -1
 
             has_overall = bool(overall)
-            total_layers = 2 if has_overall else 1
+            total_layers = 1 + len(overall) if has_overall else 1
             max_extent = self.ext_gap + total_layers * self.layer_spacing + 2
 
             # 收集端點
@@ -333,24 +337,25 @@ class LayoutEngine:
                     stagger = 2.5 if idx % 2 == 0 else -2.5
                 self._draw_vdim(msp, p1, p2, inner_pos, t.display_text, text_stagger=stagger)
 
-            # 外層
             if overall:
-                t = overall[0]
-                outer_pos = inner_pos + sign * self.layer_spacing
-                p1 = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy)
-                p2 = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy)
-                self._draw_vdim(msp, p1, p2, outer_pos, t.display_text)
+                overall.sort(key=lambda t: (t.rank, -t.value))
+                for oi, t in enumerate(overall):
+                    outer_pos = inner_pos + sign * self.layer_spacing * (oi + 1)
+                    p1 = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy)
+                    p2 = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy)
+                    self._draw_vdim(msp, p1, p2, outer_pos, t.display_text)
 
         elif overall:
-            t = overall[0]
             contour_edge = ox + sw if side == "RIGHT" else ox
             sign = 1 if side == "RIGHT" else -1
-            pos = contour_edge + sign * self.ext_gap
-            p1 = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy)
-            p2 = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy)
-            msp.add_line((contour_edge, p1), (pos + sign * (-2), p1), dxfattribs={'layer': 'DIM', 'color': 2})
-            msp.add_line((contour_edge, p2), (pos + sign * (-2), p2), dxfattribs={'layer': 'DIM', 'color': 2})
-            self._draw_vdim(msp, p1, p2, pos, t.display_text)
+            overall.sort(key=lambda t: (t.rank, -t.value))
+            for oi, t in enumerate(overall):
+                pos = contour_edge + sign * (self.ext_gap + oi * self.layer_spacing)
+                p1 = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy)
+                p2 = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy)
+                msp.add_line((contour_edge, p1), (pos + sign * (-2), p1), dxfattribs={'layer': 'DIM', 'color': 2})
+                msp.add_line((contour_edge, p2), (pos + sign * (-2), p2), dxfattribs={'layer': 'DIM', 'color': 2})
+                self._draw_vdim(msp, p1, p2, pos, t.display_text)
 
     # =================================================================
     # 左側直徑標註渲染 (特殊: 水平延伸線 + 垂直尺寸線)

@@ -262,7 +262,10 @@ function TreeNode({ node, onSelect, selectedPart }: any) {
 
 // --- Example Tree Node ---
 function ExampleTreeNode({ node, onSelect, selectedExample }: any) {
-  const [expanded, setExpanded] = useState(node.name === '業主範例圖 (Reference)');
+  const [expanded, setExpanded] = useState(
+    node.name === '業主範例圖 (Reference)' ||
+    node.name === 'FAN 20260625 已處理工程圖'
+  );
   const isLeaf = node.type === 'file';
   const isSelected = selectedExample?.url === node.url;
 
@@ -324,8 +327,12 @@ function App() {
   const [selectedPart, setSelectedPart] = useState<string | null>(null);
   const [existingModels, setExistingModels] = useState<any[]>([]);
   const [exampleTree, setExampleTree] = useState<any>(null);
+  const [processedTree, setProcessedTree] = useState<any>(null);
   const [selectedExample, setSelectedExample] = useState<any>(null);
+  const [viewerTitle, setViewerTitle] = useState('公司範例圖');
   const [zoom, setZoom] = useState(1);
+  const [showFeatureLayer, setShowFeatureLayer] = useState(false);
+  const [featureRecords, setFeatureRecords] = useState<any[]>([]);
 
   // --- Tree Diff State ---
   const [diffedTreeOld, setDiffedTreeOld] = useState<any>(null);
@@ -365,6 +372,22 @@ function App() {
       setDiffedTreeNew(markNode(results.tree_new, "", oldCounts, false, new Map()));
     }
   }, [results]);
+
+  useEffect(() => {
+    setShowFeatureLayer(false);
+    setFeatureRecords([]);
+
+    const partsMapForFeatures: Record<string, any> = results?.parts_map || {};
+    const selectedData = selectedPart ? partsMapForFeatures[selectedPart] : null;
+    if (!selectedData?.features_json) return;
+
+    axios.get(`${API_BASE}${selectedData.features_json}`)
+      .then(res => setFeatureRecords(Array.isArray(res.data) ? res.data : []))
+      .catch(err => {
+        console.error('Feature records load error:', err);
+        setFeatureRecords([]);
+      });
+  }, [results, selectedPart]);
 
   // Loading dots
   const [dots, setDots] = useState('');
@@ -431,6 +454,9 @@ function App() {
       }).catch(err => console.error(err));
       axios.get(`${API_BASE}/api/examples`).then(res => {
         setExampleTree(res.data.example_tree || null);
+      }).catch(err => console.error(err));
+      axios.get(`${API_BASE}/api/processed/fan-20260625`).then(res => {
+        setProcessedTree(res.data.processed_tree || null);
       }).catch(err => console.error(err));
     }
   }, [status]);
@@ -630,8 +656,24 @@ function App() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 300, overflowY: 'auto', background: '#111', padding: 8, borderRadius: 8, border: '1px solid #2d2d4a' }}>
                 <ExampleTreeNode 
                   node={exampleTree} 
-                  onSelect={(node: any) => { setSelectedExample(node); setStatus('viewing_example'); }} 
+                  onSelect={(node: any) => { setSelectedExample(node); setViewerTitle('公司範例圖'); setStatus('viewing_example'); }} 
                   selectedExample={selectedExample} 
+                />
+              </div>
+            </div>
+          )}
+
+          {processedTree && (
+            <div style={{ textAlign: 'left', borderTop: '1px solid #262626', paddingTop: 24, marginTop: 16 }}>
+              <h3 style={{ fontSize: 12, fontWeight: 600, color: '#666', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>
+                <Folder size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
+                已批次處理 FAN 20260625
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 300, overflowY: 'auto', background: '#111', padding: 8, borderRadius: 8, border: '1px solid #1f3b2f' }}>
+                <ExampleTreeNode
+                  node={processedTree}
+                  onSelect={(node: any) => { setSelectedExample(node); setViewerTitle('FAN 20260625 已處理工程圖'); setStatus('viewing_example'); }}
+                  selectedExample={selectedExample}
                 />
               </div>
             </div>
@@ -654,7 +696,7 @@ function App() {
               <ArrowLeft size={16} /> 返回
             </button>
             <BookOpen size={18} color="#a78bfa" />
-            <span style={{ fontWeight: 600, fontSize: 16 }}>公司範例圖</span>
+            <span style={{ fontWeight: 600, fontSize: 16 }}>{viewerTitle}</span>
           </div>
           <span style={{ fontSize: 14, color: '#aaa' }}>{selectedExample.display_name}</span>
         </header>
@@ -662,12 +704,12 @@ function App() {
           {/* Left: Example list */}
           <div style={{ width: 340, borderRight: '1px solid #262626', background: '#111', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: 12, borderBottom: '1px solid #262626', fontSize: 11, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: 1 }}>
-              範例圖目錄
+              圖面目錄
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
               {exampleTree && (
                 <ExampleTreeNode 
-                  node={exampleTree} 
+                  node={viewerTitle.includes('FAN 20260625') ? processedTree : exampleTree} 
                   onSelect={(node: any) => setSelectedExample(node)} 
                   selectedExample={selectedExample} 
                 />
@@ -705,6 +747,15 @@ function App() {
                     borderRadius: 4
                   }}
                 />
+              ) : selectedExample.url.endsWith('.dxf') ? (
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ccc' }}>
+                  <div style={{ maxWidth: 420, textAlign: 'center', background: '#171717', border: '1px solid #333', borderRadius: 8, padding: 24 }}>
+                    <FileText size={40} color="#60a5fa" style={{ marginBottom: 12 }} />
+                    <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{selectedExample.filename}</div>
+                    <div style={{ fontSize: 13, color: '#888', lineHeight: 1.5, marginBottom: 18 }}>DXF 已保留原資料夾結構，可用 CAD/ODA Viewer 開啟。</div>
+                    <a href={`${API_BASE}${selectedExample.url}`} target="_blank" style={{ display: 'inline-flex', padding: '8px 14px', background: '#3B82F6', color: '#fff', borderRadius: 6, textDecoration: 'none', fontSize: 13 }}>開啟 / 下載 DXF</a>
+                  </div>
+                </div>
               ) : (
                 <iframe
                   key={selectedExample.filename}
@@ -962,6 +1013,14 @@ function App() {
 
   // Determine the STL URL for the currently selected part
   const currentStlUrl = currentPartData?.stl ? `${API_BASE}${currentPartData.stl}` : null;
+  const currentDrawingUrl = currentPartData?.pdf || currentPartData?.svg || currentPartData?.png;
+  const frontViewUrl = currentPartData?.front_pdf || currentPartData?.front_svg;
+  const backViewUrl = currentPartData?.back_pdf || currentPartData?.back_svg;
+  const topViewUrl = currentPartData?.top_pdf || currentPartData?.top_svg;
+  const rightViewUrl = currentPartData?.right_pdf || currentPartData?.right_svg;
+  const leftViewUrl = currentPartData?.left_pdf || currentPartData?.left_svg;
+  const featureLayerUrl = currentPartData?.features_pdf || currentPartData?.features_svg;
+  const activeDrawingUrl = showFeatureLayer && featureLayerUrl ? featureLayerUrl : currentDrawingUrl;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0A0A0A', color: '#fff' }}>
@@ -1013,31 +1072,54 @@ function App() {
           <div style={{ height: 40, borderBottom: '1px solid #262626', background: '#171717', display: 'flex', alignItems: 'center', padding: '0 16px', justifyContent: 'space-between' }}>
             <span style={{ fontSize: 13, fontWeight: 500 }}>2D 工程圖</span>
             <div style={{ display: 'flex', gap: 8 }}>
-              {currentPartData?.png && (
-                <a href={`${API_BASE}${currentPartData.png.replace('.png', '.pdf')}?t=${Date.now()}`} target="_blank" style={{ fontSize: 12, padding: '2px 8px', background: '#3B82F6', borderRadius: 4, color: '#fff', textDecoration: 'none' }}>合圖 PDF</a>
+              {currentDrawingUrl && (
+                <button onClick={() => setShowFeatureLayer(false)} style={{ fontSize: 12, padding: '2px 8px', background: !showFeatureLayer ? '#3B82F6' : '#333', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer' }}>合圖</button>
               )}
-              {currentPartData?.front_pdf && (
-                <a href={`${API_BASE}${currentPartData.front_pdf}?t=${Date.now()}`} target="_blank" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>前視圖</a>
+              {featureLayerUrl && (
+                <button onClick={() => setShowFeatureLayer(true)} style={{ fontSize: 12, padding: '2px 8px', background: showFeatureLayer ? '#06b6d4' : '#333', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer' }}>特徵圖層</button>
               )}
-              {currentPartData?.top_pdf && (
-                <a href={`${API_BASE}${currentPartData.top_pdf}?t=${Date.now()}`} target="_blank" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>俯視圖</a>
+              {frontViewUrl && (
+                <a href={`${API_BASE}${frontViewUrl}?t=${Date.now()}`} target="_blank" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>前視圖</a>
               )}
-              {currentPartData?.right_pdf && (
-                <a href={`${API_BASE}${currentPartData.right_pdf}?t=${Date.now()}`} target="_blank" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>右側視圖</a>
+              {backViewUrl && (
+                <a href={`${API_BASE}${backViewUrl}?t=${Date.now()}`} target="_blank" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>背面視圖</a>
+              )}
+              {topViewUrl && (
+                <a href={`${API_BASE}${topViewUrl}?t=${Date.now()}`} target="_blank" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>俯視圖</a>
+              )}
+              {rightViewUrl && (
+                <a href={`${API_BASE}${rightViewUrl}?t=${Date.now()}`} target="_blank" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>右側視圖</a>
+              )}
+              {leftViewUrl && (
+                <a href={`${API_BASE}${leftViewUrl}?t=${Date.now()}`} target="_blank" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>左側視圖</a>
               )}
             </div>
           </div>
-          <div style={{ flex: 1, display: 'flex', background: '#111' }}>
-            {currentPartData?.png ? (
+          <div style={{ flex: 1, display: 'flex', background: '#111', position: 'relative' }}>
+            {activeDrawingUrl ? (
               <iframe
-                src={`${API_BASE}${currentPartData.png.replace('.png', '.pdf')}?t=${Date.now()}#view=FitH`}
-                title="2D Drawing PDF"
+                src={`${API_BASE}${activeDrawingUrl}?t=${Date.now()}#view=FitH`}
+                title="2D Drawing"
                 style={{ width: '100%', height: '100%', border: 'none' }}
               />
             ) : (
               <div style={{ color: '#555', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <File size={48} style={{ marginBottom: 16, opacity: 0.2 }} />
                 <span>從左側選擇零件查看工程圖</span>
+              </div>
+            )}
+            {showFeatureLayer && featureRecords.length > 0 && (
+              <div style={{ position: 'absolute', top: 12, right: 12, width: 320, maxHeight: '70%', overflowY: 'auto', background: 'rgba(10,10,10,0.88)', border: '1px solid #164e63', borderRadius: 6, padding: 10, color: '#d1f7ff', fontSize: 11, lineHeight: 1.45 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: '#67e8f9' }}>特徵清單</div>
+                {featureRecords.slice(0, 24).map((feature, idx) => (
+                  <div key={feature.id || idx} style={{ padding: '6px 0', borderTop: idx === 0 ? 'none' : '1px solid rgba(103,232,249,0.18)' }}>
+                    <div style={{ fontWeight: 700 }}>{feature.id || `F${idx + 1}`} · {feature.name}</div>
+                    <div style={{ color: '#9ca3af' }}>{feature.type} / {feature.role} / {feature.tolerance_key}</div>
+                    {feature.nominal && (
+                      <div style={{ color: '#cbd5e1' }}>{JSON.stringify(feature.nominal)}</div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>

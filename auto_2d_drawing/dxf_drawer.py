@@ -41,8 +41,11 @@ class DrawingLayout:
             return len(set(t.value for t in baseline_tasks)) if baseline_tasks else 0
             
         def get_overall(side):
-            # 簡化: 假設只要有 rank=2 就是整體標註 (最外層)
-            return 1 if any(t for t in tasks if t.rank >= 2 and getattr(t, 'side', None) == side) else 0
+            return len(set(
+                (getattr(t, 'rank', 0), round(getattr(t, 'value', 0), 2))
+                for t in tasks
+                if getattr(t, 'rank', 0) >= 2 and getattr(t, 'side', None) == side
+            ))
 
         # 計算各方向的層數 = baseline 分層數 + overall 總標註
         layers_bottom = get_layers("BOTTOM") + get_overall("BOTTOM")
@@ -182,6 +185,17 @@ class DxfDrawer:
                         for p in pts
                     ]
                     msp.add_lwpolyline(scaled_pts, dxfattribs={'layer': layer})
+
+    def draw_bbox_outline(self, msp, ox, oy, scale, bbox, layer='VISIBLE'):
+        """補畫零件投影外輪廓，避免單面可見線缺少外框。"""
+        x0, y0, x1, y1 = bbox
+        pts = [
+            (ox, oy),
+            (ox + (x1 - x0) * scale, oy),
+            (ox + (x1 - x0) * scale, oy + (y1 - y0) * scale),
+            (ox, oy + (y1 - y0) * scale),
+        ]
+        msp.add_lwpolyline(pts, close=True, dxfattribs={'layer': layer})
 
     def draw_view_border(self, msp, ox, oy, sw, sh):
         """繪製視圖邊界框 (淡色虛線)"""
