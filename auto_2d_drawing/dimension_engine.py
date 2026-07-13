@@ -16,15 +16,18 @@ from part_classifier import PartClassifier
 from layout_engine import LayoutEngine
 from extractors.shaft_extractor import ShaftExtractor
 from extractors.fan_extractor import FanExtractor
+from extractors.fan_housing_extractor import FanHousingExtractor
+from extractors.stamped_fan_base_extractor import StampedFanBaseExtractor
 from extractors.generic_extractor import GenericExtractor
 
 
 class DimensionEngine:
     """自動尺寸標註引擎 — 薄 Orchestrator"""
 
-    def __init__(self, feature_data, layout):
+    def __init__(self, feature_data, layout, part_hint=None):
         self.feat = feature_data
         self.layout = layout
+        self.part_hint = part_hint
         self.classifier = PartClassifier()
         self.layout_engine = LayoutEngine(layout)
 
@@ -37,13 +40,13 @@ class DimensionEngine:
             return {}
 
         if not part_type:
-            part_type = self.classifier.classify(self.feat)
+            part_type = self.classifier.classify(self.feat, self.part_hint)
         print(f"     DimensionEngine 零件分類: {part_type}")
 
         extractor = self._get_extractor(part_type)
         all_tasks = {}
 
-        for view_name in ['front', 'top', 'right']:
+        for view_name in ['front', 'back', 'top', 'right', 'left']:
             vd = view_data.get(view_name)
             if not vd:
                 continue
@@ -124,6 +127,8 @@ class DimensionEngine:
         extractors = {
             "SHAFT": ShaftExtractor(),
             "FAN": FanExtractor(),
+            "FAN_HOUSING": FanHousingExtractor(),
+            "STAMPED_FAN_BASE": StampedFanBaseExtractor(),
             "GENERIC": GenericExtractor(),
         }
         return extractors.get(part_type, GenericExtractor())

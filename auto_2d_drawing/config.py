@@ -49,6 +49,7 @@ LAYERS = {
     "TITLE_LABEL": {"color": 7,  "linetype": "Continuous"},   # 白色-標題標籤
     "TITLE_VALUE": {"color": 7,  "linetype": "Continuous"},   # 白色-標題數值
     "LEADER":      {"color": 2,  "linetype": "Continuous"},   # 黃色-引線
+    "FEATURE":     {"color": 4,  "linetype": "Continuous"},   # 青色-特徵圖層
 }
 
 # === 標註樣式 ===
@@ -69,8 +70,10 @@ DIM_STYLE = {
 # === 三視圖配置 (第三角投影法) ===
 VIEW_CONFIG = {
     "front": {"direction": (0, 0, 1),  "up": (0, 1, 0),  "label": "前視圖 FRONT VIEW"},
+    "back":  {"direction": (0, 0, -1), "up": (0, 1, 0),  "label": "背面視圖 BACK VIEW"},
     "top":   {"direction": (0, 1, 0),  "up": (0, 0, -1), "label": "俯視圖 TOP VIEW"},
     "right": {"direction": (-1, 0, 0), "up": (0, 1, 0),  "label": "右側視圖 RIGHT VIEW"},
+    "left":  {"direction": (1, 0, 0),  "up": (0, 1, 0),  "label": "左側視圖 LEFT VIEW"},
 }
 
 # === 特徵提取參數 ===
