@@ -4,29 +4,20 @@
 
 功能:
   1. TemplateManager: 樣板管理器 (載入、儲存、刪除、比對與一鍵套用風格化樣板)
-  2. SmartAnnotationEngine: 由使用者自選之 3D 特徵與公差組態，即時轉換為 2D 視圖標註任務並排版渲染 DXF/PDF/PNG
+  2. SmartAnnotationEngine: 由候選標註規則提取器與尺寸排版引擎組成，實現高精度幾何對齊與客製化出圖
 """
 import os
 import re
 import json
 import uuid
-import math
 from typing import Dict, List, Any, Optional
 
 try:
-    from auto_2d_drawing.config import TEMPLATES_DIR, OUTPUT_DIR, DIM_STYLE, VIEW_CONFIG
-    from auto_2d_drawing.dimension_task import DimensionTask
-    from auto_2d_drawing.layout_engine import LayoutEngine
-    from auto_2d_drawing.dxf_drawer import DrawingLayout, DxfDrawer
-    from auto_2d_drawing.title_block import TitleBlock, setup_document
-    from auto_2d_drawing.pdf_exporter import export_pdf, export_png
+    from auto_2d_drawing.config import TEMPLATES_DIR
+    from auto_2d_drawing.smart_extractors.smart_rule_engine import SmartRuleExtractor, SmartDimensionEngine
 except ImportError:
-    from config import TEMPLATES_DIR, OUTPUT_DIR, DIM_STYLE, VIEW_CONFIG
-    from dimension_task import DimensionTask
-    from layout_engine import LayoutEngine
-    from dxf_drawer import DrawingLayout, DxfDrawer
-    from title_block import TitleBlock, setup_document
-    from pdf_exporter import export_pdf, export_png
+    from config import TEMPLATES_DIR
+    from smart_extractors.smart_rule_engine import SmartRuleExtractor, SmartDimensionEngine
 
 
 class TemplateManager:
@@ -87,324 +78,67 @@ class TemplateManager:
             return True
         return False
 
-    def match_and_apply(self, template: Dict[str, Any], feature_records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def match_and_apply(self, template: Dict[str, Any], candidate_rules: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        將樣板規則動態比對至特定特徵清單，全自動填入勾選狀態、視圖與公差偏好
+        將樣板規則動態比對至候選規則清單，全自動填入勾選狀態、視圖與公差偏好
         """
         rules = template.get("rules", [])
-        updated_records = []
+        updated_rules = []
 
-        for feat in feature_records:
-            feat_copy = dict(feat)
-            feat_type = feat.get("type", "")
-            feat_role = str(feat.get("role", ""))
+        for item in candidate_rules:
+            item_copy = dict(item)
+            cat = str(item.get("category", "")).lower()
+            dim_type = str(item.get("dim_type", "")).lower()
+            rule_id = str(item.get("rule_id", "")).lower()
+            name = str(item.get("name", "")).lower()
+
             matched = False
+            for r in rules:
+                target_type = str(r.get("feature_type", "")).lower()
+                role_pattern = r.get("role_pattern")
 
-            for rule in rules:
-                rule_type = rule.get("feature_type", "")
-                role_pattern = rule.get("role_pattern")
+                # 比對類別或維度類型
+                match_cat = (
+                    not target_type or
+                    target_type == 'all' or
+                    target_type in cat or
+                    cat in target_type or
+                    target_type in dim_type or
+                    target_type in rule_id
+                )
 
-                # 比對特徵類型
-                if rule_type and rule_type != feat_type:
-                    continue
+                if match_cat:
+                    if role_pattern:
+                        if not (re.search(role_pattern, name, re.IGNORECASE) or re.search(role_pattern, rule_id, re.IGNORECASE)):
+                            continue
 
-                # 比對角色子模式
-                if role_pattern and not re.search(role_pattern, feat_role, re.IGNORECASE):
-                    continue
-
-                # 命中規則
-                feat_copy["enabled"] = rule.get("enabled", True)
-                feat_copy["preferred_view"] = rule.get("preferred_view", feat.get("view", "front"))
-                feat_copy["dim_type"] = rule.get("dim_type", "LINEAR")
-                feat_copy["tolerance"] = rule.get("tolerance", "")
-                feat_copy["side"] = rule.get("side", "BOTTOM")
-                feat_copy["baseline"] = rule.get("baseline", "NONE")
-                feat_copy["rank"] = rule.get("rank", 1)
-                matched = True
-                break
+                    item_copy["enabled"] = r.get("enabled", True)
+                    if "preferred_view" in r:
+                        item_copy["preferred_view"] = r["preferred_view"]
+                    if "tolerance" in r:
+                        item_copy["tolerance"] = r["tolerance"]
+                    if "side" in r:
+                        item_copy["side"] = r["side"]
+                    matched = True
+                    break
 
             if not matched:
-                feat_copy["enabled"] = False
-                feat_copy["preferred_view"] = feat.get("view", "front")
-                feat_copy["tolerance"] = ""
+                item_copy["enabled"] = False
 
-            updated_records.append(feat_copy)
+            updated_rules.append(item_copy)
 
-        return updated_records
+        return updated_rules
 
 
 class SmartAnnotationEngine:
-    """新版智慧特徵導向標註引擎"""
+    """新版智慧特徵導向標註引擎（薄 Orchestrator）"""
 
-    def __init__(self, layout: Optional[DrawingLayout] = None):
-        self.layout = layout
-        self.layout_engine = LayoutEngine(layout) if layout else None
+    def __init__(self):
+        self.engine = SmartDimensionEngine()
 
-    def convert_features_to_tasks(self, feature_records: List[Dict[str, Any]], view_data: Dict[str, Any]) -> Dict[str, List[DimensionTask]]:
-        """
-        將使用者選定的特徵清單轉換為各視圖的 DimensionTask
-        """
-        view_tasks: Dict[str, List[DimensionTask]] = {
-            "front": [], "back": [], "top": [], "right": [], "left": []
-        }
-
-        for feat in feature_records:
-            # 檢查是否啟用
-            if not feat.get("enabled", False):
-                continue
-
-            target_view = feat.get("preferred_view", feat.get("view", "front"))
-            if target_view not in view_tasks:
-                target_view = "front"
-
-            vd = view_data.get(target_view, {})
-            bbox = vd.get("bbox", (0, 0, 100, 100))
-            sw = bbox[2] - bbox[0]
-            sh = bbox[3] - bbox[1]
-
-            f_type = feat.get("type", "")
-            f_nom = feat.get("nominal", {})
-            f_geom = feat.get("geometry", {})
-            tol_str = feat.get("tolerance", "")
-            custom_side = feat.get("side", "BOTTOM")
-            custom_baseline = feat.get("baseline", "NONE")
-            rank = feat.get("rank", 1)
-
-            # 1. 整體包絡尺寸 (Overall Size)
-            if f_type == "overall_size":
-                w = float(f_nom.get("W", f_nom.get("outer_diameter", sw)))
-                h = float(f_nom.get("H", f_nom.get("height", sh)))
-                view_tasks[target_view].append(
-                    DimensionTask(
-                        dim_type="LINEAR",
-                        value=w,
-                        start_proj=(0.0, 0.0),
-                        end_proj=(w, 0.0),
-                        p1=(0.0, 0.0),
-                        p2=(w, 0.0),
-                        side="BOTTOM",
-                        baseline="NONE",
-                        rank=2,
-                        text=f"{w:.2f}{(' ' + tol_str) if tol_str else ''}",
-                        tolerance=tol_str,
-                    )
-                )
-                view_tasks[target_view].append(
-                    DimensionTask(
-                        dim_type="LINEAR",
-                        value=h,
-                        start_proj=(w, 0.0),
-                        end_proj=(w, h),
-                        p1=(w, 0.0),
-                        p2=(w, h),
-                        side="RIGHT",
-                        baseline="NONE",
-                        rank=2,
-                        text=f"{h:.2f}{(' ' + tol_str) if tol_str else ''}",
-                        tolerance=tol_str,
-                    )
-                )
-
-            # 2. 基準軸心線 (Datum Axis)
-            elif f_type == "datum":
-                view_tasks[target_view].append(
-                    DimensionTask(
-                        dim_type="CENTERLINES",
-                        value=0.0,
-                        start_proj=(0.0, -sh/2.0),
-                        end_proj=(0.0, sh/2.0),
-                        p1=(0.0, -sh/2.0),
-                        p2=(0.0, sh/2.0),
-                        side="TOP",
-                        baseline="NONE",
-                        rank=1,
-                        text="基準A (Datum A)",
-                        center=(0.0, 0.0),
-                    )
-                )
-
-            # 3. 圓柱孔特徵 (Holes)
-            elif f_type == "hole":
-                dia = float(f_nom.get("diameter", f_geom.get("diameter", 0.0)))
-                c = f_geom.get("center", [0.0, 0.0, 0.0])
-                p_y = float(c[1]) if len(c) > 1 else 0.0
-
-                label = f"Ø{dia:.2f}{(' ' + tol_str) if tol_str else ''}"
-                view_tasks[target_view].append(
-                    DimensionTask(
-                        dim_type="DIAMETER",
-                        value=dia,
-                        start_proj=(-dia/2.0, p_y),
-                        end_proj=(dia/2.0, p_y),
-                        p1=(-dia/2.0, p_y),
-                        p2=(dia/2.0, p_y),
-                        side="LEFT",
-                        baseline="NONE",
-                        rank=rank,
-                        text=label,
-                        tolerance=tol_str,
-                    )
-                )
-
-            # 4. 圓柱軸與凸台特徵 (Shafts / Bosses)
-            elif f_type == "shaft_or_boss":
-                dia = float(f_nom.get("diameter", f_geom.get("diameter", 0.0)))
-                c = f_geom.get("center", [0.0, 0.0, 0.0])
-                p_y = float(c[1]) if len(c) > 1 else 0.0
-
-                label = f"Ø{dia:.2f}{(' ' + tol_str) if tol_str else ''}"
-                view_tasks[target_view].append(
-                    DimensionTask(
-                        dim_type="DIAMETER",
-                        value=dia,
-                        start_proj=(-dia/2.0, p_y),
-                        end_proj=(dia/2.0, p_y),
-                        p1=(-dia/2.0, p_y),
-                        p2=(dia/2.0, p_y),
-                        side="LEFT" if custom_side == "LEFT" else "RIGHT",
-                        baseline="NONE",
-                        rank=rank,
-                        text=label,
-                        tolerance=tol_str,
-                    )
-                )
-
-            # 5. PCD 圓周孔群陣列 (Hole Patterns)
-            elif f_type == "hole_pattern":
-                count = f_nom.get("count", 4)
-                dia = float(f_nom.get("diameter", 3.0))
-                pcd = float(f_nom.get("pcd", 30.0))
-                label = f"{count}-Ø{dia:.2f} PCD {pcd:.2f}{(' ' + tol_str) if tol_str else ''}"
-                view_tasks[target_view].append(
-                    DimensionTask(
-                        dim_type="DIAMETER",
-                        value=pcd,
-                        start_proj=(-pcd/2.0, 0.0),
-                        end_proj=(pcd/2.0, 0.0),
-                        p1=(-pcd/2.0, 0.0),
-                        p2=(pcd/2.0, 0.0),
-                        side="RIGHT",
-                        baseline="NONE",
-                        rank=rank,
-                        text=label,
-                        center=(0.0, 0.0),
-                        tolerance=tol_str,
-                    )
-                )
-
-            # 6. 圓錐、倒角、沉頭 (Cones / Chamfers)
-            elif f_type == "cone_or_chamfer":
-                min_d = float(f_nom.get("min_diameter", 0.0))
-                max_d = float(f_nom.get("max_diameter", 0.0))
-                semi_ang = float(f_nom.get("included_angle", 90.0)) / 2.0
-                c = f_geom.get("center", [0.0, 0.0, 0.0])
-                p_y = float(c[1]) if len(c) > 1 else 0.0
-
-                label = f"C{max(0.2, (max_d - min_d)/2.0):.2f} ({semi_ang:.0f}°){(' ' + tol_str) if tol_str else ''}"
-                view_tasks[target_view].append(
-                    DimensionTask(
-                        dim_type="LEADER",
-                        value=max_d,
-                        start_proj=(max_d/2.0, p_y),
-                        end_proj=(max_d/2.0 + 5.0, p_y + 5.0),
-                        p1=(max_d/2.0, p_y),
-                        p2=(max_d/2.0 + 5.0, p_y + 5.0),
-                        side="TOP",
-                        baseline="NONE",
-                        rank=rank,
-                        text=label,
-                        tolerance=tol_str,
-                    )
-                )
-
-            # 7. 環形槽與卡簧槽 (Toruses / Grooves)
-            elif f_type == "groove_or_slot":
-                maj_d = float(f_nom.get("major_diameter", 0.0))
-                min_r = float(f_nom.get("minor_radius", 0.5))
-                c = f_geom.get("center", [0.0, 0.0, 0.0])
-                p_y = float(c[1]) if len(c) > 1 else 0.0
-
-                label = f"槽寬 {min_r*2.0:.2f} (Ø{maj_d:.2f}){(' ' + tol_str) if tol_str else ''}"
-                view_tasks[target_view].append(
-                    DimensionTask(
-                        dim_type="LINEAR",
-                        value=min_r * 2.0,
-                        start_proj=(-maj_d/2.0, p_y - min_r),
-                        end_proj=(-maj_d/2.0, p_y + min_r),
-                        p1=(-maj_d/2.0, p_y - min_r),
-                        p2=(-maj_d/2.0, p_y + min_r),
-                        side="LEFT",
-                        baseline=custom_baseline,
-                        rank=rank,
-                        text=label,
-                        tolerance=tol_str,
-                    )
-                )
-
-            # 8. 階梯段差 (Steps)
-            elif f_type == "step":
-                length = float(f_nom.get("length", 0.0))
-                pos = float(f_nom.get("position", 0.0))
-
-                label = f"階梯長 {length:.2f}{(' ' + tol_str) if tol_str else ''}"
-                view_tasks[target_view].append(
-                    DimensionTask(
-                        dim_type="LINEAR",
-                        value=length,
-                        start_proj=(0.0, pos),
-                        end_proj=(0.0, pos + length),
-                        p1=(0.0, pos),
-                        p2=(0.0, pos + length),
-                        side="BOTTOM" if custom_side == "BOTTOM" else "RIGHT",
-                        baseline=custom_baseline,
-                        rank=rank,
-                        text=label,
-                        tolerance=tol_str,
-                    )
-                )
-
-            # 9. 結構壁厚與板厚 (Wall Thicknesses)
-            elif f_type == "wall_thickness":
-                th = float(f_nom.get("thickness", 1.0))
-                label = f"T={th:.2f}{(' ' + tol_str) if tol_str else ''}"
-                view_tasks[target_view].append(
-                    DimensionTask(
-                        dim_type="LINEAR",
-                        value=th,
-                        start_proj=(0.0, 0.0),
-                        end_proj=(0.0, th),
-                        p1=(0.0, 0.0),
-                        p2=(0.0, th),
-                        side="BOTTOM",
-                        baseline="NONE",
-                        rank=rank,
-                        text=label,
-                        tolerance=tol_str,
-                    )
-                )
-
-            # 10. 過渡圓角 (Fillets)
-            elif f_type == "fillet_or_round":
-                r = float(f_nom.get("radius", 0.5))
-                c = f_geom.get("center", [0.0, 0.0, 0.0])
-                label = f"R{r:.2f}{(' ' + tol_str) if tol_str else ''}"
-                view_tasks[target_view].append(
-                    DimensionTask(
-                        dim_type="NOTE",
-                        value=r,
-                        start_proj=(float(c[0]), float(c[1])),
-                        end_proj=(float(c[0]) + 4.0, float(c[1]) + 4.0),
-                        p1=(float(c[0]), float(c[1])),
-                        p2=(float(c[0]) + 4.0, float(c[1]) + 4.0),
-                        side="TOP",
-                        baseline="NONE",
-                        rank=rank,
-                        text=label,
-                        tolerance=tol_str,
-                    )
-                )
-
-        return view_tasks
+    def get_candidate_rules(self, shape, view_data: Dict[str, Any], part_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """提取該零件之所有候選標註規則"""
+        return self.engine.get_candidate_rules(shape, view_data, part_type)
 
     def render_custom_drawing(
         self,
@@ -413,68 +147,14 @@ class SmartAnnotationEngine:
         png_path: str,
         feature_records: List[Dict[str, Any]],
         view_data: Dict[str, Any],
-        title_info: Optional[Dict[str, str]] = None
+        title_info: Optional[Dict[str, Any]] = None
     ) -> Dict[str, str]:
-        """
-        排版並渲染客製化工程圖 (產出 DXF, PDF, PNG)
-        """
-        doc = setup_document()
-        msp = doc.modelspace()
-
-        # 1. 轉換特徵為各視圖標註任務
-        all_tasks = self.convert_features_to_tasks(feature_records, view_data)
-
-        # 2. 自動計算圖面佈局與縮放比
-        view_sizes = {vn: view_data[vn]['size'] for vn in ['front', 'top', 'right'] if vn in view_data}
-        layout = DrawingLayout(view_sizes, all_tasks)
-        self.layout = layout
-        self.layout_engine = LayoutEngine(layout)
-
-        # 3. 繪製圖框與標題欄
-        title_block = TitleBlock()
-        info = title_info or {}
-        title_block.draw(
-            msp,
-            part_name=info.get("part_name", "CUSTOM PART"),
-            drawing_no=info.get("drawing_no", "DWG-CUSTOM-001"),
-            revision=info.get("revision", "R00"),
-            scale_text=layout.get_scale_text(),
-            material=info.get("material", "AL / SUS"),
-            model_code=info.get("model_code", "CUSTOM")
+        """渲染已選規則為 DXF / PDF / SVG / PNG"""
+        return self.engine.render_custom_drawing(
+            dxf_path=dxf_path,
+            pdf_path=pdf_path,
+            png_path=png_path,
+            configured_rules=feature_records,
+            view_data=view_data,
+            title_info=title_info
         )
-
-        # 4. 繪製三視圖邊緣線
-        drawer = DxfDrawer()
-        for vn in ['front', 'top', 'right']:
-            if vn not in view_data:
-                continue
-            vd = view_data[vn]
-            ox, oy = layout.get_view_offset(vn)
-            bbox_x0, bbox_y0 = vd['bbox'][0], vd['bbox'][1]
-
-            drawer.draw_edges(msp, vd.get('visible', []), ox, oy, layout.scale, bbox_x0, bbox_y0, 'VISIBLE')
-            drawer.draw_edges(msp, vd.get('hidden', []), ox, oy, layout.scale, bbox_x0, bbox_y0, 'HIDDEN')
-            drawer.draw_view_label(msp, ox, oy, VIEW_CONFIG.get(vn, {}).get("label", vn.upper()))
-
-        # 5. 渲染標註任務
-        for vn, tasks in all_tasks.items():
-            if vn not in view_data or not tasks:
-                continue
-            vd = view_data[vn]
-            ox, oy = layout.get_view_offset(vn)
-            sw, sh = layout.get_scaled_size(vn)
-            self.layout_engine.render(msp, tasks, ox, oy, sw, sh, vd)
-
-        # 6. 儲存 DXF
-        os.makedirs(os.path.dirname(dxf_path), exist_ok=True)
-        doc.saveas(dxf_path)
-
-        # 7. 匯出 PDF 與 PNG
-        export_pdf(doc, msp, pdf_path, dark_bg=True)
-        export_png(doc, msp, png_path, dark_bg=True)
-
-        return {
-            "dxf": dxf_path,
-            "pdf": pdf_path,
-            "png": png_path,
-        }

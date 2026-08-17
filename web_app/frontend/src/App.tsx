@@ -647,14 +647,19 @@ function App() {
   // --- Smart Annotation Studio State ---
   const [viewTab, setViewTab] = useState<'main' | 'features3d' | 'smart_annotation'>('main');
   const [annotationTemplates, setAnnotationTemplates] = useState<any[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('general_mechanical_preset');
-  const [annotationConfig, setAnnotationConfig] = useState<Record<string, {
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('shaft_standard_preset');
+  const [candidateRules, setCandidateRules] = useState<any[]>([]);
+  const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set());
+  const [ruleConfig, setRuleConfig] = useState<Record<string, {
     enabled?: boolean;
     preferred_view?: string;
     tolerance?: string;
     side?: string;
     baseline?: string;
+    prefix?: string;
   }>>({});
+  const [ruleFilter, setRuleFilter] = useState<string>('ALL');
+  const [ruleSearch, setRuleSearch] = useState<string>('');
   const [customDrawingResult, setCustomDrawingResult] = useState<{
     dxf_url?: string;
     pdf_url?: string;
@@ -779,6 +784,33 @@ function App() {
               });
           }
         });
+
+      // 提取候選標註幾何規則 (Candidate Dimension Rules)
+      axios.get(`${API_BASE}/api/annotation/candidate-rules/${modelId}/${selectedPart}?t=${Date.now()}`)
+        .then(res => {
+          const rules = Array.isArray(res.data?.rules) ? res.data.rules : [];
+          setCandidateRules(rules);
+          const initialSet = new Set<string>();
+          const initialCfg: Record<string, any> = {};
+          rules.forEach((r: any) => {
+            if (r.enabled) initialSet.add(r.rule_id);
+            initialCfg[r.rule_id] = {
+              enabled: !!r.enabled,
+              preferred_view: r.preferred_view || 'front',
+              tolerance: r.default_tolerance || '',
+              side: r.side || 'BOTTOM',
+              baseline: r.baseline || 'NONE',
+              prefix: r.default_prefix || ''
+            };
+          });
+          setSelectedRuleIds(initialSet);
+          setRuleConfig(initialCfg);
+        })
+        .catch(err => {
+          console.error('Candidate rules fetch error:', err);
+          setCandidateRules([]);
+          setSelectedRuleIds(new Set());
+        });
     } else if (selectedData?.features_json) {
       axios.get(`${API_BASE}${selectedData.features_json}?t=${Date.now()}`)
         .then(res => {
@@ -830,54 +862,89 @@ function App() {
     }
   };
 
-  const updateFeatureConfig = (id: string, updates: Partial<{
+  const toggleRule = (ruleId: string) => {
+    setSelectedRuleIds(prev => {
+      const next = new Set(prev);
+      if (next.has(ruleId)) next.delete(ruleId);
+      else next.add(ruleId);
+      return next;
+    });
+  };
+
+  const selectAllRules = (ids?: string[]) => {
+    if (ids && ids.length > 0) {
+      setSelectedRuleIds(prev => {
+        const next = new Set(prev);
+        ids.forEach(i => next.add(i));
+        return next;
+      });
+    } else {
+      setSelectedRuleIds(new Set(candidateRules.map(r => r.rule_id)));
+    }
+  };
+
+  const deselectAllRules = (ids?: string[]) => {
+    if (ids && ids.length > 0) {
+      setSelectedRuleIds(prev => {
+        const next = new Set(prev);
+        ids.forEach(i => next.delete(i));
+        return next;
+      });
+    } else {
+      setSelectedRuleIds(new Set());
+    }
+  };
+
+  const updateRuleConfig = (ruleId: string, updates: Partial<{
     enabled: boolean;
     preferred_view: string;
     tolerance: string;
     side: string;
     baseline: string;
+    prefix: string;
   }>) => {
-    setAnnotationConfig(prev => ({
+    setRuleConfig(prev => ({
       ...prev,
-      [id]: {
-        ...(prev[id] || {}),
+      [ruleId]: {
+        ...(prev[ruleId] || {}),
         ...updates
       }
     }));
     if (updates.enabled !== undefined) {
-      setSelectedFeatureIds(prev => {
+      setSelectedRuleIds(prev => {
         const next = new Set(prev);
-        if (updates.enabled) next.add(id);
-        else next.delete(id);
+        if (updates.enabled) next.add(ruleId);
+        else next.delete(ruleId);
         return next;
       });
     }
   };
 
   const handleApplyTemplate = (templateId: string) => {
-    if (!templateId || featureRecords.length === 0) return;
+    if (!templateId || candidateRules.length === 0) return;
     axios.post(`${API_BASE}/api/annotation/apply-template`, {
       template_id: templateId,
-      feature_records: featureRecords
+      feature_records: candidateRules
     })
       .then(res => {
         if (res.data?.records) {
           const updated = res.data.records;
-          setFeatureRecords(updated);
+          setCandidateRules(updated);
           const newConfig: Record<string, any> = {};
           const newSelectedIds = new Set<string>();
           updated.forEach((r: any) => {
-            newConfig[r.id] = {
+            newConfig[r.rule_id] = {
               enabled: !!r.enabled,
               preferred_view: r.preferred_view || 'front',
-              tolerance: r.tolerance || '',
+              tolerance: r.tolerance !== undefined ? r.tolerance : (r.default_tolerance || ''),
               side: r.side || 'BOTTOM',
-              baseline: r.baseline || 'NONE'
+              baseline: r.baseline || 'NONE',
+              prefix: r.prefix !== undefined ? r.prefix : (r.default_prefix || '')
             };
-            if (r.enabled) newSelectedIds.add(r.id);
+            if (r.enabled) newSelectedIds.add(r.rule_id);
           });
-          setAnnotationConfig(newConfig);
-          setSelectedFeatureIds(newSelectedIds);
+          setRuleConfig(newConfig);
+          setSelectedRuleIds(newSelectedIds);
         }
       })
       .catch(err => console.error('Error applying template:', err));
@@ -892,22 +959,23 @@ function App() {
 
     setIsRenderingDrawing(true);
     try {
-      const payloadRecords = featureRecords.map(f => {
-        const cfg = annotationConfig[f.id] || {};
+      const payloadRules = candidateRules.map(r => {
+        const cfg = ruleConfig[r.rule_id] || {};
         return {
-          ...f,
-          enabled: selectedFeatureIds.has(f.id) || !!cfg.enabled,
-          preferred_view: cfg.preferred_view || f.preferred_view || 'front',
-          tolerance: cfg.tolerance !== undefined ? cfg.tolerance : (f.tolerance || ''),
-          side: cfg.side || f.side || 'BOTTOM',
-          baseline: cfg.baseline || f.baseline || 'NONE'
+          ...r,
+          enabled: selectedRuleIds.has(r.rule_id) || !!cfg.enabled,
+          preferred_view: cfg.preferred_view || r.preferred_view || 'front',
+          tolerance: cfg.tolerance !== undefined ? cfg.tolerance : (r.default_tolerance || ''),
+          prefix: cfg.prefix !== undefined ? cfg.prefix : (r.default_prefix || ''),
+          side: cfg.side || r.side || 'BOTTOM',
+          baseline: cfg.baseline || r.baseline || 'NONE'
         };
       });
 
       const res = await axios.post(`${API_BASE}/api/annotation/render`, {
         model_id: modelId,
         part_id: selectedPart,
-        feature_records: payloadRecords,
+        feature_records: payloadRules,
         title_info: {
           part_name: `${selectedPart} (SMART ANNOTATED)`,
           drawing_no: `DWG-${selectedPart}-001`,
@@ -936,18 +1004,18 @@ function App() {
     if (!newTemplateName.trim()) return;
 
     const rules: any[] = [];
-    featureRecords.forEach(f => {
-      if (selectedFeatureIds.has(f.id)) {
-        const cfg = annotationConfig[f.id] || {};
+    candidateRules.forEach(r => {
+      if (selectedRuleIds.has(r.rule_id)) {
+        const cfg = ruleConfig[r.rule_id] || {};
         rules.push({
-          feature_type: f.type,
-          role_pattern: f.role ? `^${f.role}$` : undefined,
+          feature_type: r.category || r.dim_type,
+          role_pattern: `^${r.rule_id}$`,
           enabled: true,
-          preferred_view: cfg.preferred_view || f.preferred_view || 'front',
-          tolerance: cfg.tolerance || '',
-          side: cfg.side || f.side || 'BOTTOM',
-          baseline: cfg.baseline || 'NONE',
-          rank: 1
+          preferred_view: cfg.preferred_view || r.preferred_view || 'front',
+          tolerance: cfg.tolerance || r.default_tolerance || '',
+          side: cfg.side || r.side || 'BOTTOM',
+          baseline: cfg.baseline || r.baseline || 'NONE',
+          rank: r.rank || 1
         });
       }
     });
@@ -969,7 +1037,7 @@ function App() {
         alert(`樣板「${res.data.template.name}」已儲存！`);
       }
     } catch (err: any) {
-      alert(`儲存樣板失敗: ${err.message}`);
+      alert(`儲存樣板失敗: ${err?.response?.data?.detail || err.message}`);
     }
   };
 
@@ -1966,28 +2034,28 @@ function App() {
                     <div style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: 'rgba(15, 23, 42, 0.92)', backdropFilter: 'blur(10px)', border: '1px solid #3b82f6', borderRadius: 10, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 10 }}>
                       <Sparkles size={18} color="#38bdf8" />
                       <span style={{ fontSize: 13, color: '#e2e8f0' }}>
-                        已選取 <strong style={{ color: '#38bdf8' }}>{selectedFeatureIds.size}</strong> 處特徵，準備產出專屬工程圖
+                        已啟用 <strong style={{ color: '#38bdf8' }}>{selectedRuleIds.size}</strong> 條標註規則，準備產出專屬工程圖
                       </span>
                       <button
                         onClick={handleRenderCustomDrawing}
-                        disabled={isRenderingDrawing || selectedFeatureIds.size === 0}
+                        disabled={isRenderingDrawing || selectedRuleIds.size === 0}
                         style={{
-                          background: selectedFeatureIds.size > 0 ? 'linear-gradient(135deg, #0284c7, #2563eb)' : '#334155',
+                          background: selectedRuleIds.size > 0 ? 'linear-gradient(135deg, #0284c7, #2563eb)' : '#334155',
                           color: '#fff',
                           border: 'none',
                           borderRadius: 6,
                           padding: '6px 14px',
                           fontSize: 12,
                           fontWeight: 700,
-                          cursor: selectedFeatureIds.size > 0 ? 'pointer' : 'not-allowed',
+                          cursor: selectedRuleIds.size > 0 ? 'pointer' : 'not-allowed',
                           display: 'flex',
                           alignItems: 'center',
                           gap: 6,
-                          boxShadow: selectedFeatureIds.size > 0 ? '0 4px 12px rgba(2, 132, 199, 0.4)' : 'none',
+                          boxShadow: selectedRuleIds.size > 0 ? '0 4px 12px rgba(2, 132, 199, 0.4)' : 'none',
                         }}
                       >
                         {isRenderingDrawing ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
-                        <span>{isRenderingDrawing ? '生成中...' : '立即生成客製圖紙'}</span>
+                        <span>{isRenderingDrawing ? '生成中...' : '立即產出新版圖紙'}</span>
                       </button>
                     </div>
                   </div>
@@ -2093,32 +2161,33 @@ function App() {
         {/* Right Panel: Smart Annotation Studio Controller OR Feature Inspector OR 3D Viewer */}
         <div style={{ width: viewTab === 'smart_annotation' ? '42%' : showFeatureLayer ? '38%' : '33%', minWidth: 340, display: 'flex', flexDirection: 'column', background: '#111', transition: 'width 0.2s ease' }}>
           {viewTab === 'smart_annotation' ? (() => {
-            const filtered = featureRecords.filter(f => {
-              const type = (f.type || '').toLowerCase();
-              const role = (f.role || '').toLowerCase();
+            const filtered = candidateRules.filter(r => {
+              const cat = (r.category || '').toLowerCase();
+              const dimType = (r.dim_type || '').toLowerCase();
               let matchType = true;
-              if (featureFilter === 'hole') matchType = type.includes('hole');
-              else if (featureFilter === 'shaft') matchType = type.includes('shaft') || role.includes('journal') || type.includes('groove');
-              else if (featureFilter === 'groove') matchType = type.includes('groove') || role.includes('groove') || role.includes('relief');
-              else if (featureFilter === 'fillet') matchType = type.includes('fillet') || type.includes('round');
-              else if (featureFilter === 'cone') matchType = type.includes('cone') || type.includes('chamfer') || role.includes('chamfer') || role.includes('pilot');
-              else if (featureFilter === 'step') matchType = type.includes('step') || role.includes('step');
-              else if (featureFilter === 'thickness') matchType = type.includes('thickness') || type.includes('plane') || type.includes('datum');
-              else if (featureFilter === 'pattern') matchType = type.includes('pattern');
-              else if (featureFilter === 'projected') matchType = type.includes('projected');
-              
+              if (ruleFilter === 'shaft') matchType = cat.includes('shaft') || dimType.includes('diameter');
+              else if (ruleFilter === 'groove') matchType = cat.includes('groove');
+              else if (ruleFilter === 'cone' || ruleFilter === 'chamfer') matchType = cat.includes('chamfer') || cat.includes('cone');
+              else if (ruleFilter === 'step') matchType = cat.includes('step');
+              else if (ruleFilter === 'fillet') matchType = cat.includes('fillet');
+              else if (ruleFilter === 'hole') matchType = cat.includes('hole');
+              else if (ruleFilter === 'datum') matchType = cat.includes('datum') || dimType.includes('centerline');
+              else if (ruleFilter === 'overall') matchType = cat.includes('overall');
+              else if (ruleFilter === 'pattern') matchType = cat.includes('pattern');
+              else if (ruleFilter === 'thickness') matchType = cat.includes('thickness');
+
               if (!matchType) return false;
-              if (!featureSearch) return true;
-              const q = featureSearch.toLowerCase();
+              if (!ruleSearch) return true;
+              const q = ruleSearch.toLowerCase();
               return (
-                (f.id && f.id.toLowerCase().includes(q)) ||
-                (f.name && f.name.toLowerCase().includes(q)) ||
-                (f.role && f.role.toLowerCase().includes(q)) ||
-                (f.type && f.type.toLowerCase().includes(q))
+                (r.rule_id && r.rule_id.toLowerCase().includes(q)) ||
+                (r.name && r.name.toLowerCase().includes(q)) ||
+                (r.category && r.category.toLowerCase().includes(q)) ||
+                (r.dim_type && r.dim_type.toLowerCase().includes(q))
               );
             });
 
-            const allFilteredSelected = filtered.length > 0 && filtered.every(f => selectedFeatureIds.has(f.id));
+            const allFilteredSelected = filtered.length > 0 && filtered.every(r => selectedRuleIds.has(r.rule_id));
 
             return (
               <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0b1120' }}>
@@ -2129,7 +2198,7 @@ function App() {
                     <span>標註控制台 (Annotation Controller)</span>
                   </div>
                   <span style={{ fontSize: 11, background: '#7e22ce', color: '#fff', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
-                    {selectedFeatureIds.size} / {featureRecords.length} 已選
+                    {selectedRuleIds.size} / {candidateRules.length} 規則已選
                   </span>
                 </div>
 
@@ -2231,7 +2300,7 @@ function App() {
                 <div style={{ padding: '6px 12px', background: '#0b1120', borderBottom: '1px solid #1e293b', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button
-                      onClick={() => selectAllFeatures(filtered.map(f => f.id))}
+                      onClick={() => selectAllRules(filtered.map(r => r.rule_id))}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -2250,7 +2319,7 @@ function App() {
                       <span>全選 ({filtered.length})</span>
                     </button>
                     <button
-                      onClick={() => deselectAllFeatures(filtered.map(f => f.id))}
+                      onClick={() => deselectAllRules(filtered.map(r => r.rule_id))}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -2270,7 +2339,7 @@ function App() {
                     </button>
                   </div>
                   <span style={{ fontSize: 10, color: '#64748b' }}>
-                    顯示 {filtered.length} 處特徵
+                    顯示 {filtered.length} 條規則
                   </span>
                 </div>
 
@@ -2278,9 +2347,9 @@ function App() {
                 <div style={{ padding: '6px 12px', background: '#0b1120' }}>
                   <input
                     type="text"
-                    value={featureSearch}
-                    onChange={(e) => setFeatureSearch(e.target.value)}
-                    placeholder="搜尋特徵名稱、ID、直徑、卡簧槽..."
+                    value={ruleSearch}
+                    onChange={(e) => setRuleSearch(e.target.value)}
+                    placeholder="搜尋標註規則、軸徑、階梯、公差..."
                     style={{ width: '100%', boxSizing: 'border-box', padding: '5px 8px', background: '#0f172a', border: '1px solid #334155', borderRadius: 4, color: '#f8fafc', fontSize: 11 }}
                   />
                 </div>
@@ -2288,27 +2357,27 @@ function App() {
                 <div style={{ padding: '0 12px 6px 12px', display: 'flex', flexWrap: 'wrap', gap: 3 }}>
                   {[
                     { id: 'ALL', label: '全部' },
-                    { id: 'shaft', label: '軸/配合段' },
+                    { id: 'datum', label: '基準/中心線' },
+                    { id: 'step', label: '階梯段長' },
+                    { id: 'shaft', label: '配合軸徑' },
                     { id: 'groove', label: '卡簧/凹槽' },
-                    { id: 'cone', label: '倒角/錐面' },
-                    { id: 'step', label: '階梯' },
-                    { id: 'fillet', label: '圓角' },
+                    { id: 'chamfer', label: '倒角' },
                     { id: 'hole', label: '孔洞' },
-                    { id: 'thickness', label: '壁厚/基準' },
+                    { id: 'overall', label: '外框' },
                     { id: 'pattern', label: '孔群' },
                   ].map(tab => (
                     <button
                       key={tab.id}
-                      onClick={() => setFeatureFilter(tab.id)}
+                      onClick={() => setRuleFilter(tab.id)}
                       style={{
                         fontSize: 10,
                         padding: '2px 6px',
                         borderRadius: 3,
                         border: 'none',
                         cursor: 'pointer',
-                        background: featureFilter === tab.id ? '#7c3aed' : '#1e293b',
-                        color: featureFilter === tab.id ? '#fff' : '#94a3b8',
-                        fontWeight: featureFilter === tab.id ? 700 : 500
+                        background: ruleFilter === tab.id ? '#7c3aed' : '#1e293b',
+                        color: ruleFilter === tab.id ? '#fff' : '#94a3b8',
+                        fontWeight: ruleFilter === tab.id ? 700 : 500
                       }}
                     >
                       {tab.label}
@@ -2316,32 +2385,33 @@ function App() {
                   ))}
                 </div>
 
-                {/* Feature Customization List */}
+                {/* Rule Customization List */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {filtered.map((feature, idx) => {
-                    const isSelected = selectedFeatureIds.has(feature.id);
-                    const isHovered = hoveredFeatureId === feature.id;
-                    const fType = (feature.type || '').toLowerCase();
-                    const cfg = annotationConfig[feature.id] || {};
-                    const currentView = cfg.preferred_view || feature.preferred_view || 'front';
-                    const currentTol = cfg.tolerance !== undefined ? cfg.tolerance : (feature.tolerance || '');
-                    const currentSide = cfg.side || feature.side || 'BOTTOM';
+                  {filtered.map((rule, idx) => {
+                    const isSelected = selectedRuleIds.has(rule.rule_id);
+                    const isHovered = hoveredFeatureId === rule.rule_id;
+                    const cat = (rule.category || '').toLowerCase();
+                    const cfg = ruleConfig[rule.rule_id] || {};
+                    const currentView = cfg.preferred_view || rule.preferred_view || 'front';
+                    const currentTol = cfg.tolerance !== undefined ? cfg.tolerance : (rule.default_tolerance || '');
+                    const currentSide = cfg.side || rule.side || 'BOTTOM';
 
                     let badgeBg = '#334155';
                     let badgeColor = '#94a3b8';
-                    if (fType.includes('journal') || fType.includes('shaft')) { badgeBg = '#1e3a8a'; badgeColor = '#60a5fa'; }
-                    else if (fType.includes('groove') || fType.includes('slot')) { badgeBg = '#581c87'; badgeColor = '#c084fc'; }
-                    else if (fType.includes('cone') || fType.includes('chamfer')) { badgeBg = '#713f12'; badgeColor = '#facc15'; }
-                    else if (fType.includes('step')) { badgeBg = '#7c2d12'; badgeColor = '#fb923c'; }
-                    else if (fType.includes('fillet')) { badgeBg = '#831843'; badgeColor = '#f472b6'; }
-                    else if (fType.includes('hole')) { badgeBg = '#065f46'; badgeColor = '#34d399'; }
-                    else if (fType.includes('thickness') || fType.includes('plane')) { badgeBg = '#374151'; badgeColor = '#9ca3af'; }
-                    else if (fType.includes('pattern')) { badgeBg = '#4c1d95'; badgeColor = '#e9d5ff'; }
+                    if (cat.includes('shaft')) { badgeBg = '#1e3a8a'; badgeColor = '#60a5fa'; }
+                    else if (cat.includes('groove')) { badgeBg = '#581c87'; badgeColor = '#c084fc'; }
+                    else if (cat.includes('cone') || cat.includes('chamfer')) { badgeBg = '#713f12'; badgeColor = '#facc15'; }
+                    else if (cat.includes('step')) { badgeBg = '#7c2d12'; badgeColor = '#fb923c'; }
+                    else if (cat.includes('fillet')) { badgeBg = '#831843'; badgeColor = '#f472b6'; }
+                    else if (cat.includes('hole')) { badgeBg = '#065f46'; badgeColor = '#34d399'; }
+                    else if (cat.includes('datum')) { badgeBg = '#0e7490'; badgeColor = '#67e8f9'; }
+                    else if (cat.includes('overall')) { badgeBg = '#374151'; badgeColor = '#9ca3af'; }
+                    else if (cat.includes('pattern')) { badgeBg = '#4c1d95'; badgeColor = '#e9d5ff'; }
 
                     return (
                       <div
-                        key={feature.id || idx}
-                        onMouseEnter={() => setHoveredFeatureId(feature.id)}
+                        key={rule.rule_id || idx}
+                        onMouseEnter={() => setHoveredFeatureId(rule.rule_id)}
                         onMouseLeave={() => setHoveredFeatureId(null)}
                         style={{
                           padding: '8px 10px',
@@ -2354,27 +2424,27 @@ function App() {
                           gap: 6,
                         }}
                       >
-                        {/* Header Row: Checkbox + ID + Badge */}
+                        {/* Header Row: Checkbox + Rule ID + Category Badge */}
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1 }}>
                             <input
                               type="checkbox"
                               checked={isSelected}
-                              onChange={() => toggleFeature(feature.id)}
+                              onChange={() => toggleRule(rule.rule_id)}
                               style={{ cursor: 'pointer', accentColor: '#3b82f6', width: 15, height: 15 }}
                             />
                             <span style={{ fontWeight: 700, color: isSelected ? '#f8fafc' : '#64748b', fontSize: 12 }}>
-                              {feature.id || `F${idx + 1}`}
+                              {rule.rule_id}
                             </span>
                           </label>
                           <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: badgeBg, color: badgeColor, fontWeight: 600 }}>
-                            {feature.type}
+                            {rule.category || rule.dim_type}
                           </span>
                         </div>
 
-                        {/* Feature Title */}
+                        {/* Rule Name */}
                         <div style={{ fontWeight: 600, color: isSelected ? '#38bdf8' : '#94a3b8', fontSize: 12, paddingLeft: 23 }}>
-                          {feature.name}
+                          {rule.name}
                         </div>
 
                         {/* Annotation Customization Controls (View, Tolerance, Side) */}
@@ -2384,13 +2454,13 @@ function App() {
                               <div style={{ fontSize: 9, color: '#64748b', marginBottom: 2 }}>標註視圖</div>
                               <select
                                 value={currentView}
-                                onChange={(e) => updateFeatureConfig(feature.id, { preferred_view: e.target.value })}
+                                onChange={(e) => updateRuleConfig(rule.rule_id, { preferred_view: e.target.value })}
                                 style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 3, color: '#f8fafc', fontSize: 10, padding: 2 }}
                               >
-                                <option value="front">正視圖</option>
-                                <option value="top">俯視圖</option>
-                                <option value="right">右側視圖</option>
-                                <option value="left">左側視圖</option>
+                                <option value="front">正視圖 (Front)</option>
+                                <option value="top">俯視圖 (Top)</option>
+                                <option value="right">右側視圖 (Right)</option>
+                                <option value="left">左側視圖 (Left)</option>
                               </select>
                             </div>
 
@@ -2399,8 +2469,8 @@ function App() {
                               <input
                                 type="text"
                                 value={currentTol}
-                                onChange={(e) => updateFeatureConfig(feature.id, { tolerance: e.target.value })}
-                                placeholder="如 ±0.05"
+                                onChange={(e) => updateRuleConfig(rule.rule_id, { tolerance: e.target.value })}
+                                placeholder="如 ±0.005"
                                 style={{ width: '100%', boxSizing: 'border-box', background: '#0f172a', border: '1px solid #334155', borderRadius: 3, color: '#facc15', fontSize: 10, padding: '2px 4px' }}
                               />
                             </div>
@@ -2409,7 +2479,7 @@ function App() {
                               <div style={{ fontSize: 9, color: '#64748b', marginBottom: 2 }}>標註側向</div>
                               <select
                                 value={currentSide}
-                                onChange={(e) => updateFeatureConfig(feature.id, { side: e.target.value })}
+                                onChange={(e) => updateRuleConfig(rule.rule_id, { side: e.target.value })}
                                 style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 3, color: '#f8fafc', fontSize: 10, padding: 2 }}
                               >
                                 <option value="BOTTOM">底部 (Bottom)</option>
@@ -2429,26 +2499,26 @@ function App() {
                 <div style={{ padding: '12px', background: '#0f172a', borderTop: '1px solid #1e293b' }}>
                   <button
                     onClick={handleRenderCustomDrawing}
-                    disabled={isRenderingDrawing || selectedFeatureIds.size === 0}
+                    disabled={isRenderingDrawing || selectedRuleIds.size === 0}
                     style={{
                       width: '100%',
-                      background: selectedFeatureIds.size > 0 ? 'linear-gradient(135deg, #0284c7, #7c3aed)' : '#334155',
+                      background: selectedRuleIds.size > 0 ? 'linear-gradient(135deg, #0284c7, #7c3aed)' : '#334155',
                       color: '#fff',
                       border: 'none',
                       borderRadius: 6,
                       padding: '10px 0',
                       fontSize: 13,
                       fontWeight: 700,
-                      cursor: selectedFeatureIds.size > 0 ? 'pointer' : 'not-allowed',
+                      cursor: selectedRuleIds.size > 0 ? 'pointer' : 'not-allowed',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       gap: 8,
-                      boxShadow: selectedFeatureIds.size > 0 ? '0 4px 14px rgba(2, 132, 199, 0.4)' : 'none',
+                      boxShadow: selectedRuleIds.size > 0 ? '0 4px 14px rgba(2, 132, 199, 0.4)' : 'none',
                     }}
                   >
                     {isRenderingDrawing ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
-                    <span>{isRenderingDrawing ? '正在產出客製工程圖...' : `🚀 產出新版標註圖紙 (${selectedFeatureIds.size} 特徵)`}</span>
+                    <span>{isRenderingDrawing ? '正在產出客製工程圖...' : `🚀 產出新版標註圖紙 (${selectedRuleIds.size} 規則)`}</span>
                   </button>
                 </div>
               </div>
