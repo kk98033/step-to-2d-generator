@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, File, Folder, FolderOpen, Loader2, CheckCircle, ChevronRight, ChevronDown, AlertTriangle, BookOpen, ArrowLeft, Home, ZoomIn, ZoomOut } from 'lucide-react';
+import { 
+  FileText, File, Folder, FolderOpen, Loader2, CheckCircle, 
+  ChevronRight, ChevronDown, AlertTriangle, BookOpen, ArrowLeft, 
+  Home, ZoomIn, ZoomOut, CheckSquare, Square, 
+  Layers, Sparkles
+} from 'lucide-react';
 import axios from 'axios';
 import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { OrbitControls, Html } from '@react-three/drei';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import * as THREE from 'three';
 
@@ -12,6 +17,265 @@ interface TreeNode {
   name: string;
   type: string;
   children: { [key: string]: TreeNode };
+}
+
+// --- Single Part 3D Viewer with 3D Feature Annotations ---
+function SinglePartViewerWithFeatures({ 
+  stlUrl, 
+  featureRecords, 
+  selectedFeatureIds, 
+  hoveredFeatureId, 
+  focusedFeatureId,
+  onHoverFeature, 
+  onSelectFeature 
+}: {
+  stlUrl: string;
+  featureRecords: any[];
+  selectedFeatureIds: Set<string>;
+  hoveredFeatureId: string | null;
+  focusedFeatureId?: string | null;
+  onHoverFeature: (id: string | null) => void;
+  onSelectFeature: (id: string) => void;
+}) {
+  const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
+  const [modelCenter, setModelCenter] = useState<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { camera } = useThree();
+
+  useEffect(() => {
+    if (!stlUrl) return;
+    setLoading(true);
+    setError(null);
+    setGeometry(null);
+
+    const loader = new STLLoader();
+    loader.load(
+      stlUrl,
+      (geom: any) => {
+        geom.computeVertexNormals();
+        geom.computeBoundingBox();
+        geom.computeBoundingSphere();
+
+        const center = new THREE.Vector3();
+        geom.boundingBox!.getCenter(center);
+        setModelCenter(center.clone());
+        geom.translate(-center.x, -center.y, -center.z);
+
+        const sphere = geom.boundingSphere!;
+        const radius = sphere.radius;
+        const dist = radius * 2.8;
+        (camera as THREE.PerspectiveCamera).position.set(dist, dist * 0.8, dist);
+        (camera as THREE.PerspectiveCamera).near = 0.01;
+        (camera as THREE.PerspectiveCamera).far = radius * 100;
+        (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+
+        setGeometry(geom);
+        setLoading(false);
+      },
+      undefined,
+      (err: any) => {
+        console.error('STL load error:', err);
+        setError('無法載入 3D 模型');
+        setLoading(false);
+      }
+    );
+
+    return () => {
+      if (geometry) geometry.dispose();
+    };
+  }, [stlUrl]);
+
+  if (loading) return null;
+  if (error || !geometry) return null;
+
+  return (
+    <group>
+      {/* 3D Model Mesh */}
+      <mesh geometry={geometry}>
+        <meshPhongMaterial
+          color="#38bdf8"
+          emissive="#082f49"
+          specular="#bae6fd"
+          shininess={60}
+          flatShading={false}
+          side={THREE.DoubleSide}
+          transparent={true}
+          opacity={0.88}
+        />
+      </mesh>
+
+      {/* Wireframe Substructure */}
+      <mesh geometry={geometry}>
+        <meshBasicMaterial
+          color="#0284c7"
+          wireframe={true}
+          transparent={true}
+          opacity={0.15}
+        />
+      </mesh>
+
+      {/* 3D Features Pins & Annotations & 3D Bounding Boxes */}
+      {featureRecords.map((feat, idx) => {
+        if (!selectedFeatureIds.has(feat.id)) return null;
+
+        const geom = feat.geometry || {};
+        let rawPos: [number, number, number] | null = null;
+        let rawSize: [number, number, number] = [2.0, 1.5, 2.0];
+
+        if (Array.isArray(geom.center) && geom.center.length >= 3) {
+          rawPos = [geom.center[0], geom.center[1], geom.center[2]];
+        } else if (Array.isArray(geom.point) && geom.point.length >= 3) {
+          rawPos = [geom.point[0], geom.point[1], geom.point[2]];
+        } else if (geom.kind === 'cone' && Array.isArray(geom.center)) {
+          rawPos = [geom.center[0], geom.center[1], geom.center[2]];
+        } else if (geom.kind === 'fillet' && Array.isArray(geom.mid_point)) {
+          rawPos = [geom.mid_point[0], geom.mid_point[1], geom.mid_point[2]];
+        } else if (typeof geom.position === 'number') {
+          // Axis position along Y
+          rawPos = [0, geom.position, 0];
+        }
+
+        if (Array.isArray(geom.size) && geom.size.length >= 3) {
+          rawSize = [
+            Math.max(0.3, Number(geom.size[0]) || 2.0),
+            Math.max(0.2, Number(geom.size[1]) || 1.5),
+            Math.max(0.3, Number(geom.size[2]) || 2.0),
+          ];
+        } else if (typeof geom.diameter === 'number') {
+          const d = geom.diameter;
+          const l = geom.length || geom.width || geom.height || 1.0;
+          rawSize = [d, Math.max(0.3, l), d];
+        } else if (geom.size && typeof geom.size === 'object') {
+          rawSize = [
+            Math.max(0.3, geom.size.W || 2.0),
+            Math.max(0.2, geom.size.H || 2.0),
+            Math.max(0.3, geom.size.D || 2.0),
+          ];
+        }
+
+        if (!rawPos) return null;
+
+        const pos: [number, number, number] = [
+          rawPos[0] - modelCenter.x,
+          rawPos[1] - modelCenter.y,
+          rawPos[2] - modelCenter.z,
+        ];
+
+        const isHovered = hoveredFeatureId === feat.id || focusedFeatureId === feat.id;
+        const tag = feat.id || `F${idx + 1}`;
+        const fType = (feat.type || '').toLowerCase();
+
+        let tagBg = '#0284c7';
+        if (fType.includes('journal') || fType.includes('shaft')) tagBg = '#2563eb';
+        else if (fType.includes('groove') || fType.includes('slot')) tagBg = '#9333ea';
+        else if (fType.includes('cone') || fType.includes('chamfer')) tagBg = '#d97706';
+        else if (fType.includes('step')) tagBg = '#ea580c';
+        else if (fType.includes('fillet')) tagBg = '#db2777';
+        else if (fType.includes('hole')) tagBg = '#059669';
+        else if (fType.includes('datum')) tagBg = '#4f46e5';
+
+        const boxColor = isHovered ? '#fbbf24' : tagBg;
+
+        return (
+          <group key={feat.id || idx} position={pos}>
+            {/* 3D Wireframe Bounding Box (3D 框框) */}
+            <mesh
+              onPointerOver={(e) => { e.stopPropagation(); onHoverFeature(feat.id); }}
+              onPointerOut={(e) => { e.stopPropagation(); onHoverFeature(null); }}
+              onClick={(e) => { e.stopPropagation(); onSelectFeature(feat.id); }}
+            >
+              <boxGeometry args={[rawSize[0] * 1.08, rawSize[1] * 1.04, rawSize[2] * 1.08]} />
+              <meshBasicMaterial
+                color={boxColor}
+                wireframe={true}
+                transparent={true}
+                opacity={isHovered ? 1.0 : 0.75}
+              />
+            </mesh>
+
+            {/* 3D Semi-Transparent Shaded Volumetric Zone */}
+            <mesh
+              onPointerOver={(e) => { e.stopPropagation(); onHoverFeature(feat.id); }}
+              onPointerOut={(e) => { e.stopPropagation(); onHoverFeature(null); }}
+              onClick={(e) => { e.stopPropagation(); onSelectFeature(feat.id); }}
+            >
+              <boxGeometry args={[rawSize[0], rawSize[1], rawSize[2]]} />
+              <meshStandardMaterial
+                color={boxColor}
+                emissive={boxColor}
+                emissiveIntensity={isHovered ? 0.9 : 0.35}
+                transparent={true}
+                opacity={isHovered ? 0.55 : 0.25}
+                roughness={0.2}
+                depthWrite={false}
+              />
+            </mesh>
+
+            {/* Glowing 3D Center Marker Pin */}
+            <mesh position={[0, rawSize[1] / 2 + 0.1, 0]}>
+              <sphereGeometry args={[isHovered ? 0.3 : 0.18, 16, 16]} />
+              <meshStandardMaterial
+                color={boxColor}
+                emissive={boxColor}
+                emissiveIntensity={isHovered ? 1.8 : 0.9}
+                roughness={0.2}
+              />
+            </mesh>
+
+            {/* 3D Floating HTML Label Pin */}
+            <Html
+              position={[0, rawSize[1] / 2 + 0.5, 0]}
+              center
+              distanceFactor={22}
+              style={{
+                pointerEvents: 'auto',
+                cursor: 'pointer',
+                userSelect: 'none',
+                transition: 'all 0.15s ease',
+                transform: isHovered ? 'scale(1.18)' : 'scale(1.0)',
+              }}
+            >
+              <div
+                onMouseEnter={() => onHoverFeature(feat.id)}
+                onMouseLeave={() => onHoverFeature(null)}
+                onClick={() => onSelectFeature(feat.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  background: isHovered ? 'rgba(15, 23, 42, 0.98)' : 'rgba(15, 23, 42, 0.88)',
+                  border: `1.5px solid ${boxColor}`,
+                  borderRadius: 6,
+                  padding: '3px 8px',
+                  color: '#fff',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                  boxShadow: isHovered ? '0 0 18px rgba(251, 191, 36, 0.7)' : '0 2px 8px rgba(0,0,0,0.5)',
+                  backdropFilter: 'blur(4px)',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 9,
+                    padding: '1px 5px',
+                    borderRadius: 3,
+                    background: boxColor,
+                    color: isHovered ? '#000' : '#fff',
+                    fontWeight: 700,
+                  }}
+                >
+                  {tag}
+                </span>
+                <span>{feat.name}</span>
+              </div>
+            </Html>
+          </group>
+        );
+      })}
+    </group>
+  );
 }
 
 // --- Single Part 3D Viewer (loads one STL at a time, imperatively) ---
@@ -333,6 +597,11 @@ function App() {
   const [zoom, setZoom] = useState(1);
   const [showFeatureLayer, setShowFeatureLayer] = useState(false);
   const [featureRecords, setFeatureRecords] = useState<any[]>([]);
+  const [selectedFeatureIds, setSelectedFeatureIds] = useState<Set<string>>(new Set());
+  const [hoveredFeatureId, setHoveredFeatureId] = useState<string | null>(null);
+  const [focusedFeatureId, setFocusedFeatureId] = useState<string | null>(null);
+  const [featureFilter, setFeatureFilter] = useState<string>('ALL');
+  const [featureSearch, setFeatureSearch] = useState<string>('');
 
   // --- Tree Diff State ---
   const [diffedTreeOld, setDiffedTreeOld] = useState<any>(null);
@@ -376,18 +645,57 @@ function App() {
   useEffect(() => {
     setShowFeatureLayer(false);
     setFeatureRecords([]);
+    setSelectedFeatureIds(new Set());
 
     const partsMapForFeatures: Record<string, any> = results?.parts_map || {};
     const selectedData = selectedPart ? partsMapForFeatures[selectedPart] : null;
     if (!selectedData?.features_json) return;
 
-    axios.get(`${API_BASE}${selectedData.features_json}`)
-      .then(res => setFeatureRecords(Array.isArray(res.data) ? res.data : []))
+    axios.get(`${API_BASE}${selectedData.features_json}?t=${Date.now()}`)
+      .then(res => {
+        const records = Array.isArray(res.data) ? res.data : [];
+        setFeatureRecords(records);
+        setSelectedFeatureIds(new Set(records.map((r: any) => r.id)));
+      })
       .catch(err => {
         console.error('Feature records load error:', err);
         setFeatureRecords([]);
+        setSelectedFeatureIds(new Set());
       });
   }, [results, selectedPart]);
+
+  const toggleFeature = (id: string) => {
+    setSelectedFeatureIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllFeatures = (ids?: string[]) => {
+    if (ids && ids.length > 0) {
+      setSelectedFeatureIds(prev => {
+        const next = new Set(prev);
+        ids.forEach(i => next.add(i));
+        return next;
+      });
+    } else {
+      setSelectedFeatureIds(new Set(featureRecords.map(f => f.id)));
+    }
+  };
+
+  const deselectAllFeatures = (ids?: string[]) => {
+    if (ids && ids.length > 0) {
+      setSelectedFeatureIds(prev => {
+        const next = new Set(prev);
+        ids.forEach(i => next.delete(i));
+        return next;
+      });
+    } else {
+      setSelectedFeatureIds(new Set());
+    }
+  };
 
   // Loading dots
   const [dots, setDots] = useState('');
@@ -1067,16 +1375,28 @@ function App() {
           onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#262626'; }}
         />
 
-        {/* Center Panel: 2D Viewer */}
+        {/* Center Panel: 2D Viewer OR 3D Feature Space */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0A0A0A', borderRight: '1px solid #262626' }}>
           <div style={{ height: 40, borderBottom: '1px solid #262626', background: '#171717', display: 'flex', alignItems: 'center', padding: '0 16px', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 13, fontWeight: 500 }}>2D 工程圖</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {showFeatureLayer ? (
+                <>
+                  <Sparkles size={16} color="#38bdf8" />
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#38bdf8' }}>3D 空間特徵標註 (3D Feature Space)</span>
+                </>
+              ) : (
+                <span style={{ fontSize: 13, fontWeight: 500 }}>2D 工程圖</span>
+              )}
+            </div>
             <div style={{ display: 'flex', gap: 8 }}>
               {currentDrawingUrl && (
                 <button onClick={() => setShowFeatureLayer(false)} style={{ fontSize: 12, padding: '2px 8px', background: !showFeatureLayer ? '#3B82F6' : '#333', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer' }}>合圖</button>
               )}
               {featureLayerUrl && (
-                <button onClick={() => setShowFeatureLayer(true)} style={{ fontSize: 12, padding: '2px 8px', background: showFeatureLayer ? '#06b6d4' : '#333', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer' }}>特徵圖層</button>
+                <button onClick={() => setShowFeatureLayer(true)} style={{ fontSize: 12, padding: '2px 8px', background: showFeatureLayer ? '#06b6d4' : '#333', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Layers size={13} />
+                  <span>特徵圖層 (3D)</span>
+                </button>
               )}
               {frontViewUrl && (
                 <a href={`${API_BASE}${frontViewUrl}?t=${Date.now()}`} target="_blank" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>前視圖</a>
@@ -1095,68 +1415,319 @@ function App() {
               )}
             </div>
           </div>
-          <div style={{ flex: 1, display: 'flex', background: '#111', position: 'relative' }}>
-            {activeDrawingUrl ? (
-              <iframe
-                src={`${API_BASE}${activeDrawingUrl}?t=${Date.now()}#view=FitH`}
-                title="2D Drawing"
-                style={{ width: '100%', height: '100%', border: 'none' }}
-              />
-            ) : (
-              <div style={{ color: '#555', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <File size={48} style={{ marginBottom: 16, opacity: 0.2 }} />
-                <span>從左側選擇零件查看工程圖</span>
-              </div>
-            )}
-            {showFeatureLayer && featureRecords.length > 0 && (
-              <div style={{ position: 'absolute', top: 12, right: 12, width: 320, maxHeight: '70%', overflowY: 'auto', background: 'rgba(10,10,10,0.88)', border: '1px solid #164e63', borderRadius: 6, padding: 10, color: '#d1f7ff', fontSize: 11, lineHeight: 1.45 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: '#67e8f9' }}>特徵清單</div>
-                {featureRecords.slice(0, 24).map((feature, idx) => (
-                  <div key={feature.id || idx} style={{ padding: '6px 0', borderTop: idx === 0 ? 'none' : '1px solid rgba(103,232,249,0.18)' }}>
-                    <div style={{ fontWeight: 700 }}>{feature.id || `F${idx + 1}`} · {feature.name}</div>
-                    <div style={{ color: '#9ca3af' }}>{feature.type} / {feature.role} / {feature.tolerance_key}</div>
-                    {feature.nominal && (
-                      <div style={{ color: '#cbd5e1' }}>{JSON.stringify(feature.nominal)}</div>
-                    )}
+
+          <div style={{ flex: 1, display: 'flex', background: '#0f172a', position: 'relative' }}>
+            {showFeatureLayer ? (
+              currentStlUrl ? (
+                <div style={{ flex: 1, position: 'relative', cursor: 'grab' }}>
+                  <Canvas
+                    key={`feature-3d-${currentStlUrl}`}
+                    camera={{ position: [40, 40, 40], fov: 45, near: 0.01, far: 100000 }}
+                    gl={{ antialias: true, powerPreference: 'high-performance' }}
+                    onCreated={({ gl }) => {
+                      gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                    }}
+                  >
+                    <color attach="background" args={["#090d16"]} />
+                    <ambientLight intensity={0.9} />
+                    <directionalLight position={[100, 100, 100]} intensity={1.8} />
+                    <directionalLight position={[-100, -50, -100]} intensity={0.7} />
+                    <pointLight position={[0, 100, 0]} intensity={0.6} />
+                    
+                    <SinglePartViewerWithFeatures
+                      stlUrl={currentStlUrl}
+                      featureRecords={featureRecords}
+                      selectedFeatureIds={selectedFeatureIds}
+                      hoveredFeatureId={hoveredFeatureId}
+                      focusedFeatureId={focusedFeatureId}
+                      onHoverFeature={setHoveredFeatureId}
+                      onSelectFeature={(id) => {
+                        setFocusedFeatureId(id);
+                        toggleFeature(id);
+                      }}
+                    />
+                    
+                    <OrbitControls makeDefault enableDamping dampingFactor={0.1} />
+                    <gridHelper args={[200, 20, '#1e293b', '#0f172a']} />
+                  </Canvas>
+
+                  {/* 3D Navigation Hint */}
+                  <div style={{ position: 'absolute', bottom: 12, left: 12, background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(6px)', border: '1px solid #334155', borderRadius: 6, padding: '4px 10px', color: '#94a3b8', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, pointerEvents: 'none' }}>
+                    <Sparkles size={13} color="#38bdf8" />
+                    <span>左鍵旋轉 | 右鍵平移 | 滾輪縮放 | 點選標籤互動</span>
                   </div>
-                ))}
-              </div>
+                </div>
+              ) : (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', flexDirection: 'column' }}>
+                  <AlertTriangle size={36} style={{ marginBottom: 12, opacity: 0.4 }} />
+                  <span style={{ fontSize: 13 }}>請從左側選擇零件以檢視 3D 特徵</span>
+                </div>
+              )
+            ) : (
+              activeDrawingUrl ? (
+                <iframe
+                  src={`${API_BASE}${activeDrawingUrl}?t=${Date.now()}#view=FitH`}
+                  title="2D Drawing"
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                />
+              ) : (
+                <div style={{ flex: 1, display: 'flex', color: '#555', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                  <File size={48} style={{ marginBottom: 16, opacity: 0.2 }} />
+                  <span>從左側選擇零件查看工程圖</span>
+                </div>
+              )
             )}
           </div>
         </div>
 
-        {/* Right Panel: 3D Viewer */}
-        <div style={{ width: '33%', minWidth: 300, display: 'flex', flexDirection: 'column', background: '#111' }}>
-          <div style={{ height: 40, borderBottom: '1px solid #262626', background: '#171717', display: 'flex', alignItems: 'center', padding: '0 16px', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 13, fontWeight: 500 }}>3D 互動檢視</span>
-            <span style={{ fontSize: 11, color: '#555' }}>選中的零件</span>
-          </div>
-          <div style={{ flex: 1, position: 'relative', cursor: 'move' }}>
-            {currentStlUrl ? (
-              <Canvas
-                key={currentStlUrl}
-                camera={{ position: [50, 50, 50], fov: 50, near: 0.01, far: 100000 }}
-                gl={{ antialias: true, powerPreference: 'high-performance', failIfMajorPerformanceCaveat: false }}
-                onCreated={({ gl }) => {
-                  gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-                }}
-              >
-                <color attach="background" args={["#111111"]} />
-                <ambientLight intensity={0.8} />
-                <directionalLight position={[100, 100, 100]} intensity={1.5} />
-                <directionalLight position={[-100, -50, -100]} intensity={0.5} />
-                <pointLight position={[0, 100, 0]} intensity={0.5} />
-                <SinglePartViewer stlUrl={currentStlUrl} />
-                <OrbitControls makeDefault enableDamping dampingFactor={0.1} />
-                <gridHelper args={[200, 20, '#333333', '#222222']} />
-              </Canvas>
-            ) : (
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', flexDirection: 'column' }}>
-                <AlertTriangle size={32} style={{ marginBottom: 12, opacity: 0.3 }} />
-                <span style={{ fontSize: 13 }}>選擇零件以載入 3D 模型</span>
+        {/* Right Panel: Feature Inspector (in Feature Mode) OR Standard 3D Viewer (in 2D Mode) */}
+        <div style={{ width: showFeatureLayer ? '38%' : '33%', minWidth: 320, display: 'flex', flexDirection: 'column', background: '#111', transition: 'width 0.2s ease' }}>
+          {showFeatureLayer ? (() => {
+            const filtered = featureRecords.filter(f => {
+              const type = (f.type || '').toLowerCase();
+              const role = (f.role || '').toLowerCase();
+              let matchType = true;
+              if (featureFilter === 'hole') matchType = type.includes('hole');
+              else if (featureFilter === 'shaft') matchType = type.includes('shaft') || role.includes('journal') || type.includes('groove');
+              else if (featureFilter === 'groove') matchType = type.includes('groove') || role.includes('groove') || role.includes('relief');
+              else if (featureFilter === 'fillet') matchType = type.includes('fillet') || type.includes('round');
+              else if (featureFilter === 'cone') matchType = type.includes('cone') || type.includes('chamfer') || role.includes('chamfer') || role.includes('pilot');
+              else if (featureFilter === 'step') matchType = type.includes('step') || role.includes('step');
+              else if (featureFilter === 'thickness') matchType = type.includes('thickness') || type.includes('plane') || type.includes('datum');
+              else if (featureFilter === 'pattern') matchType = type.includes('pattern');
+              else if (featureFilter === 'projected') matchType = type.includes('projected');
+              
+              if (!matchType) return false;
+              if (!featureSearch) return true;
+              const q = featureSearch.toLowerCase();
+              return (
+                (f.id && f.id.toLowerCase().includes(q)) ||
+                (f.name && f.name.toLowerCase().includes(q)) ||
+                (f.role && f.role.toLowerCase().includes(q)) ||
+                (f.type && f.type.toLowerCase().includes(q)) ||
+                (f.tolerance_key && f.tolerance_key.toLowerCase().includes(q)) ||
+                (f.nominal && JSON.stringify(f.nominal).toLowerCase().includes(q))
+              );
+            });
+
+            const allFilteredSelected = filtered.length > 0 && filtered.every(f => selectedFeatureIds.has(f.id));
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0b1120' }}>
+                {/* Inspector Header */}
+                <div style={{ height: 44, borderBottom: '1px solid #1e293b', background: '#0f172a', display: 'flex', alignItems: 'center', padding: '0 14px', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#38bdf8' }}>
+                    <Layers size={16} />
+                    <span>3D 特徵管理面板</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 11, background: '#0284c7', color: '#fff', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
+                      {selectedFeatureIds.size} / {featureRecords.length} 顯示
+                    </span>
+                  </div>
+                </div>
+
+                {/* Batch Action Bar (Select All / Deselect All) */}
+                <div style={{ padding: '8px 12px', background: '#0f172a', borderBottom: '1px solid #1e293b', display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      onClick={() => selectAllFeatures(filtered.map(f => f.id))}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        fontSize: 11,
+                        padding: '4px 8px',
+                        borderRadius: 4,
+                        border: '1px solid #0284c7',
+                        background: allFilteredSelected ? '#0284c7' : '#1e293b',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <CheckSquare size={13} />
+                      <span>全選 ({filtered.length})</span>
+                    </button>
+                    <button
+                      onClick={() => deselectAllFeatures(filtered.map(f => f.id))}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        fontSize: 11,
+                        padding: '4px 8px',
+                        borderRadius: 4,
+                        border: '1px solid #475569',
+                        background: '#1e293b',
+                        color: '#cbd5e1',
+                        cursor: 'pointer',
+                        fontWeight: 500,
+                      }}
+                    >
+                      <Square size={13} />
+                      <span>取消全選</span>
+                    </button>
+                  </div>
+                  <span style={{ fontSize: 11, color: '#64748b' }}>
+                    已篩選: {filtered.length} 筆
+                  </span>
+                </div>
+
+                {/* Search Input */}
+                <div style={{ padding: '8px 12px', background: '#0b1120' }}>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="text"
+                      value={featureSearch}
+                      onChange={(e) => setFeatureSearch(e.target.value)}
+                      placeholder="搜尋特徵名稱、ID、直徑、尺寸、卡簧槽..."
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '6px 10px', background: '#0f172a', border: '1px solid #334155', borderRadius: 6, color: '#f8fafc', fontSize: 11 }}
+                    />
+                  </div>
+                </div>
+
+                {/* Category Filter Pills */}
+                <div style={{ padding: '0 12px 8px 12px', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {[
+                    { id: 'ALL', label: '全部' },
+                    { id: 'shaft', label: '軸/配合段' },
+                    { id: 'groove', label: '卡簧/凹槽' },
+                    { id: 'cone', label: '倒角/錐面' },
+                    { id: 'step', label: '階梯/段差' },
+                    { id: 'fillet', label: '圓角' },
+                    { id: 'hole', label: '孔洞' },
+                    { id: 'thickness', label: '壁厚/基準' },
+                    { id: 'pattern', label: '孔群' },
+                    { id: 'projected', label: '2D投影' },
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setFeatureFilter(tab.id)}
+                      style={{
+                        fontSize: 10,
+                        padding: '2px 7px',
+                        borderRadius: 4,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: featureFilter === tab.id ? '#0284c7' : '#1e293b',
+                        color: featureFilter === tab.id ? '#fff' : '#94a3b8',
+                        fontWeight: featureFilter === tab.id ? 700 : 500
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Feature Items Scrollable List */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 12px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {filtered.map((feature, idx) => {
+                    const isSelected = selectedFeatureIds.has(feature.id);
+                    const isHovered = hoveredFeatureId === feature.id;
+                    const fType = (feature.type || '').toLowerCase();
+
+                    let badgeBg = '#334155';
+                    let badgeColor = '#94a3b8';
+                    if (fType.includes('journal') || fType.includes('shaft')) { badgeBg = '#1e3a8a'; badgeColor = '#60a5fa'; }
+                    else if (fType.includes('groove') || fType.includes('slot')) { badgeBg = '#581c87'; badgeColor = '#c084fc'; }
+                    else if (fType.includes('cone') || fType.includes('chamfer')) { badgeBg = '#713f12'; badgeColor = '#facc15'; }
+                    else if (fType.includes('step')) { badgeBg = '#7c2d12'; badgeColor = '#fb923c'; }
+                    else if (fType.includes('fillet')) { badgeBg = '#831843'; badgeColor = '#f472b6'; }
+                    else if (fType.includes('hole')) { badgeBg = '#065f46'; badgeColor = '#34d399'; }
+                    else if (fType.includes('thickness') || fType.includes('plane')) { badgeBg = '#374151'; badgeColor = '#9ca3af'; }
+                    else if (fType.includes('pattern')) { badgeBg = '#4c1d95'; badgeColor = '#e9d5ff'; }
+                    else if (fType.includes('projected')) { badgeBg = '#155e75'; badgeColor = '#22d3ee'; }
+
+                    return (
+                      <div
+                        key={feature.id || idx}
+                        onMouseEnter={() => setHoveredFeatureId(feature.id)}
+                        onMouseLeave={() => setHoveredFeatureId(null)}
+                        style={{
+                          padding: '8px 10px',
+                          background: isHovered ? '#1e293b' : '#0f172a',
+                          borderRadius: 6,
+                          border: `1px solid ${isHovered ? '#38bdf8' : isSelected ? '#1e3a8a' : '#1e293b'}`,
+                          transition: 'all 0.15s ease',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 4,
+                          boxShadow: isHovered ? '0 4px 12px rgba(0,0,0,0.4)' : 'none',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1 }}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleFeature(feature.id)}
+                              style={{ cursor: 'pointer', accentColor: '#0284c7', width: 15, height: 15 }}
+                            />
+                            <span style={{ fontWeight: 700, color: isSelected ? '#f8fafc' : '#64748b', fontSize: 12 }}>
+                              {feature.id || `F${idx + 1}`}
+                            </span>
+                          </label>
+                          <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: badgeBg, color: badgeColor, fontWeight: 600 }}>
+                            {feature.type}
+                          </span>
+                        </div>
+
+                        <div style={{ fontWeight: 600, color: isSelected ? '#38bdf8' : '#94a3b8', fontSize: 12, paddingLeft: 23 }}>
+                          {feature.name}
+                        </div>
+
+                        <div style={{ color: '#64748b', fontSize: 10, display: 'flex', gap: 6, paddingLeft: 23 }}>
+                          <span>角色: {feature.role}</span>
+                          <span>•</span>
+                          <span>公差: {feature.tolerance_key}</span>
+                        </div>
+
+                        {feature.nominal && Object.keys(feature.nominal).length > 0 && (
+                          <div style={{ marginLeft: 23, color: '#94a3b8', fontSize: 10, background: 'rgba(0,0,0,0.4)', padding: '3px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
+                            {Object.entries(feature.nominal).map(([k, v]) => `${k}: ${typeof v === 'number' ? (v as number).toFixed(2) : (typeof v === 'object' ? JSON.stringify(v) : v)}`).join(' | ')}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            )}
-          </div>
+            );
+          })() : (
+            <>
+              <div style={{ height: 40, borderBottom: '1px solid #262626', background: '#171717', display: 'flex', alignItems: 'center', padding: '0 16px', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, fontWeight: 500 }}>3D 互動檢視</span>
+                <span style={{ fontSize: 11, color: '#555' }}>選中的零件</span>
+              </div>
+              <div style={{ flex: 1, position: 'relative', cursor: 'move' }}>
+                {currentStlUrl ? (
+                  <Canvas
+                    key={currentStlUrl}
+                    camera={{ position: [50, 50, 50], fov: 50, near: 0.01, far: 100000 }}
+                    gl={{ antialias: true, powerPreference: 'high-performance', failIfMajorPerformanceCaveat: false }}
+                    onCreated={({ gl }) => {
+                      gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                    }}
+                  >
+                    <color attach="background" args={["#111111"]} />
+                    <ambientLight intensity={0.8} />
+                    <directionalLight position={[100, 100, 100]} intensity={1.5} />
+                    <directionalLight position={[-100, -50, -100]} intensity={0.5} />
+                    <pointLight position={[0, 100, 0]} intensity={0.5} />
+                    <SinglePartViewer stlUrl={currentStlUrl} />
+                    <OrbitControls makeDefault enableDamping dampingFactor={0.1} />
+                    <gridHelper args={[200, 20, '#333333', '#222222']} />
+                  </Canvas>
+                ) : (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', flexDirection: 'column' }}>
+                    <AlertTriangle size={32} style={{ marginBottom: 12, opacity: 0.3 }} />
+                    <span style={{ fontSize: 13 }}>選擇零件以載入 3D 模型</span>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
       </div>

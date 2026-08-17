@@ -5,6 +5,10 @@ __pycache__/
 pyoccenv/
 pyoccenv.zip
 *.zip
+DLLs/
+Lib/
+Library/
+LICENSE_PYTHON.txt
 
 # === Frontend (React/Vite) ===
 node_modules/
