@@ -26,22 +26,53 @@ function SinglePartViewerWithFeatures({
   selectedFeatureIds, 
   hoveredFeatureId, 
   focusedFeatureId,
+  viewMode,
   onHoverFeature, 
-  onSelectFeature 
+  onSelectFeature,
+  onModelLoaded,
 }: {
   stlUrl: string;
   featureRecords: any[];
   selectedFeatureIds: Set<string>;
   hoveredFeatureId: string | null;
   focusedFeatureId?: string | null;
+  viewMode?: { type: string; ts: number } | null;
   onHoverFeature: (id: string | null) => void;
   onSelectFeature: (id: string) => void;
+  onModelLoaded?: (radius: number) => void;
 }) {
   const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
   const [modelCenter, setModelCenter] = useState<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
+  const [modelRadius, setModelRadius] = useState<number>(20);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { camera } = useThree();
+  const { camera, controls } = useThree();
+
+  const applyView = (type: string, radius: number) => {
+    const r = Math.max(1.0, radius);
+    const dist = r * 2.2;
+    const target = new THREE.Vector3(0, 0, 0);
+
+    if (type === 'front') {
+      camera.position.set(0, 0, dist * 1.5);
+    } else if (type === 'top') {
+      camera.position.set(0, dist * 1.5, 0.0001);
+    } else if (type === 'right') {
+      camera.position.set(dist * 1.5, 0, 0);
+    } else if (type === 'iso' || type === 'fit') {
+      camera.position.set(dist, dist * 0.75, dist);
+    }
+
+    (camera as THREE.PerspectiveCamera).near = Math.max(0.001, r * 0.01);
+    (camera as THREE.PerspectiveCamera).far = Math.max(1000, r * 200);
+    camera.lookAt(target);
+    camera.updateProjectionMatrix();
+
+    if (controls) {
+      (controls as any).target.copy(target);
+      (controls as any).update();
+    }
+  };
 
   useEffect(() => {
     if (!stlUrl) return;
@@ -63,12 +94,11 @@ function SinglePartViewerWithFeatures({
         geom.translate(-center.x, -center.y, -center.z);
 
         const sphere = geom.boundingSphere!;
-        const radius = sphere.radius;
-        const dist = radius * 2.8;
-        (camera as THREE.PerspectiveCamera).position.set(dist, dist * 0.8, dist);
-        (camera as THREE.PerspectiveCamera).near = 0.01;
-        (camera as THREE.PerspectiveCamera).far = radius * 100;
-        (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+        const radius = Math.max(1.0, sphere.radius);
+        setModelRadius(radius);
+        if (onModelLoaded) onModelLoaded(radius);
+
+        applyView('iso', radius);
 
         setGeometry(geom);
         setLoading(false);
@@ -85,6 +115,12 @@ function SinglePartViewerWithFeatures({
       if (geometry) geometry.dispose();
     };
   }, [stlUrl]);
+
+  useEffect(() => {
+    if (viewMode && modelRadius && geometry) {
+      applyView(viewMode.type, modelRadius);
+    }
+  }, [viewMode]);
 
   if (loading) return null;
   if (error || !geometry) return null;
@@ -602,6 +638,8 @@ function App() {
   const [focusedFeatureId, setFocusedFeatureId] = useState<string | null>(null);
   const [featureFilter, setFeatureFilter] = useState<string>('ALL');
   const [featureSearch, setFeatureSearch] = useState<string>('');
+  const [feature3DViewMode, setFeature3DViewMode] = useState<{ type: string; ts: number } | null>(null);
+  const [feature3DModelRadius, setFeature3DModelRadius] = useState<number>(20);
 
   // --- Tree Diff State ---
   const [diffedTreeOld, setDiffedTreeOld] = useState<any>(null);
@@ -1440,16 +1478,50 @@ function App() {
                       selectedFeatureIds={selectedFeatureIds}
                       hoveredFeatureId={hoveredFeatureId}
                       focusedFeatureId={focusedFeatureId}
+                      viewMode={feature3DViewMode}
                       onHoverFeature={setHoveredFeatureId}
                       onSelectFeature={(id) => {
                         setFocusedFeatureId(id);
                         toggleFeature(id);
                       }}
+                      onModelLoaded={setFeature3DModelRadius}
                     />
                     
                     <OrbitControls makeDefault enableDamping dampingFactor={0.1} />
-                    <gridHelper args={[200, 20, '#1e293b', '#0f172a']} />
+                    <gridHelper args={[Math.max(20, Math.ceil(feature3DModelRadius * 2.5)), 20, '#1e293b', '#0f172a']} />
                   </Canvas>
+
+                  {/* 3D Quick View Toolbar (等角 / 正視 / 俯視 / 側視 / 自動適配) */}
+                  <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 6, zIndex: 10 }}>
+                    {[
+                      { key: 'iso', label: '等角 ISO' },
+                      { key: 'top', label: '俯視 Top' },
+                      { key: 'front', label: '正視 Front' },
+                      { key: 'right', label: '側視 Right' },
+                      { key: 'fit', label: '自適應置中 Fit' },
+                    ].map(v => (
+                      <button
+                        key={v.key}
+                        onClick={() => setFeature3DViewMode({ type: v.key, ts: Date.now() })}
+                        style={{
+                          background: 'rgba(15, 23, 42, 0.85)',
+                          backdropFilter: 'blur(6px)',
+                          border: '1px solid #334155',
+                          borderRadius: 6,
+                          padding: '4px 9px',
+                          color: '#cbd5e1',
+                          fontSize: 11,
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = '#0284c7'; e.currentTarget.style.color = '#fff'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(15, 23, 42, 0.85)'; e.currentTarget.style.color = '#cbd5e1'; }}
+                      >
+                        {v.label}
+                      </button>
+                    ))}
+                  </div>
 
                   {/* 3D Navigation Hint */}
                   <div style={{ position: 'absolute', bottom: 12, left: 12, background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(6px)', border: '1px solid #334155', borderRadius: 6, padding: '4px 10px', color: '#94a3b8', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, pointerEvents: 'none' }}>
