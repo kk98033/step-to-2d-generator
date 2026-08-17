@@ -266,6 +266,7 @@ def render_custom_annotation_drawing(body: Dict[str, Any] = Body(...)):
             "status": "ok",
             "dxf_url": _api_file_url(model_id, "_custom_annotations", part_id, f"{part_id}_custom.dxf"),
             "pdf_url": _api_file_url(model_id, "_custom_annotations", part_id, f"{part_id}_custom.pdf"),
+            "svg_url": _api_file_url(model_id, "_custom_annotations", part_id, f"{part_id}_custom.svg"),
             "png_url": _api_file_url(model_id, "_custom_annotations", part_id, f"{part_id}_custom.png"),
             "timestamp": uuid.uuid4().hex[:8]
         }

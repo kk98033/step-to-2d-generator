@@ -658,6 +658,7 @@ function App() {
   const [customDrawingResult, setCustomDrawingResult] = useState<{
     dxf_url?: string;
     pdf_url?: string;
+    svg_url?: string;
     png_url?: string;
     timestamp?: string;
   } | null>(null);
@@ -918,6 +919,7 @@ function App() {
         setCustomDrawingResult({
           dxf_url: res.data.dxf_url,
           pdf_url: res.data.pdf_url,
+          svg_url: res.data.svg_url,
           png_url: res.data.png_url,
           timestamp: res.data.timestamp
         });
@@ -1812,7 +1814,7 @@ function App() {
                       )}
                       {customDrawingResult.pdf_url && (
                         <a
-                          href={`${API_BASE}${customDrawingResult.pdf_url}`}
+                          href={`${API_BASE}${customDrawingResult.pdf_url}?t=${customDrawingResult.timestamp || Date.now()}`}
                           target="_blank"
                           rel="noreferrer"
                           style={{
@@ -1830,6 +1832,28 @@ function App() {
                         >
                           <FileText size={13} />
                           <span>檢視 PDF</span>
+                        </a>
+                      )}
+                      {customDrawingResult.svg_url && (
+                        <a
+                          href={`${API_BASE}${customDrawingResult.svg_url}?t=${customDrawingResult.timestamp || Date.now()}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            fontSize: 11,
+                            padding: '4px 10px',
+                            background: '#0d9488',
+                            color: '#fff',
+                            borderRadius: 4,
+                            textDecoration: 'none',
+                            fontWeight: 600,
+                          }}
+                        >
+                          <Layers size={13} />
+                          <span>檢視 SVG</span>
                         </a>
                       )}
                     </div>
