@@ -3,7 +3,7 @@ import {
   FileText, File, Folder, FolderOpen, Loader2, CheckCircle, 
   ChevronRight, ChevronDown, AlertTriangle, BookOpen, ArrowLeft, 
   Home, ZoomIn, ZoomOut, CheckSquare, Square, 
-  Layers, Sparkles
+  Layers, Sparkles, Wand2, Download, Save, Trash2
 } from 'lucide-react';
 import axios from 'axios';
 import { Canvas, useThree } from '@react-three/fiber';
@@ -644,9 +644,49 @@ function App() {
   const [feature3DViewMode, setFeature3DViewMode] = useState<{ type: string; ts: number } | null>(null);
   const [feature3DModelRadius, setFeature3DModelRadius] = useState<number>(20);
 
+  // --- Smart Annotation Studio State ---
+  const [viewTab, setViewTab] = useState<'main' | 'features3d' | 'smart_annotation'>('main');
+  const [annotationTemplates, setAnnotationTemplates] = useState<any[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('general_mechanical_preset');
+  const [annotationConfig, setAnnotationConfig] = useState<Record<string, {
+    enabled?: boolean;
+    preferred_view?: string;
+    tolerance?: string;
+    side?: string;
+    baseline?: string;
+  }>>({});
+  const [customDrawingResult, setCustomDrawingResult] = useState<{
+    dxf_url?: string;
+    pdf_url?: string;
+    png_url?: string;
+    timestamp?: string;
+  } | null>(null);
+  const [isRenderingDrawing, setIsRenderingDrawing] = useState(false);
+  const [saveTemplateModalOpen, setSaveTemplateModalOpen] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const [newTemplateDesc, setNewTemplateDesc] = useState('');
+  const [annotationZoom, setAnnotationZoom] = useState(1);
+
   // --- Tree Diff State ---
   const [diffedTreeOld, setDiffedTreeOld] = useState<any>(null);
   const [diffedTreeNew, setDiffedTreeNew] = useState<any>(null);
+
+  useEffect(() => {
+    axios.get(`${API_BASE}/api/annotation/templates`)
+      .then(res => {
+        if (Array.isArray(res.data?.templates)) {
+          setAnnotationTemplates(res.data.templates);
+          if (res.data.templates.length > 0) {
+            setSelectedTemplateId(res.data.templates[0].id);
+          }
+        }
+      })
+      .catch(err => console.error('Failed to load annotation templates:', err));
+  }, []);
+
+  useEffect(() => {
+    setCustomDrawingResult(null);
+  }, [selectedPart]);
 
   useEffect(() => {
     if (results?.tree_old && results?.tree_new) {
@@ -786,6 +826,159 @@ function App() {
       });
     } else {
       setSelectedFeatureIds(new Set());
+    }
+  };
+
+  const updateFeatureConfig = (id: string, updates: Partial<{
+    enabled: boolean;
+    preferred_view: string;
+    tolerance: string;
+    side: string;
+    baseline: string;
+  }>) => {
+    setAnnotationConfig(prev => ({
+      ...prev,
+      [id]: {
+        ...(prev[id] || {}),
+        ...updates
+      }
+    }));
+    if (updates.enabled !== undefined) {
+      setSelectedFeatureIds(prev => {
+        const next = new Set(prev);
+        if (updates.enabled) next.add(id);
+        else next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  const handleApplyTemplate = (templateId: string) => {
+    if (!templateId || featureRecords.length === 0) return;
+    axios.post(`${API_BASE}/api/annotation/apply-template`, {
+      template_id: templateId,
+      feature_records: featureRecords
+    })
+      .then(res => {
+        if (res.data?.records) {
+          const updated = res.data.records;
+          setFeatureRecords(updated);
+          const newConfig: Record<string, any> = {};
+          const newSelectedIds = new Set<string>();
+          updated.forEach((r: any) => {
+            newConfig[r.id] = {
+              enabled: !!r.enabled,
+              preferred_view: r.preferred_view || 'front',
+              tolerance: r.tolerance || '',
+              side: r.side || 'BOTTOM',
+              baseline: r.baseline || 'NONE'
+            };
+            if (r.enabled) newSelectedIds.add(r.id);
+          });
+          setAnnotationConfig(newConfig);
+          setSelectedFeatureIds(newSelectedIds);
+        }
+      })
+      .catch(err => console.error('Error applying template:', err));
+  };
+
+  const handleRenderCustomDrawing = async () => {
+    const modelId = results?.model_id || results?.output_dir || jobId;
+    if (!modelId || !selectedPart) {
+      alert('請先從左側選擇零件！');
+      return;
+    }
+
+    setIsRenderingDrawing(true);
+    try {
+      const payloadRecords = featureRecords.map(f => {
+        const cfg = annotationConfig[f.id] || {};
+        return {
+          ...f,
+          enabled: selectedFeatureIds.has(f.id) || !!cfg.enabled,
+          preferred_view: cfg.preferred_view || f.preferred_view || 'front',
+          tolerance: cfg.tolerance !== undefined ? cfg.tolerance : (f.tolerance || ''),
+          side: cfg.side || f.side || 'BOTTOM',
+          baseline: cfg.baseline || f.baseline || 'NONE'
+        };
+      });
+
+      const res = await axios.post(`${API_BASE}/api/annotation/render`, {
+        model_id: modelId,
+        part_id: selectedPart,
+        feature_records: payloadRecords,
+        title_info: {
+          part_name: `${selectedPart} (SMART ANNOTATED)`,
+          drawing_no: `DWG-${selectedPart}-001`,
+          model_code: modelId
+        }
+      });
+
+      if (res.data?.status === 'ok') {
+        setCustomDrawingResult({
+          dxf_url: res.data.dxf_url,
+          pdf_url: res.data.pdf_url,
+          png_url: res.data.png_url,
+          timestamp: res.data.timestamp
+        });
+      }
+    } catch (err: any) {
+      console.error('Render custom drawing error:', err);
+      alert(`生成工程圖失敗: ${err?.response?.data?.detail || err.message}`);
+    } finally {
+      setIsRenderingDrawing(false);
+    }
+  };
+
+  const handleSaveNewTemplate = async () => {
+    if (!newTemplateName.trim()) return;
+
+    const rules: any[] = [];
+    featureRecords.forEach(f => {
+      if (selectedFeatureIds.has(f.id)) {
+        const cfg = annotationConfig[f.id] || {};
+        rules.push({
+          feature_type: f.type,
+          role_pattern: f.role ? `^${f.role}$` : undefined,
+          enabled: true,
+          preferred_view: cfg.preferred_view || f.preferred_view || 'front',
+          tolerance: cfg.tolerance || '',
+          side: cfg.side || f.side || 'BOTTOM',
+          baseline: cfg.baseline || 'NONE',
+          rank: 1
+        });
+      }
+    });
+
+    try {
+      const res = await axios.post(`${API_BASE}/api/annotation/templates`, {
+        name: newTemplateName.trim(),
+        description: newTemplateDesc.trim() || `自訂標註樣板 (${new Date().toLocaleDateString()})`,
+        target_type: 'CUSTOM',
+        rules: rules
+      });
+
+      if (res.data?.template) {
+        setAnnotationTemplates(prev => [...prev, res.data.template]);
+        setSelectedTemplateId(res.data.template.id);
+        setSaveTemplateModalOpen(false);
+        setNewTemplateName('');
+        setNewTemplateDesc('');
+        alert(`樣板「${res.data.template.name}」已儲存！`);
+      }
+    } catch (err: any) {
+      alert(`儲存樣板失敗: ${err.message}`);
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId: string) => {
+    if (!confirm('確定要刪除此樣板嗎？')) return;
+    try {
+      await axios.delete(`${API_BASE}/api/annotation/templates/${templateId}`);
+      setAnnotationTemplates(prev => prev.filter(t => t.id !== templateId));
+      setSelectedTemplateId('general_mechanical_preset');
+    } catch (err: any) {
+      alert(`刪除樣板失敗: ${err?.response?.data?.detail || err.message}`);
     }
   };
 
@@ -1467,11 +1660,18 @@ function App() {
           onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#262626'; }}
         />
 
-        {/* Center Panel: 2D Viewer OR 3D Feature Space */}
+        {/* Center Panel: 2D Viewer OR 3D Feature Space OR Smart Annotation Studio */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0A0A0A', borderRight: '1px solid #262626' }}>
-          <div style={{ height: 40, borderBottom: '1px solid #262626', background: '#171717', display: 'flex', alignItems: 'center', padding: '0 16px', justifyContent: 'space-between' }}>
+          <div style={{ height: 44, borderBottom: '1px solid #262626', background: '#171717', display: 'flex', alignItems: 'center', padding: '0 16px', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {showFeatureLayer ? (
+              {viewTab === 'smart_annotation' ? (
+                <>
+                  <Wand2 size={16} color="#c084fc" />
+                  <span style={{ fontSize: 13, fontWeight: 700, background: 'linear-gradient(90deg, #c084fc, #38bdf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                    ✨ 智慧特徵標註工作室 (Smart Annotation Studio)
+                  </span>
+                </>
+              ) : viewTab === 'features3d' ? (
                 <>
                   <Sparkles size={16} color="#38bdf8" />
                   <span style={{ fontSize: 13, fontWeight: 700, color: '#38bdf8' }}>3D 空間特徵標註 (3D Feature Space)</span>
@@ -1480,36 +1680,296 @@ function App() {
                 <span style={{ fontSize: 13, fontWeight: 500 }}>2D 工程圖</span>
               )}
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {currentDrawingUrl && (
-                <button onClick={() => setShowFeatureLayer(false)} style={{ fontSize: 12, padding: '2px 8px', background: !showFeatureLayer ? '#3B82F6' : '#333', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer' }}>合圖</button>
+                <button
+                  onClick={() => { setViewTab('main'); setShowFeatureLayer(false); }}
+                  style={{
+                    fontSize: 12,
+                    padding: '3px 10px',
+                    background: viewTab === 'main' ? '#3B82F6' : '#262626',
+                    border: 'none',
+                    borderRadius: 4,
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontWeight: viewTab === 'main' ? 700 : 500,
+                  }}
+                >
+                  合圖
+                </button>
               )}
               {featureLayerUrl && (
-                <button onClick={() => setShowFeatureLayer(true)} style={{ fontSize: 12, padding: '2px 8px', background: showFeatureLayer ? '#06b6d4' : '#333', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button
+                  onClick={() => { setViewTab('features3d'); setShowFeatureLayer(true); }}
+                  style={{
+                    fontSize: 12,
+                    padding: '3px 10px',
+                    background: viewTab === 'features3d' ? '#06b6d4' : '#262626',
+                    border: 'none',
+                    borderRadius: 4,
+                    color: '#fff',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    fontWeight: viewTab === 'features3d' ? 700 : 500,
+                  }}
+                >
                   <Layers size={13} />
                   <span>特徵圖層 (3D)</span>
                 </button>
               )}
+              {/* ✨ 新版智慧標註獨立分頁按鈕 */}
+              <button
+                onClick={() => { setViewTab('smart_annotation'); setShowFeatureLayer(false); }}
+                style={{
+                  fontSize: 12,
+                  padding: '3px 12px',
+                  background: viewTab === 'smart_annotation'
+                    ? 'linear-gradient(135deg, #7e22ce, #2563eb)'
+                    : '#1e1b4b',
+                  border: `1px solid ${viewTab === 'smart_annotation' ? '#c084fc' : '#4338ca'}`,
+                  borderRadius: 4,
+                  color: '#fff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  fontWeight: 700,
+                  boxShadow: viewTab === 'smart_annotation' ? '0 0 12px rgba(192, 132, 252, 0.4)' : 'none',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <Wand2 size={13} color="#f472b6" />
+                <span>✨ 智慧特徵標註</span>
+              </button>
+
+              <span style={{ width: 1, height: 16, background: '#333', margin: '0 4px' }} />
+
               {frontViewUrl && (
-                <a href={`${API_BASE}${frontViewUrl}?t=${Date.now()}`} target="_blank" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>前視圖</a>
+                <a href={`${API_BASE}${frontViewUrl}?t=${Date.now()}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>前視圖</a>
               )}
               {backViewUrl && (
-                <a href={`${API_BASE}${backViewUrl}?t=${Date.now()}`} target="_blank" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>背面視圖</a>
+                <a href={`${API_BASE}${backViewUrl}?t=${Date.now()}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>背面視圖</a>
               )}
               {topViewUrl && (
-                <a href={`${API_BASE}${topViewUrl}?t=${Date.now()}`} target="_blank" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>俯視圖</a>
+                <a href={`${API_BASE}${topViewUrl}?t=${Date.now()}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>俯視圖</a>
               )}
               {rightViewUrl && (
-                <a href={`${API_BASE}${rightViewUrl}?t=${Date.now()}`} target="_blank" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>右側視圖</a>
+                <a href={`${API_BASE}${rightViewUrl}?t=${Date.now()}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>右側視圖</a>
               )}
               {leftViewUrl && (
-                <a href={`${API_BASE}${leftViewUrl}?t=${Date.now()}`} target="_blank" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>左側視圖</a>
+                <a href={`${API_BASE}${leftViewUrl}?t=${Date.now()}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, padding: '2px 8px', background: '#333', borderRadius: 4, color: '#ccc', textDecoration: 'none' }}>左側視圖</a>
               )}
             </div>
           </div>
 
-          <div style={{ flex: 1, display: 'flex', background: '#0f172a', position: 'relative' }}>
-            {showFeatureLayer ? (
+          {/* Center Main Display Area */}
+          <div style={{ flex: 1, display: 'flex', background: '#0f172a', position: 'relative', overflow: 'hidden' }}>
+            {viewTab === 'smart_annotation' ? (
+              customDrawingResult?.png_url ? (
+                <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', background: '#090d16' }}>
+                  {/* Custom Drawing Action Toolbar */}
+                  <div style={{ padding: '8px 16px', background: '#0f172a', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#38bdf8' }}>
+                        🎯 客製工程圖 ({selectedPart})
+                      </span>
+                      <span style={{ fontSize: 11, background: '#166534', color: '#86efac', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
+                        已套用 {selectedFeatureIds.size} 處特徵標註
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      {/* Zoom Controls */}
+                      <div style={{ display: 'flex', gap: 4, background: '#1e293b', padding: '2px 6px', borderRadius: 6, border: '1px solid #334155' }}>
+                        <button onClick={() => setAnnotationZoom(z => Math.max(0.4, z - 0.2))} style={{ background: 'transparent', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: 4 }}><ZoomOut size={14} /></button>
+                        <span style={{ fontSize: 11, color: '#94a3b8', minWidth: 36, textAlign: 'center', lineHeight: '22px' }}>{Math.round(annotationZoom * 100)}%</span>
+                        <button onClick={() => setAnnotationZoom(z => Math.min(3.0, z + 0.2))} style={{ background: 'transparent', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: 4 }}><ZoomIn size={14} /></button>
+                        <button onClick={() => setAnnotationZoom(1)} style={{ background: 'transparent', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: 10, fontWeight: 700, padding: '0 4px' }}>1x</button>
+                      </div>
+
+                      {/* Download Actions */}
+                      {customDrawingResult.dxf_url && (
+                        <a
+                          href={`${API_BASE}${customDrawingResult.dxf_url}`}
+                          download
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            fontSize: 11,
+                            padding: '4px 10px',
+                            background: '#0284c7',
+                            color: '#fff',
+                            borderRadius: 4,
+                            textDecoration: 'none',
+                            fontWeight: 600,
+                          }}
+                        >
+                          <Download size={13} />
+                          <span>下載 DXF</span>
+                        </a>
+                      )}
+                      {customDrawingResult.pdf_url && (
+                        <a
+                          href={`${API_BASE}${customDrawingResult.pdf_url}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            fontSize: 11,
+                            padding: '4px 10px',
+                            background: '#7c3aed',
+                            color: '#fff',
+                            borderRadius: 4,
+                            textDecoration: 'none',
+                            fontWeight: 600,
+                          }}
+                        >
+                          <FileText size={13} />
+                          <span>檢視 PDF</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* High-Res Drawing Image Viewport */}
+                  <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+                    <img
+                      src={`${API_BASE}${customDrawingResult.png_url}?t=${customDrawingResult.timestamp || Date.now()}`}
+                      alt="Custom Drawing"
+                      style={{
+                        width: `${100 * annotationZoom}%`,
+                        maxWidth: 'none',
+                        maxHeight: 'none',
+                        transition: 'width 0.15s ease',
+                        boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+                        borderRadius: 6,
+                        border: '1px solid #1e293b',
+                        background: '#000',
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', background: '#090d16' }}>
+                  {/* Studio Hero State with 3D Preview */}
+                  <div style={{ padding: '10px 16px', background: 'linear-gradient(90deg, rgba(88, 28, 135, 0.3), rgba(30, 58, 138, 0.3))', borderBottom: '1px solid #334155', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Wand2 size={16} color="#c084fc" />
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>
+                        智慧標註工作室 — 請在右側勾選欲標註特徵、自訂公差或一鍵套用樣板
+                      </span>
+                    </div>
+                    <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                      零件: <strong style={{ color: '#38bdf8' }}>{selectedPart || '未選取'}</strong>
+                    </span>
+                  </div>
+
+                  <div style={{ flex: 1, position: 'relative' }}>
+                    {currentStlUrl ? (
+                      <Canvas
+                        key={`studio-3d-${currentStlUrl}`}
+                        camera={{ position: [40, 40, 40], fov: 45, near: 0.01, far: 100000 }}
+                        gl={{ antialias: true, powerPreference: 'high-performance' }}
+                        onCreated={({ gl }) => {
+                          gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                        }}
+                      >
+                        <color attach="background" args={["#090d16"]} />
+                        <ambientLight intensity={0.9} />
+                        <directionalLight position={[100, 100, 100]} intensity={1.8} />
+                        <directionalLight position={[-100, -50, -100]} intensity={0.7} />
+                        <pointLight position={[0, 100, 0]} intensity={0.6} />
+
+                        <SinglePartViewerWithFeatures
+                          stlUrl={currentStlUrl}
+                          featureRecords={featureRecords}
+                          selectedFeatureIds={selectedFeatureIds}
+                          hoveredFeatureId={hoveredFeatureId}
+                          focusedFeatureId={focusedFeatureId}
+                          viewMode={feature3DViewMode}
+                          onHoverFeature={setHoveredFeatureId}
+                          onSelectFeature={(id) => {
+                            setFocusedFeatureId(id);
+                            toggleFeature(id);
+                          }}
+                          onModelLoaded={setFeature3DModelRadius}
+                        />
+
+                        <OrbitControls makeDefault enableDamping dampingFactor={0.1} />
+                        <gridHelper args={[Math.max(20, Math.ceil(feature3DModelRadius * 2.5)), 20, '#1e293b', '#0f172a']} />
+                      </Canvas>
+                    ) : (
+                      <div style={{ flex: 1, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', flexDirection: 'column' }}>
+                        <AlertTriangle size={36} style={{ marginBottom: 12, opacity: 0.4 }} />
+                        <span style={{ fontSize: 13 }}>請從左側目錄選擇零件</span>
+                      </div>
+                    )}
+
+                    {/* Quick View Controls */}
+                    <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 6, zIndex: 10 }}>
+                      {[
+                        { key: 'iso', label: '等角 ISO' },
+                        { key: 'top', label: '俯視 Top' },
+                        { key: 'front', label: '正視 Front' },
+                        { key: 'right', label: '側視 Right' },
+                        { key: 'fit', label: '置中 Fit' },
+                      ].map(v => (
+                        <button
+                          key={v.key}
+                          onClick={() => setFeature3DViewMode({ type: v.key, ts: Date.now() })}
+                          style={{
+                            background: 'rgba(15, 23, 42, 0.85)',
+                            backdropFilter: 'blur(6px)',
+                            border: '1px solid #334155',
+                            borderRadius: 6,
+                            padding: '4px 9px',
+                            color: '#cbd5e1',
+                            fontSize: 11,
+                            cursor: 'pointer',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {v.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Floating Callout Button */}
+                    <div style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: 'rgba(15, 23, 42, 0.92)', backdropFilter: 'blur(10px)', border: '1px solid #3b82f6', borderRadius: 10, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 10 }}>
+                      <Sparkles size={18} color="#38bdf8" />
+                      <span style={{ fontSize: 13, color: '#e2e8f0' }}>
+                        已選取 <strong style={{ color: '#38bdf8' }}>{selectedFeatureIds.size}</strong> 處特徵，準備產出專屬工程圖
+                      </span>
+                      <button
+                        onClick={handleRenderCustomDrawing}
+                        disabled={isRenderingDrawing || selectedFeatureIds.size === 0}
+                        style={{
+                          background: selectedFeatureIds.size > 0 ? 'linear-gradient(135deg, #0284c7, #2563eb)' : '#334155',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 6,
+                          padding: '6px 14px',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: selectedFeatureIds.size > 0 ? 'pointer' : 'not-allowed',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          boxShadow: selectedFeatureIds.size > 0 ? '0 4px 12px rgba(2, 132, 199, 0.4)' : 'none',
+                        }}
+                      >
+                        {isRenderingDrawing ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+                        <span>{isRenderingDrawing ? '生成中...' : '立即生成客製圖紙'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            ) : viewTab === 'features3d' ? (
               currentStlUrl ? (
                 <div style={{ flex: 1, position: 'relative', cursor: 'grab' }}>
                   <Canvas
@@ -1525,7 +1985,7 @@ function App() {
                     <directionalLight position={[100, 100, 100]} intensity={1.8} />
                     <directionalLight position={[-100, -50, -100]} intensity={0.7} />
                     <pointLight position={[0, 100, 0]} intensity={0.6} />
-                    
+
                     <SinglePartViewerWithFeatures
                       stlUrl={currentStlUrl}
                       featureRecords={featureRecords}
@@ -1540,12 +2000,12 @@ function App() {
                       }}
                       onModelLoaded={setFeature3DModelRadius}
                     />
-                    
+
                     <OrbitControls makeDefault enableDamping dampingFactor={0.1} />
                     <gridHelper args={[Math.max(20, Math.ceil(feature3DModelRadius * 2.5)), 20, '#1e293b', '#0f172a']} />
                   </Canvas>
 
-                  {/* 3D Quick View Toolbar (等角 / 正視 / 俯視 / 側視 / 自動適配) */}
+                  {/* 3D Quick View Toolbar */}
                   <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 6, zIndex: 10 }}>
                     {[
                       { key: 'iso', label: '等角 ISO' },
@@ -1606,9 +2066,9 @@ function App() {
           </div>
         </div>
 
-        {/* Right Panel: Feature Inspector (in Feature Mode) OR Standard 3D Viewer (in 2D Mode) */}
-        <div style={{ width: showFeatureLayer ? '38%' : '33%', minWidth: 320, display: 'flex', flexDirection: 'column', background: '#111', transition: 'width 0.2s ease' }}>
-          {showFeatureLayer ? (() => {
+        {/* Right Panel: Smart Annotation Studio Controller OR Feature Inspector OR 3D Viewer */}
+        <div style={{ width: viewTab === 'smart_annotation' ? '42%' : showFeatureLayer ? '38%' : '33%', minWidth: 340, display: 'flex', flexDirection: 'column', background: '#111', transition: 'width 0.2s ease' }}>
+          {viewTab === 'smart_annotation' ? (() => {
             const filtered = featureRecords.filter(f => {
               const type = (f.type || '').toLowerCase();
               const role = (f.role || '').toLowerCase();
@@ -1630,9 +2090,368 @@ function App() {
                 (f.id && f.id.toLowerCase().includes(q)) ||
                 (f.name && f.name.toLowerCase().includes(q)) ||
                 (f.role && f.role.toLowerCase().includes(q)) ||
-                (f.type && f.type.toLowerCase().includes(q)) ||
-                (f.tolerance_key && f.tolerance_key.toLowerCase().includes(q)) ||
-                (f.nominal && JSON.stringify(f.nominal).toLowerCase().includes(q))
+                (f.type && f.type.toLowerCase().includes(q))
+              );
+            });
+
+            const allFilteredSelected = filtered.length > 0 && filtered.every(f => selectedFeatureIds.has(f.id));
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0b1120' }}>
+                {/* Panel Header */}
+                <div style={{ height: 44, borderBottom: '1px solid #1e293b', background: '#0f172a', display: 'flex', alignItems: 'center', padding: '0 14px', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#c084fc' }}>
+                    <Wand2 size={16} />
+                    <span>標註控制台 (Annotation Controller)</span>
+                  </div>
+                  <span style={{ fontSize: 11, background: '#7e22ce', color: '#fff', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
+                    {selectedFeatureIds.size} / {featureRecords.length} 已選
+                  </span>
+                </div>
+
+                {/* 🌟 樣板風格庫與一鍵套用區塊 (Template Preset Section) */}
+                <div style={{ padding: '10px 12px', background: '#0f172a', borderBottom: '1px solid #1e293b' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      風格偏好樣板 (Template Presets)
+                    </span>
+                    <button
+                      onClick={() => setSaveTemplateModalOpen(true)}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid #38bdf8',
+                        borderRadius: 4,
+                        color: '#38bdf8',
+                        fontSize: 10,
+                        padding: '2px 6px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 3,
+                        fontWeight: 600,
+                      }}
+                    >
+                      <Save size={11} />
+                      <span>儲存偏好為新樣板</span>
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <select
+                      value={selectedTemplateId}
+                      onChange={(e) => setSelectedTemplateId(e.target.value)}
+                      style={{
+                        flex: 1,
+                        background: '#0b1120',
+                        border: '1px solid #334155',
+                        borderRadius: 6,
+                        color: '#f8fafc',
+                        padding: '6px 8px',
+                        fontSize: 11,
+                        outline: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {annotationTemplates.map(t => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      onClick={() => handleApplyTemplate(selectedTemplateId)}
+                      style={{
+                        background: 'linear-gradient(135deg, #7c3aed, #2563eb)',
+                        border: 'none',
+                        borderRadius: 6,
+                        color: '#fff',
+                        fontSize: 11,
+                        padding: '6px 12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        boxShadow: '0 2px 8px rgba(124, 58, 237, 0.4)',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <Sparkles size={12} />
+                      <span>一鍵套用</span>
+                    </button>
+
+                    {!selectedTemplateId.endsWith('_standard_preset') && (
+                      <button
+                        onClick={() => handleDeleteTemplate(selectedTemplateId)}
+                        title="刪除此自訂樣板"
+                        style={{
+                          background: '#7f1d1d',
+                          border: '1px solid #991b1b',
+                          borderRadius: 6,
+                          color: '#fca5a5',
+                          padding: '6px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Batch Action Bar */}
+                <div style={{ padding: '6px 12px', background: '#0b1120', borderBottom: '1px solid #1e293b', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      onClick={() => selectAllFeatures(filtered.map(f => f.id))}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        fontSize: 10,
+                        padding: '3px 7px',
+                        borderRadius: 4,
+                        border: '1px solid #0284c7',
+                        background: allFilteredSelected ? '#0284c7' : '#1e293b',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <CheckSquare size={12} />
+                      <span>全選 ({filtered.length})</span>
+                    </button>
+                    <button
+                      onClick={() => deselectAllFeatures(filtered.map(f => f.id))}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        fontSize: 10,
+                        padding: '3px 7px',
+                        borderRadius: 4,
+                        border: '1px solid #475569',
+                        background: '#1e293b',
+                        color: '#cbd5e1',
+                        cursor: 'pointer',
+                        fontWeight: 500,
+                      }}
+                    >
+                      <Square size={12} />
+                      <span>取消全選</span>
+                    </button>
+                  </div>
+                  <span style={{ fontSize: 10, color: '#64748b' }}>
+                    顯示 {filtered.length} 處特徵
+                  </span>
+                </div>
+
+                {/* Search & Category Tabs */}
+                <div style={{ padding: '6px 12px', background: '#0b1120' }}>
+                  <input
+                    type="text"
+                    value={featureSearch}
+                    onChange={(e) => setFeatureSearch(e.target.value)}
+                    placeholder="搜尋特徵名稱、ID、直徑、卡簧槽..."
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '5px 8px', background: '#0f172a', border: '1px solid #334155', borderRadius: 4, color: '#f8fafc', fontSize: 11 }}
+                  />
+                </div>
+
+                <div style={{ padding: '0 12px 6px 12px', display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                  {[
+                    { id: 'ALL', label: '全部' },
+                    { id: 'shaft', label: '軸/配合段' },
+                    { id: 'groove', label: '卡簧/凹槽' },
+                    { id: 'cone', label: '倒角/錐面' },
+                    { id: 'step', label: '階梯' },
+                    { id: 'fillet', label: '圓角' },
+                    { id: 'hole', label: '孔洞' },
+                    { id: 'thickness', label: '壁厚/基準' },
+                    { id: 'pattern', label: '孔群' },
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setFeatureFilter(tab.id)}
+                      style={{
+                        fontSize: 10,
+                        padding: '2px 6px',
+                        borderRadius: 3,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: featureFilter === tab.id ? '#7c3aed' : '#1e293b',
+                        color: featureFilter === tab.id ? '#fff' : '#94a3b8',
+                        fontWeight: featureFilter === tab.id ? 700 : 500
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Feature Customization List */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {filtered.map((feature, idx) => {
+                    const isSelected = selectedFeatureIds.has(feature.id);
+                    const isHovered = hoveredFeatureId === feature.id;
+                    const fType = (feature.type || '').toLowerCase();
+                    const cfg = annotationConfig[feature.id] || {};
+                    const currentView = cfg.preferred_view || feature.preferred_view || 'front';
+                    const currentTol = cfg.tolerance !== undefined ? cfg.tolerance : (feature.tolerance || '');
+                    const currentSide = cfg.side || feature.side || 'BOTTOM';
+
+                    let badgeBg = '#334155';
+                    let badgeColor = '#94a3b8';
+                    if (fType.includes('journal') || fType.includes('shaft')) { badgeBg = '#1e3a8a'; badgeColor = '#60a5fa'; }
+                    else if (fType.includes('groove') || fType.includes('slot')) { badgeBg = '#581c87'; badgeColor = '#c084fc'; }
+                    else if (fType.includes('cone') || fType.includes('chamfer')) { badgeBg = '#713f12'; badgeColor = '#facc15'; }
+                    else if (fType.includes('step')) { badgeBg = '#7c2d12'; badgeColor = '#fb923c'; }
+                    else if (fType.includes('fillet')) { badgeBg = '#831843'; badgeColor = '#f472b6'; }
+                    else if (fType.includes('hole')) { badgeBg = '#065f46'; badgeColor = '#34d399'; }
+                    else if (fType.includes('thickness') || fType.includes('plane')) { badgeBg = '#374151'; badgeColor = '#9ca3af'; }
+                    else if (fType.includes('pattern')) { badgeBg = '#4c1d95'; badgeColor = '#e9d5ff'; }
+
+                    return (
+                      <div
+                        key={feature.id || idx}
+                        onMouseEnter={() => setHoveredFeatureId(feature.id)}
+                        onMouseLeave={() => setHoveredFeatureId(null)}
+                        style={{
+                          padding: '8px 10px',
+                          background: isHovered ? '#1e293b' : isSelected ? '#111c33' : '#0f172a',
+                          borderRadius: 6,
+                          border: `1px solid ${isHovered ? '#38bdf8' : isSelected ? '#2563eb' : '#1e293b'}`,
+                          transition: 'all 0.15s ease',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 6,
+                        }}
+                      >
+                        {/* Header Row: Checkbox + ID + Badge */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1 }}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleFeature(feature.id)}
+                              style={{ cursor: 'pointer', accentColor: '#3b82f6', width: 15, height: 15 }}
+                            />
+                            <span style={{ fontWeight: 700, color: isSelected ? '#f8fafc' : '#64748b', fontSize: 12 }}>
+                              {feature.id || `F${idx + 1}`}
+                            </span>
+                          </label>
+                          <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: badgeBg, color: badgeColor, fontWeight: 600 }}>
+                            {feature.type}
+                          </span>
+                        </div>
+
+                        {/* Feature Title */}
+                        <div style={{ fontWeight: 600, color: isSelected ? '#38bdf8' : '#94a3b8', fontSize: 12, paddingLeft: 23 }}>
+                          {feature.name}
+                        </div>
+
+                        {/* Annotation Customization Controls (View, Tolerance, Side) */}
+                        {isSelected && (
+                          <div style={{ marginLeft: 23, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, background: '#090d16', padding: '6px 8px', borderRadius: 4, border: '1px solid #1e293b' }}>
+                            <div>
+                              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 2 }}>標註視圖</div>
+                              <select
+                                value={currentView}
+                                onChange={(e) => updateFeatureConfig(feature.id, { preferred_view: e.target.value })}
+                                style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 3, color: '#f8fafc', fontSize: 10, padding: 2 }}
+                              >
+                                <option value="front">正視圖</option>
+                                <option value="top">俯視圖</option>
+                                <option value="right">右側視圖</option>
+                                <option value="left">左側視圖</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 2 }}>公差設定</div>
+                              <input
+                                type="text"
+                                value={currentTol}
+                                onChange={(e) => updateFeatureConfig(feature.id, { tolerance: e.target.value })}
+                                placeholder="如 ±0.05"
+                                style={{ width: '100%', boxSizing: 'border-box', background: '#0f172a', border: '1px solid #334155', borderRadius: 3, color: '#facc15', fontSize: 10, padding: '2px 4px' }}
+                              />
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 2 }}>標註側向</div>
+                              <select
+                                value={currentSide}
+                                onChange={(e) => updateFeatureConfig(feature.id, { side: e.target.value })}
+                                style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 3, color: '#f8fafc', fontSize: 10, padding: 2 }}
+                              >
+                                <option value="BOTTOM">底部 (Bottom)</option>
+                                <option value="TOP">頂部 (Top)</option>
+                                <option value="LEFT">左側 (Left)</option>
+                                <option value="RIGHT">右側 (Right)</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Sticky Action Footer */}
+                <div style={{ padding: '12px', background: '#0f172a', borderTop: '1px solid #1e293b' }}>
+                  <button
+                    onClick={handleRenderCustomDrawing}
+                    disabled={isRenderingDrawing || selectedFeatureIds.size === 0}
+                    style={{
+                      width: '100%',
+                      background: selectedFeatureIds.size > 0 ? 'linear-gradient(135deg, #0284c7, #7c3aed)' : '#334155',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '10px 0',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: selectedFeatureIds.size > 0 ? 'pointer' : 'not-allowed',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      boxShadow: selectedFeatureIds.size > 0 ? '0 4px 14px rgba(2, 132, 199, 0.4)' : 'none',
+                    }}
+                  >
+                    {isRenderingDrawing ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
+                    <span>{isRenderingDrawing ? '正在產出客製工程圖...' : `🚀 產出新版標註圖紙 (${selectedFeatureIds.size} 特徵)`}</span>
+                  </button>
+                </div>
+              </div>
+            );
+          })() : showFeatureLayer ? (() => {
+            const filtered = featureRecords.filter(f => {
+              const type = (f.type || '').toLowerCase();
+              const role = (f.role || '').toLowerCase();
+              let matchType = true;
+              if (featureFilter === 'hole') matchType = type.includes('hole');
+              else if (featureFilter === 'shaft') matchType = type.includes('shaft') || role.includes('journal') || type.includes('groove');
+              else if (featureFilter === 'groove') matchType = type.includes('groove') || role.includes('groove') || role.includes('relief');
+              else if (featureFilter === 'fillet') matchType = type.includes('fillet') || type.includes('round');
+              else if (featureFilter === 'cone') matchType = type.includes('cone') || type.includes('chamfer') || role.includes('chamfer') || role.includes('pilot');
+              else if (featureFilter === 'step') matchType = type.includes('step') || role.includes('step');
+              else if (featureFilter === 'thickness') matchType = type.includes('thickness') || type.includes('plane') || type.includes('datum');
+              else if (featureFilter === 'pattern') matchType = type.includes('pattern');
+              else if (featureFilter === 'projected') matchType = type.includes('projected');
+              
+              if (!matchType) return false;
+              if (!featureSearch) return true;
+              const q = featureSearch.toLowerCase();
+              return (
+                (f.id && f.id.toLowerCase().includes(q)) ||
+                (f.name && f.name.toLowerCase().includes(q)) ||
+                (f.role && f.role.toLowerCase().includes(q)) ||
+                (f.type && f.type.toLowerCase().includes(q))
               );
             });
 
@@ -1653,7 +2472,7 @@ function App() {
                   </div>
                 </div>
 
-                {/* Batch Action Bar (Select All / Deselect All) */}
+                {/* Batch Action Bar */}
                 <div style={{ padding: '8px 12px', background: '#0f172a', borderBottom: '1px solid #1e293b', display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button
@@ -1702,15 +2521,13 @@ function App() {
 
                 {/* Search Input */}
                 <div style={{ padding: '8px 12px', background: '#0b1120' }}>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      type="text"
-                      value={featureSearch}
-                      onChange={(e) => setFeatureSearch(e.target.value)}
-                      placeholder="搜尋特徵名稱、ID、直徑、尺寸、卡簧槽..."
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '6px 10px', background: '#0f172a', border: '1px solid #334155', borderRadius: 6, color: '#f8fafc', fontSize: 11 }}
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    value={featureSearch}
+                    onChange={(e) => setFeatureSearch(e.target.value)}
+                    placeholder="搜尋特徵名稱、ID、直徑、尺寸..."
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '6px 10px', background: '#0f172a', border: '1px solid #334155', borderRadius: 6, color: '#f8fafc', fontSize: 11 }}
+                  />
                 </div>
 
                 {/* Category Filter Pills */}
@@ -1725,7 +2542,6 @@ function App() {
                     { id: 'hole', label: '孔洞' },
                     { id: 'thickness', label: '壁厚/基準' },
                     { id: 'pattern', label: '孔群' },
-                    { id: 'projected', label: '2D投影' },
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -1763,7 +2579,6 @@ function App() {
                     else if (fType.includes('hole')) { badgeBg = '#065f46'; badgeColor = '#34d399'; }
                     else if (fType.includes('thickness') || fType.includes('plane')) { badgeBg = '#374151'; badgeColor = '#9ca3af'; }
                     else if (fType.includes('pattern')) { badgeBg = '#4c1d95'; badgeColor = '#e9d5ff'; }
-                    else if (fType.includes('projected')) { badgeBg = '#155e75'; badgeColor = '#22d3ee'; }
 
                     return (
                       <div
@@ -1779,7 +2594,6 @@ function App() {
                           display: 'flex',
                           flexDirection: 'column',
                           gap: 4,
-                          boxShadow: isHovered ? '0 4px 12px rgba(0,0,0,0.4)' : 'none',
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1808,12 +2622,6 @@ function App() {
                           <span>•</span>
                           <span>公差: {feature.tolerance_key}</span>
                         </div>
-
-                        {feature.nominal && Object.keys(feature.nominal).length > 0 && (
-                          <div style={{ marginLeft: 23, color: '#94a3b8', fontSize: 10, background: 'rgba(0,0,0,0.4)', padding: '3px 6px', borderRadius: 4, fontFamily: 'monospace' }}>
-                            {Object.entries(feature.nominal).map(([k, v]) => `${k}: ${typeof v === 'number' ? (v as number).toFixed(2) : (typeof v === 'object' ? JSON.stringify(v) : v)}`).join(' | ')}
-                          </div>
-                        )}
                       </div>
                     );
                   })}
@@ -1831,7 +2639,7 @@ function App() {
                   <Canvas
                     key={currentStlUrl}
                     camera={{ position: [50, 50, 50], fov: 50, near: 0.01, far: 100000 }}
-                    gl={{ antialias: true, powerPreference: 'high-performance', failIfMajorPerformanceCaveat: false }}
+                    gl={{ antialias: true, powerPreference: 'high-performance' }}
                     onCreated={({ gl }) => {
                       gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                     }}
@@ -1857,6 +2665,65 @@ function App() {
         </div>
 
       </div>
+
+      {/* 🌟 儲存自訂樣板 Modal (Save Template Preset Modal) */}
+      {saveTemplateModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ width: 440, background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: 24, boxShadow: '0 20px 50px rgba(0,0,0,0.8)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <Save size={20} color="#38bdf8" />
+              <h3 style={{ margin: 0, fontSize: 16, color: '#f8fafc', fontWeight: 700 }}>儲存標註偏好為新樣板</h3>
+            </div>
+
+            <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 16, lineHeight: 1.5 }}>
+              系統將會記住目前已勾選的 <strong>{selectedFeatureIds.size}</strong> 處特徵類型、自訂公差與視圖偏好。下次載入任何相似的新模型時，點選「一鍵套用」即可自動批次標註！
+            </p>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: 'block', fontSize: 12, color: '#cbd5e1', marginBottom: 6, fontWeight: 600 }}>
+                樣板名稱 (Template Name)
+              </label>
+              <input
+                type="text"
+                value={newTemplateName}
+                onChange={(e) => setNewTemplateName(e.target.value)}
+                placeholder="例如：精密風扇軸標準風格、葉輪轉子精密級..."
+                style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', background: '#0b1120', border: '1px solid #3b82f6', borderRadius: 6, color: '#f8fafc', fontSize: 13 }}
+                autoFocus
+              />
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', fontSize: 12, color: '#cbd5e1', marginBottom: 6, fontWeight: 600 }}>
+                樣板說明 (Description)
+              </label>
+              <textarea
+                value={newTemplateDesc}
+                onChange={(e) => setNewTemplateDesc(e.target.value)}
+                placeholder="簡短描述此樣板的適用範圍或特殊公差需求..."
+                rows={3}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px', background: '#0b1120', border: '1px solid #334155', borderRadius: 6, color: '#f8fafc', fontSize: 12, resize: 'none' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={() => setSaveTemplateModalOpen(false)}
+                style={{ padding: '8px 16px', background: '#1e293b', border: '1px solid #475569', borderRadius: 6, color: '#cbd5e1', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveNewTemplate}
+                disabled={!newTemplateName.trim()}
+                style={{ padding: '8px 18px', background: newTemplateName.trim() ? 'linear-gradient(135deg, #0284c7, #2563eb)' : '#334155', border: 'none', borderRadius: 6, color: '#fff', fontSize: 13, cursor: newTemplateName.trim() ? 'pointer' : 'not-allowed', fontWeight: 700 }}
+              >
+                確認儲存樣板
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

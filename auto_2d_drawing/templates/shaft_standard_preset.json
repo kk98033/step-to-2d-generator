@@ -1,0 +1,82 @@
+{
+  "id": "shaft_standard_preset",
+  "name": "風扇軸 / 桿件標準風格 (Shaft Standard)",
+  "description": "專為細長軸件設計：優先標註軸段配合外徑、卡簧槽位置與寬度、軸端組裝導角、軸向階梯段差、軸身過渡圓角與主基準A。",
+  "target_type": "SHAFT",
+  "rules": [
+    {
+      "feature_type": "overall_size",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "LINEAR",
+      "tolerance": "±0.1",
+      "side": "BOTTOM",
+      "baseline": "NONE",
+      "rank": 2
+    },
+    {
+      "feature_type": "datum",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "CENTERLINES",
+      "tolerance": "",
+      "side": "TOP",
+      "baseline": "NONE",
+      "rank": 1
+    },
+    {
+      "feature_type": "shaft_or_boss",
+      "role_pattern": "(outer_rim|hub_outer|journal|shaft_fit)",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "DIAMETER",
+      "tolerance": "±0.005",
+      "side": "LEFT",
+      "baseline": "NONE",
+      "rank": 1
+    },
+    {
+      "feature_type": "groove_or_slot",
+      "role_pattern": "(snap_groove|groove|retaining)",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "LINEAR",
+      "tolerance": "±0.05",
+      "side": "BOTTOM",
+      "baseline": "LEFT",
+      "rank": 1
+    },
+    {
+      "feature_type": "cone_or_chamfer",
+      "role_pattern": "(chamfer|lead_in|taper)",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "LEADER",
+      "tolerance": "±0.1",
+      "side": "TOP",
+      "baseline": "NONE",
+      "rank": 1
+    },
+    {
+      "feature_type": "step",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "LINEAR",
+      "tolerance": "±0.05",
+      "side": "BOTTOM",
+      "baseline": "LEFT",
+      "rank": 1
+    },
+    {
+      "feature_type": "fillet_or_round",
+      "role_pattern": "(relief|round|fillet)",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "NOTE",
+      "tolerance": "±0.05",
+      "side": "TOP",
+      "baseline": "NONE",
+      "rank": 1
+    }
+  ]
+}

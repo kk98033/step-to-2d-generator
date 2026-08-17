@@ -12,7 +12,10 @@ from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
 from OCC.Core.GeomAbs import GeomAbs_Line, GeomAbs_Circle
 from OCC.Core.GCPnts import GCPnts_UniformDeflection
 
-from config import VIEW_CONFIG, HLR_DEFLECTION
+try:
+    from auto_2d_drawing.config import VIEW_CONFIG, HLR_DEFLECTION
+except ImportError:
+    from config import VIEW_CONFIG, HLR_DEFLECTION
 
 
 class ViewProjector:

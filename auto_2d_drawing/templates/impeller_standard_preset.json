@@ -1,0 +1,71 @@
+{
+  "id": "impeller_standard_preset",
+  "name": "風扇葉輪 / 轉子風格 (Impeller Standard)",
+  "description": "專為風扇葉輪與旋轉葉片設計：優先標註葉輪外徑、中心軸配合孔、內磁環腔體、輪轂軸向高度、葉片壁厚與主旋轉基準A。",
+  "target_type": "FAN_IMPELLER",
+  "rules": [
+    {
+      "feature_type": "overall_size",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "LINEAR",
+      "tolerance": "±0.1",
+      "side": "BOTTOM",
+      "baseline": "NONE",
+      "rank": 2
+    },
+    {
+      "feature_type": "datum",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "CENTERLINES",
+      "tolerance": "",
+      "side": "TOP",
+      "baseline": "NONE",
+      "rank": 1
+    },
+    {
+      "feature_type": "hole",
+      "role_pattern": "(shaft_bore_fit|center_bore|shaft_fit)",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "DIAMETER",
+      "tolerance": "+0.015/-0.000",
+      "side": "LEFT",
+      "baseline": "NONE",
+      "rank": 1
+    },
+    {
+      "feature_type": "shaft_or_boss",
+      "role_pattern": "(outer_rim|hub_outer)",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "DIAMETER",
+      "tolerance": "±0.05",
+      "side": "RIGHT",
+      "baseline": "NONE",
+      "rank": 1
+    },
+    {
+      "feature_type": "wall_thickness",
+      "role_pattern": "(structural_wall|blade_thickness)",
+      "enabled": true,
+      "preferred_view": "right",
+      "dim_type": "LINEAR",
+      "tolerance": "±0.05",
+      "side": "BOTTOM",
+      "baseline": "NONE",
+      "rank": 1
+    },
+    {
+      "feature_type": "fillet_or_round",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "NOTE",
+      "tolerance": "±0.1",
+      "side": "TOP",
+      "baseline": "NONE",
+      "rank": 1
+    }
+  ]
+}
