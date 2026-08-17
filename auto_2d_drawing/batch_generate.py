@@ -97,8 +97,8 @@ def generate_single(step_path, output_dir, output_name,
     export_pdf(doc, msp, pdf_path, dark_bg=True)
     export_png(doc, msp, png_path, dark_bg=True)
 
-    feature_records = build_projected_feature_records(view_data, part_type)
-    feature_records.extend(build_feature_records(features, part_type))
+    feature_records = build_feature_records(features, part_type)
+    feature_records.extend(build_projected_feature_records(view_data, part_type))
     feature_json_path = os.path.join(output_dir, f"{output_name}_feature_records.json")
     with open(feature_json_path, 'w', encoding='utf-8') as f:
         json.dump(feature_records, f, indent=2, ensure_ascii=False)

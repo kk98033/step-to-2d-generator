@@ -2,6 +2,7 @@
 HLR 三視圖投影模組 — 將 3D 模型投影為 2D 輪廓邊緣
 使用 python-occ Hidden Line Removal (HLR)
 """
+import math
 from OCC.Core.HLRBRep import HLRBRep_Algo, HLRBRep_HLRToShape
 from OCC.Core.HLRAlgo import HLRAlgo_Projector
 from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax2
@@ -23,10 +24,10 @@ class ViewProjector:
         
         Args:
             shape: TopoDS_Shape
-            view_name: 'front', 'top', 'right'
+            view_name: 'front', 'top', 'right', 'back', 'left'
         
         Returns:
-            (visible_compound, hidden_compound)
+            (visible_compound, hidden_compound, outline_v, outline_h)
         """
         cfg = VIEW_CONFIG[view_name]
         d = cfg["direction"]
@@ -41,11 +42,9 @@ class ViewProjector:
 
         hs = HLRBRep_HLRToShape(hlr)
         
-        # 取得可見邊 (包含輪廓線和一般邊)
         vis = hs.VCompound()
         hid = hs.HCompound()
         
-        # 也取得輪廓邊 (OutLine) — 對圓柱面等曲面的投影輪廓很重要
         try:
             outline_v = hs.OutLineVCompound()
             outline_h = hs.OutLineHCompound()
@@ -60,11 +59,7 @@ class ViewProjector:
         從 HLR 結果中提取 2D 邊緣資料。
         
         Returns:
-            list of edge dicts: [
-                {'type': 'line', 'p1': (x,y), 'p2': (x,y)},
-                {'type': 'circle', 'center': (x,y), 'radius': r, 'points': [(x,y),...]},
-                {'type': 'spline', 'points': [(x,y),...]}
-            ]
+            list of edge dicts
         """
         edges = []
         if compound is None or compound.IsNull():
@@ -83,22 +78,32 @@ class ViewProjector:
                     p2 = curve.Value(t1)
                     edges.append({
                         'type': 'line',
-                        'p1': (p1.X(), p1.Y()),
-                        'p2': (p2.X(), p2.Y()),
+                        'p1': (round(p1.X(), 3), round(p1.Y(), 3)),
+                        'p2': (round(p2.X(), 3), round(p2.Y(), 3)),
                     })
                 elif ct == GeomAbs_Circle:
                     pts = self._discretize(curve, t0, t1)
                     c = curve.Circle()
+                    sweep = abs(t1 - t0)
+                    is_arc = abs(sweep - 2 * math.pi) > 0.05
                     edges.append({
                         'type': 'circle',
-                        'center': (c.Location().X(), c.Location().Y()),
-                        'radius': c.Radius(),
-                        'points': pts,
+                        'center': (round(c.Location().X(), 3), round(c.Location().Y(), 3)),
+                        'radius': round(c.Radius(), 4),
+                        'is_arc': is_arc,
+                        'sweep_angle': round(sweep, 4),
+                        'sweep_angle_deg': round(math.degrees(sweep), 2),
+                        'start_angle': round(t0, 4),
+                        'end_angle': round(t1, 4),
+                        'points': [(round(p[0], 3), round(p[1], 3)) for p in pts],
                     })
                 else:
                     pts = self._discretize(curve, t0, t1)
                     if len(pts) >= 2:
-                        edges.append({'type': 'spline', 'points': pts})
+                        edges.append({
+                            'type': 'spline',
+                            'points': [(round(p[0], 3), round(p[1], 3)) for p in pts],
+                        })
             except Exception:
                 pass
             exp.Next()
@@ -130,7 +135,6 @@ class ViewProjector:
                     p = approx.Value(i)
                     pts.append((p.X(), p.Y()))
         except Exception:
-            # Fallback: 均勻採樣 30 點
             for i in range(31):
                 t = t0 + (t1 - t0) * i / 30
                 p = curve.Value(t)
@@ -150,15 +154,11 @@ class ViewProjector:
         xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
         
         cx = (xmin + xmax) / 2.0
-        
-        # 建立涵蓋 +X 半邊的巨大方塊
         pad = 10.0
         p1 = gp_Pnt(cx, ymin - pad, zmin - pad)
         p2 = gp_Pnt(xmax + pad, ymax + pad, zmax + pad)
         
         cut_box = BRepPrimAPI_MakeBox(p1, p2).Shape()
-        
-        # 布林相減
         cut_algo = BRepAlgoAPI_Cut(shape, cut_box)
         cut_algo.Build()
         
@@ -167,20 +167,7 @@ class ViewProjector:
         return shape
 
     def project_all_views(self, shape, cut_half_right=False, view_names=None):
-        """
-        投影所有三視圖，回傳結構化資料。
-        
-        Args:
-            shape: TopoDS_Shape
-            cut_half_right: 若為 True，會將 shape 切一半再投影右視圖，以產生剖面
-            
-        Returns:
-            dict: {
-                'front': {'visible': [...], 'hidden': [...], 'bbox': (x0,y0,x1,y1), 'size': (w,h)},
-                'top': {...},
-                'right': {...},
-            }
-        """
+        """投影所有三視圖，回傳結構化資料"""
         result = {}
         if view_names is None:
             view_names = ['front', 'top', 'right']
@@ -198,7 +185,6 @@ class ViewProjector:
             vis_edges = self.extract_edges(vis_comp)
             hid_edges = self.extract_edges(hid_comp)
             
-            # 合併輪廓邊
             if outline_v:
                 vis_edges.extend(self.extract_edges(outline_v))
             if outline_h:

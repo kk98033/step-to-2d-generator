@@ -1,6 +1,6 @@
 """
-3D 幾何特徵提取模組 v2 — 增強版
-包含: 階梯段落偵測、沿軸各段直徑/長度提取
+3D 幾何特徵提取模組 v3 — 全特徵深度解析版
+包含: 圓柱孔、軸與凸台、圓錐/倒角/沉頭、圓弧/圓角、平面與壁厚、階梯段落、環形槽與孔群陣列 (PCD)
 """
 import math
 from OCC.Core.TopExp import TopExp_Explorer
@@ -8,12 +8,17 @@ from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE, TopAbs_REVERSED
 from OCC.Core.BRepAdaptor import BRepAdaptor_Surface, BRepAdaptor_Curve
 from OCC.Core.Bnd import Bnd_Box
 from OCC.Core.BRepBndLib import brepbndlib
-from OCC.Core.GeomAbs import GeomAbs_Cylinder, GeomAbs_Circle, GeomAbs_Plane
+from OCC.Core.GeomAbs import (
+    GeomAbs_Cylinder, GeomAbs_Circle, GeomAbs_Plane,
+    GeomAbs_Cone, GeomAbs_Torus, GeomAbs_Sphere, GeomAbs_Line
+)
 from OCC.Core.gp import gp_Vec
+from OCC.Core.GProp import GProp_GProps
+from OCC.Core.BRepGProp import brepgprop
 
 
 class FeatureExtractor:
-    """從 TopoDS_Shape 中提取幾何特徵，用於自動標註"""
+    """從 TopoDS_Shape 中提取完整幾何特徵，用於自動標註與特徵圖層解析"""
 
     def __init__(self, shape):
         self.shape = shape
@@ -25,67 +30,182 @@ class FeatureExtractor:
         self.H = self.ymax - self.ymin   # Y 方向
         self.D = self.zmax - self.zmin   # Z 方向
 
-        # 特徵容器
+        # 特徵容器 (無任何數量上限)
         self.holes = []
         self.shafts = []
-        self.fillets = []
-        self.cylinders_raw = []   # 所有圓柱面 (未分類)
-        self.step_segments = []   # 沿主軸的段差結構
+        self.cones = []             # 圓錐面/倒角/沉頭
+        self.planes = []            # 平面/基準面
+        self.thicknesses = []       # 壁厚/板厚
+        self.toruses = []           # 環形槽/O-ring槽
+        self.spheres = []           # 球面
+        self.fillets = []           # 圓弧邊/圓角
+        self.circle_edges = []      # 3D 圓形邊界
+        self.cylinders_raw = []     # 所有圓柱面 (未分類)
+        self.step_segments = []     # 沿主軸的段差結構
+        self.hole_patterns = []     # 孔群陣列 (PCD)
 
-        # 提取
-        self._extract_cylindrical_features()
-        self._extract_fillet_features()
+        # 完整提取流程
+        self._extract_faces()
+        self._extract_edges()
         self._detect_step_segments()
+        self._detect_hole_patterns()
+        self._detect_thicknesses()
 
-    def _extract_cylindrical_features(self):
-        """遍歷所有 FACE，找出圓柱面"""
-        seen = set()
+    def _extract_faces(self):
+        """遍歷所有 FACE，提取圓柱面、圓錐面、平面、圓環面、球面"""
+        seen_cyl = set()
+        seen_cone = set()
+        seen_plane = set()
+        seen_torus = set()
+        seen_sphere = set()
+
         exp = TopExp_Explorer(self.shape, TopAbs_FACE)
         while exp.More():
             face = exp.Current()
             surf = BRepAdaptor_Surface(face)
-            if surf.GetType() == GeomAbs_Cylinder:
+            stype = surf.GetType()
+            is_reversed = (face.Orientation() == TopAbs_REVERSED)
+
+            # 1. 圓柱面 (Cylinder: 孔 / 軸 / 凸台)
+            if stype == GeomAbs_Cylinder:
                 cyl = surf.Cylinder()
                 r = cyl.Radius()
                 loc = cyl.Location()
                 d = cyl.Axis().Direction()
                 v0, v1 = surf.FirstVParameter(), surf.LastVParameter()
 
-                # 計算中心點 (沿軸向的中間位置)
                 vec = gp_Vec(d).Multiplied((v0 + v1) / 2)
                 cp = loc.Translated(vec)
                 length = abs(v1 - v0)
-
-                # 計算沿軸的起止位置
                 start_pos = min(v0, v1)
                 end_pos = max(v0, v1)
 
-                key = (round(cp.X(), 1), round(cp.Y(), 1), round(cp.Z(), 1), round(r, 2))
-                if key not in seen:
-                    seen.add(key)
+                key = (round(cp.X(), 2), round(cp.Y(), 2), round(cp.Z(), 2), round(r, 3), round(length, 2))
+                if key not in seen_cyl:
+                    seen_cyl.add(key)
                     info = {
-                        "radius": r,
-                        "diameter": r * 2,
-                        "center": (cp.X(), cp.Y(), cp.Z()),
-                        "axis_dir": (d.X(), d.Y(), d.Z()),
-                        "length": length,
-                        "start_pos": start_pos,
-                        "end_pos": end_pos,
-                        "is_hole": face.Orientation() == TopAbs_REVERSED,
+                        "radius": round(r, 4),
+                        "diameter": round(r * 2, 4),
+                        "center": (round(cp.X(), 3), round(cp.Y(), 3), round(cp.Z(), 3)),
+                        "axis_dir": (round(d.X(), 3), round(d.Y(), 3), round(d.Z(), 3)),
+                        "length": round(length, 3),
+                        "start_pos": round(start_pos, 3),
+                        "end_pos": round(end_pos, 3),
+                        "is_hole": is_reversed,
                     }
                     self.cylinders_raw.append(info)
-                    if info["is_hole"]:
+                    if is_reversed:
                         self.holes.append(info)
                     else:
                         self.shafts.append(info)
+
+            # 2. 圓錐面 (Cone: 倒角 / 沉頭孔 Countersink / 錐度)
+            elif stype == GeomAbs_Cone:
+                cone = surf.Cone()
+                r_ref = cone.RefRadius()
+                semi_angle = cone.SemiAngle()
+                semi_deg = abs(math.degrees(semi_angle))
+                loc = cone.Location()
+                d = cone.Axis().Direction()
+                apex = cone.Apex()
+                v0, v1 = surf.FirstVParameter(), surf.LastVParameter()
+                r0 = abs(r_ref + v0 * math.sin(semi_angle))
+                r1 = abs(r_ref + v1 * math.sin(semi_angle))
+                min_r, max_r = min(r0, r1), max(r0, r1)
+                height = abs(v1 - v0) * math.cos(semi_angle)
+
+                key = (round(loc.X(), 2), round(loc.Y(), 2), round(loc.Z(), 2), round(min_r, 2), round(max_r, 2))
+                if key not in seen_cone:
+                    seen_cone.add(key)
+                    self.cones.append({
+                        "min_radius": round(min_r, 4),
+                        "max_radius": round(max_r, 4),
+                        "min_diameter": round(min_r * 2, 4),
+                        "max_diameter": round(max_r * 2, 4),
+                        "semi_angle_deg": round(semi_deg, 2),
+                        "included_angle_deg": round(semi_deg * 2, 2),
+                        "height": round(height, 3),
+                        "center": (round(loc.X(), 3), round(loc.Y(), 3), round(loc.Z(), 3)),
+                        "apex": (round(apex.X(), 3), round(apex.Y(), 3), round(apex.Z(), 3)),
+                        "axis_dir": (round(d.X(), 3), round(d.Y(), 3), round(d.Z(), 3)),
+                        "is_hole": is_reversed,
+                    })
+
+            # 3. 平面 (Plane: 安裝面 / 基準面 / 壁厚)
+            elif stype == GeomAbs_Plane:
+                pln = surf.Plane()
+                loc = pln.Location()
+                n = pln.Axis().Direction()
+                norm = (round(n.X(), 3), round(n.Y(), 3), round(n.Z(), 3))
+
+                # 計算面積與質心
+                try:
+                    props = GProp_GProps()
+                    brepgprop.SurfaceProperties(face, props)
+                    area = props.Mass()
+                    cog = props.CentreOfMass()
+                    cog_tuple = (round(cog.X(), 3), round(cog.Y(), 3), round(cog.Z(), 3))
+                except Exception:
+                    area = 0.0
+                    cog_tuple = (round(loc.X(), 3), round(loc.Y(), 3), round(loc.Z(), 3))
+
+                if area > 0.01:
+                    key = (round(cog_tuple[0], 1), round(cog_tuple[1], 1), round(cog_tuple[2], 1), norm)
+                    if key not in seen_plane:
+                        seen_plane.add(key)
+                        self.planes.append({
+                            "normal": norm,
+                            "location": (round(loc.X(), 3), round(loc.Y(), 3), round(loc.Z(), 3)),
+                            "center_of_mass": cog_tuple,
+                            "area": round(area, 2),
+                            "is_reversed": is_reversed,
+                        })
+
+            # 4. 圓環面 (Torus: O-ring 槽 / 環形凹槽)
+            elif stype == GeomAbs_Torus:
+                torus = surf.Torus()
+                maj_r = torus.MajorRadius()
+                min_r = torus.MinorRadius()
+                loc = torus.Location()
+                d = torus.Axis().Direction()
+                key = (round(loc.X(), 2), round(loc.Y(), 2), round(loc.Z(), 2), round(maj_r, 2), round(min_r, 2))
+                if key not in seen_torus:
+                    seen_torus.add(key)
+                    self.toruses.append({
+                        "major_radius": round(maj_r, 4),
+                        "minor_radius": round(min_r, 4),
+                        "major_diameter": round(maj_r * 2, 4),
+                        "center": (round(loc.X(), 3), round(loc.Y(), 3), round(loc.Z(), 3)),
+                        "axis_dir": (round(d.X(), 3), round(d.Y(), 3), round(d.Z(), 3)),
+                        "is_hole": is_reversed,
+                    })
+
+            # 5. 球面 (Sphere)
+            elif stype == GeomAbs_Sphere:
+                sph = surf.Sphere()
+                r = sph.Radius()
+                loc = sph.Location()
+                key = (round(loc.X(), 2), round(loc.Y(), 2), round(loc.Z(), 2), round(r, 2))
+                if key not in seen_sphere:
+                    seen_sphere.add(key)
+                    self.spheres.append({
+                        "radius": round(r, 4),
+                        "diameter": round(r * 2, 4),
+                        "center": (round(loc.X(), 3), round(loc.Y(), 3), round(loc.Z(), 3)),
+                    })
+
             exp.Next()
 
+        # 排序
         self.holes.sort(key=lambda x: -x["radius"])
         self.shafts.sort(key=lambda x: -x["radius"])
+        self.planes.sort(key=lambda x: -x["area"])
 
-    def _extract_fillet_features(self):
-        """遍歷所有 EDGE，找出圓弧邊"""
-        seen = set()
+    def _extract_edges(self):
+        """遍歷所有 EDGE，提取圓弧邊 (圓角 Fillet/Round) 與全圓邊"""
+        seen_fillet = set()
+        seen_circle = set()
+
         exp = TopExp_Explorer(self.shape, TopAbs_EDGE)
         while exp.More():
             edge = exp.Current()
@@ -96,41 +216,61 @@ class FeatureExtractor:
                     r = circ.Radius()
                     if r > 0.05:
                         loc = circ.Location()
-                        key = (round(loc.X(), 1), round(loc.Y(), 1), round(loc.Z(), 1), round(r, 2))
-                        if key not in seen:
-                            seen.add(key)
-                            u_min = curve.FirstParameter()
-                            u_max = curve.LastParameter()
-                            mid_pnt = curve.Value((u_min + u_max) / 2)
-                            self.fillets.append({
-                                "radius": r,
-                                "center": (loc.X(), loc.Y(), loc.Z()),
-                                "mid_point": (mid_pnt.X(), mid_pnt.Y(), mid_pnt.Z()),
-                            })
+                        u_min = curve.FirstParameter()
+                        u_max = curve.LastParameter()
+                        sweep = abs(u_max - u_min)
+                        mid_pnt = curve.Value((u_min + u_max) / 2)
+                        p_start = curve.Value(u_min)
+                        p_end = curve.Value(u_max)
+                        d = circ.Axis().Direction()
+
+                        # 判斷是否為封閉全圓邊 vs 圓弧圓角邊
+                        is_full_circle = abs(sweep - 2 * math.pi) < 0.05
+
+                        if is_full_circle:
+                            ckey = (round(loc.X(), 2), round(loc.Y(), 2), round(loc.Z(), 2), round(r, 3))
+                            if ckey not in seen_circle:
+                                seen_circle.add(ckey)
+                                self.circle_edges.append({
+                                    "radius": round(r, 4),
+                                    "diameter": round(r * 2, 4),
+                                    "center": (round(loc.X(), 3), round(loc.Y(), 3), round(loc.Z(), 3)),
+                                    "axis_dir": (round(d.X(), 3), round(d.Y(), 3), round(d.Z(), 3)),
+                                })
+                        else:
+                            fkey = (round(mid_pnt.X(), 2), round(mid_pnt.Y(), 2), round(mid_pnt.Z(), 2), round(r, 3))
+                            if fkey not in seen_fillet:
+                                seen_fillet.add(fkey)
+                                arc_len = r * sweep
+                                self.fillets.append({
+                                    "radius": round(r, 4),
+                                    "diameter": round(r * 2, 4),
+                                    "center": (round(loc.X(), 3), round(loc.Y(), 3), round(loc.Z(), 3)),
+                                    "mid_point": (round(mid_pnt.X(), 3), round(mid_pnt.Y(), 3), round(mid_pnt.Z(), 3)),
+                                    "start_point": (round(p_start.X(), 3), round(p_start.Y(), 3), round(p_start.Z(), 3)),
+                                    "end_point": (round(p_end.X(), 3), round(p_end.Y(), 3), round(p_end.Z(), 3)),
+                                    "sweep_angle_deg": round(math.degrees(sweep), 2),
+                                    "arc_length": round(arc_len, 3),
+                                })
             except Exception:
                 pass
             exp.Next()
 
+        self.fillets.sort(key=lambda x: -x["radius"])
+        self.circle_edges.sort(key=lambda x: -x["radius"])
+
     def _detect_step_segments(self):
-        """
-        偵測沿主軸方向的段差結構 (階梯軸/階梯孔)
-        
-        找出所有圓柱面中最常見的軸方向，然後沿該軸排序
-        各段的 {position, diameter, length}，用於標註
-        """
+        """偵測沿主軸方向的所有段差結構 (階梯軸/階梯孔)"""
         if not self.cylinders_raw:
             return
 
-        # 找出主軸方向 (最多圓柱面共用的軸方向)
         axis_groups = {}
         for cyl in self.cylinders_raw:
             dx, dy, dz = cyl["axis_dir"]
-            # 正規化方向 (讓 abs 最大的分量為正)
             adx, ady, adz = abs(dx), abs(dy), abs(dz)
             max_comp = max(adx, ady, adz)
             if max_comp < 0.01:
                 continue
-            # 把方向歸入主要軸向
             if adz > 0.7:
                 axis_key = "Z"
             elif ady > 0.7:
@@ -147,127 +287,216 @@ class FeatureExtractor:
         if not axis_groups:
             return
 
-        # 選擇最多圓柱面的方向為主軸
         main_axis = max(axis_groups, key=lambda k: len(axis_groups[k]))
         main_cyls = axis_groups[main_axis]
 
-        # 計算沿主軸的投影位置
         if main_axis == "Z":
-            proj_idx = 2  # Z axis
+            proj_idx = 2
         elif main_axis == "Y":
-            proj_idx = 1  # Y axis
+            proj_idx = 1
         else:
-            proj_idx = 0  # X axis
+            proj_idx = 0
 
-        # 建立段落: 按沿軸位置排序的直徑段
         segments = []
         for cyl in main_cyls:
             cx, cy, cz = cyl["center"]
             pos = [cx, cy, cz][proj_idx]
             segments.append({
-                "position": pos,
-                "diameter": cyl["diameter"],
-                "radius": cyl["radius"],
-                "length": cyl["length"],
-                "start": cyl["start_pos"],
-                "end": cyl["end_pos"],
+                "position": round(pos, 3),
+                "diameter": round(cyl["diameter"], 3),
+                "radius": round(cyl["radius"], 3),
+                "length": round(cyl["length"], 3),
+                "start": round(cyl["start_pos"], 3),
+                "end": round(cyl["end_pos"], 3),
                 "is_hole": cyl["is_hole"],
             })
 
-        # 按位置排序
         segments.sort(key=lambda s: s["position"])
 
-        # 合併相同直徑的相鄰段落
+        # 合併與去重
         merged = []
         for seg in segments:
-            if merged and abs(merged[-1]["diameter"] - seg["diameter"]) < 0.01:
-                # 延伸現有段落
+            if merged and abs(merged[-1]["diameter"] - seg["diameter"]) < 0.02 and abs(merged[-1]["position"] - seg["position"]) < 0.5:
                 merged[-1]["length"] = max(merged[-1]["length"], seg["length"])
                 merged[-1]["end"] = max(merged[-1]["end"], seg["end"])
             else:
                 merged.append(dict(seg))
 
-        # 去重: 移除重複的直徑段落 (相同直徑但不同位置)
-        unique_diameters = {}
-        for seg in merged:
-            d_key = round(seg["diameter"], 1)
-            if d_key not in unique_diameters or seg["length"] > unique_diameters[d_key]["length"]:
-                unique_diameters[d_key] = seg
-        
-        self.step_segments = sorted(unique_diameters.values(), key=lambda s: s["position"])
+        self.step_segments = sorted(merged, key=lambda s: s["position"])
         self.main_axis = main_axis
 
+    def _detect_hole_patterns(self):
+        """偵測圓周孔群陣列 (PCD)"""
+        if len(self.holes) < 2:
+            return
+
+        # 依直徑與軸向分組
+        groups = {}
+        for h in self.holes:
+            d_key = round(h["diameter"], 2)
+            ax_key = (round(h["axis_dir"][0], 1), round(h["axis_dir"][1], 1), round(h["axis_dir"][2], 1))
+            k = (d_key, ax_key)
+            if k not in groups:
+                groups[k] = []
+            groups[k].append(h)
+
+        patterns = []
+        for (dia, ax_dir), hole_list in groups.items():
+            if len(hole_list) >= 2:
+                # 計算中心平均位置
+                cx = sum(h["center"][0] for h in hole_list) / len(hole_list)
+                cy = sum(h["center"][1] for h in hole_list) / len(hole_list)
+                cz = sum(h["center"][2] for h in hole_list) / len(hole_list)
+
+                # 計算每個孔到平均中心的距離
+                radii = []
+                for h in hole_list:
+                    dx = h["center"][0] - cx
+                    dy = h["center"][1] - cy
+                    dz = h["center"][2] - cz
+                    r_pcd = math.sqrt(dx * dx + dy * dy + dz * dz)
+                    radii.append(r_pcd)
+
+                avg_r = sum(radii) / len(radii)
+                # 若半徑分散很小且大於 2mm，視為同一個 PCD 孔群
+                if avg_r > 2.0 and max(abs(r - avg_r) for r in radii) < 1.0:
+                    patterns.append({
+                        "count": len(hole_list),
+                        "hole_diameter": round(dia, 2),
+                        "pcd": round(avg_r * 2, 2),
+                        "pattern_center": (round(cx, 2), round(cy, 2), round(cz, 2)),
+                        "axis_dir": ax_dir,
+                        "holes": hole_list,
+                    })
+
+        self.hole_patterns = sorted(patterns, key=lambda p: -p["count"])
+
+    def _detect_thicknesses(self):
+        """偵測主要平面間的壁厚與台階厚度"""
+        if len(self.planes) < 2:
+            return
+
+        # 依主軸法向量 (X, Y, Z) 分組
+        norm_groups = {"X": [], "Y": [], "Z": []}
+        for p in self.planes:
+            nx, ny, nz = p["normal"]
+            if abs(nx) > 0.8:
+                norm_groups["X"].append((p["center_of_mass"][0], p))
+            elif abs(ny) > 0.8:
+                norm_groups["Y"].append((p["center_of_mass"][1], p))
+            elif abs(nz) > 0.8:
+                norm_groups["Z"].append((p["center_of_mass"][2], p))
+
+        thicknesses = []
+        for axis_name, plane_pairs in norm_groups.items():
+            if len(plane_pairs) >= 2:
+                # 按座標排序
+                plane_pairs.sort(key=lambda item: item[0])
+                for i in range(len(plane_pairs) - 1):
+                    pos1, p1 = plane_pairs[i]
+                    pos2, p2 = plane_pairs[i + 1]
+                    dist = abs(pos2 - pos1)
+                    if 0.2 < dist < max(self.W, self.H, self.D) * 0.9:
+                        thicknesses.append({
+                            "axis": axis_name,
+                            "thickness": round(dist, 3),
+                            "pos1": round(pos1, 3),
+                            "pos2": round(pos2, 3),
+                            "area1": p1["area"],
+                            "area2": p2["area"],
+                        })
+
+        # 去重與排序
+        unique_th = []
+        seen = set()
+        for t in thicknesses:
+            k = (t["axis"], round(t["thickness"], 2))
+            if k not in seen:
+                seen.add(k)
+                unique_th.append(t)
+
+        self.thicknesses = sorted(unique_th, key=lambda t: t["thickness"])
+
     def get_step_dims_for_view(self, view_name):
-        """
-        回傳指定視圖需要的段差標註資料
-        
-        對於旋轉對稱件 (軸/套筒):
-        - profile view (看到長軸方向的截面): 標註各段直徑+長度
-        - end view (看到圓形端面): 標註直徑
-        
-        Returns:
-            {
-                "is_profile": True/False,
-                "segments": [{position, diameter, length}, ...],
-                "overall_length": float,
-                "main_axis": str,
-            }
-        """
         if not self.step_segments:
             return {"is_profile": False, "segments": [], "overall_length": 0, "main_axis": None}
 
-        # 根據主軸和視圖方向決定是 profile view 還是 end view
         axis = getattr(self, 'main_axis', None)
-        
         if axis == "Z":
-            is_profile = view_name in ('front', 'right')  # 前/右看到側面
+            is_profile = view_name in ('front', 'right')
         elif axis == "Y":
-            is_profile = view_name in ('front', 'right')  # 前/右看到側面
+            is_profile = view_name in ('front', 'right')
         elif axis == "X":
             is_profile = view_name in ('top', 'right')
         else:
             is_profile = False
 
-        # 計算整體長度
-        if self.step_segments:
-            positions = [s["position"] for s in self.step_segments]
-            overall = max(s["end"] - s["start"] for s in self.step_segments) if self.step_segments else 0
-        else:
-            overall = 0
+        overall = max(s["end"] - s["start"] for s in self.step_segments) if self.step_segments else 0
 
         return {
             "is_profile": is_profile,
             "segments": self.step_segments,
-            "overall_length": overall,
+            "overall_length": round(overall, 3),
             "main_axis": axis,
         }
 
     def get_bbox_dimensions(self):
-        return {"W": self.W, "H": self.H, "D": self.D}
+        return {"W": round(self.W, 3), "H": round(self.H, 3), "D": round(self.D, 3)}
 
     def get_overall_spec(self):
         parts = []
         if self.shafts:
             max_od = max(s["diameter"] for s in self.shafts)
-            parts.append(f"ψ{max_od:.2f}")
+            parts.append(f"OD{max_od:.2f}")
         if self.holes:
             max_id = max(h["diameter"] for h in self.holes)
-            parts.append(f"ψ{max_id:.2f}")
+            parts.append(f"ID{max_id:.2f}")
         h = max(self.H, self.D)
         if h > 0.1:
             parts.append(f"{h:.2f}L")
-        return "×".join(parts) if parts else f"{self.W:.2f}×{self.H:.2f}×{self.D:.2f}"
+        return "x".join(parts) if parts else f"{self.W:.2f}x{self.H:.2f}x{self.D:.2f}"
 
     def summary(self):
+        """完整回傳所有提取到的特徵資料，不做任何截斷"""
         return {
-            "bounding_box": {"W": round(self.W, 2), "H": round(self.H, 2), "D": round(self.D, 2)},
+            "bounding_box": {"W": round(self.W, 3), "H": round(self.H, 3), "D": round(self.D, 3)},
             "spec": self.get_overall_spec(),
+            "main_axis": getattr(self, 'main_axis', None),
             "holes_count": len(self.holes),
             "shafts_count": len(self.shafts),
+            "cones_count": len(self.cones),
             "fillets_count": len(self.fillets),
+            "circle_edges_count": len(self.circle_edges),
+            "planes_count": len(self.planes),
+            "thicknesses_count": len(self.thicknesses),
+            "step_segments_count": len(self.step_segments),
             "step_segments": len(self.step_segments),
-            "main_axis": getattr(self, 'main_axis', None),
-            "holes": [{"Ø": round(h["diameter"], 2), "len": round(h["length"], 2)} for h in self.holes[:10]],
-            "shafts": [{"Ø": round(s["diameter"], 2), "len": round(s["length"], 2)} for s in self.shafts[:10]],
-            "steps": [{"Ø": round(s["diameter"], 2), "len": round(s["length"], 2), "pos": round(s["position"], 2)} for s in self.step_segments],
+            "hole_patterns_count": len(self.hole_patterns),
+            "toruses_count": len(self.toruses),
+            "spheres_count": len(self.spheres),
+            "counts": {
+                "holes_count": len(self.holes),
+                "shafts_count": len(self.shafts),
+                "cones_count": len(self.cones),
+                "fillets_count": len(self.fillets),
+                "circle_edges_count": len(self.circle_edges),
+                "planes_count": len(self.planes),
+                "thicknesses_count": len(self.thicknesses),
+                "step_segments_count": len(self.step_segments),
+                "hole_patterns_count": len(self.hole_patterns),
+                "toruses_count": len(self.toruses),
+                "spheres_count": len(self.spheres),
+            },
+            # 完整特徵清單
+            "holes": self.holes,
+            "shafts": self.shafts,
+            "cones": self.cones,
+            "fillets": self.fillets,
+            "circle_edges": self.circle_edges,
+            "planes": self.planes,
+            "thicknesses": self.thicknesses,
+            "steps": self.step_segments,
+            "hole_patterns": self.hole_patterns,
+            "toruses": self.toruses,
+            "spheres": self.spheres,
         }
