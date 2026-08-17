@@ -277,6 +277,48 @@ def render_custom_annotation_drawing(body: Dict[str, Any] = Body(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/annotation/candidate-rules/{model_id}/{part_id}")
+def get_candidate_annotation_rules(model_id: str, part_id: str):
+    """
+    為指定零件動態掃描並產出所有候選標註規則 (Candidate Dimension Rules)
+    """
+    output_dir = _safe_output_dir(model_id)
+    _safe_part_id(part_id)
+
+    stp_candidates = [
+        os.path.join(output_dir, "_parts", f"{part_id}.stp"),
+        os.path.join(output_dir, "_parts", f"{part_id}.step"),
+        os.path.join(output_dir, f"{part_id}.stp"),
+        os.path.join(output_dir, f"{part_id}.step"),
+    ]
+    stp_path = None
+    for p in stp_candidates:
+        if os.path.exists(p):
+            stp_path = p
+            break
+
+    if not stp_path:
+        raise HTTPException(status_code=404, detail=f"STEP file for {part_id} not found")
+
+    try:
+        shape = load_step(stp_path)
+        projector = ViewProjector()
+        view_data = projector.project_all_views(shape, view_names=['front', 'top', 'right', 'left'])
+        engine = SmartAnnotationEngine()
+        rules = engine.get_candidate_rules(shape, view_data)
+        return {
+            "status": "ok",
+            "model_id": model_id,
+            "part_id": part_id,
+            "rules": rules
+        }
+    except Exception as e:
+        print(f"Candidate rules extraction error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/features/{model_id}/{part_id}")
 def get_part_features(model_id: str, part_id: str):
     """
