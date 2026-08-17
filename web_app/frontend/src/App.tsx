@@ -688,26 +688,73 @@ function App() {
     setFeatureRecords([]);
     setSelectedFeatureIds(new Set());
 
+    const modelId = results?.model_id || results?.output_dir || jobId;
     const partsMapForFeatures: Record<string, any> = results?.parts_map || {};
     const selectedData = selectedPart ? partsMapForFeatures[selectedPart] : null;
-    if (!selectedData?.features_json) return;
 
-    axios.get(`${API_BASE}${selectedData.features_json}?t=${Date.now()}`)
-      .then(res => {
-        const records = Array.isArray(res.data) ? res.data : [];
-        setFeatureRecords(records);
-        // 若特徵總數過多 (> 15 筆)，預設選取前 12 筆核心特徵，避免一載入就被數百個框框遮蔽畫面；使用者隨時可點「全選」
-        const initialSelected = records.length <= 15
-          ? records.map((r: any) => r.id)
-          : records.slice(0, 12).map((r: any) => r.id);
-        setSelectedFeatureIds(new Set(initialSelected));
-      })
-      .catch(err => {
-        console.error('Feature records load error:', err);
-        setFeatureRecords([]);
-        setSelectedFeatureIds(new Set());
-      });
-  }, [results, selectedPart]);
+    if (!selectedPart) return;
+
+    // 優先調用後端即時 3D 特徵動態提取 API (保證 100% 所有零件/新舊模型皆有 3D 特徵)
+    if (modelId) {
+      axios.get(`${API_BASE}/api/features/${modelId}/${selectedPart}?t=${Date.now()}`)
+        .then(res => {
+          const records = Array.isArray(res.data?.records) ? res.data.records : [];
+          if (records.length > 0) {
+            setFeatureRecords(records);
+            const initialSelected = records.length <= 15
+              ? records.map((r: any) => r.id)
+              : records.slice(0, 12).map((r: any) => r.id);
+            setSelectedFeatureIds(new Set(initialSelected));
+            return;
+          }
+          if (selectedData?.features_json) {
+            axios.get(`${API_BASE}${selectedData.features_json}?t=${Date.now()}`)
+              .then(res2 => {
+                const recs = Array.isArray(res2.data) ? res2.data : [];
+                setFeatureRecords(recs);
+                const initial = recs.length <= 15
+                  ? recs.map((r: any) => r.id)
+                  : recs.slice(0, 12).map((r: any) => r.id);
+                setSelectedFeatureIds(new Set(initial));
+              })
+              .catch(() => {});
+          }
+        })
+        .catch(err => {
+          console.error('Dynamic feature API error:', err);
+          if (selectedData?.features_json) {
+            axios.get(`${API_BASE}${selectedData.features_json}?t=${Date.now()}`)
+              .then(res2 => {
+                const recs = Array.isArray(res2.data) ? res2.data : [];
+                setFeatureRecords(recs);
+                const initial = recs.length <= 15
+                  ? recs.map((r: any) => r.id)
+                  : recs.slice(0, 12).map((r: any) => r.id);
+                setSelectedFeatureIds(new Set(initial));
+              })
+              .catch(() => {
+                setFeatureRecords([]);
+                setSelectedFeatureIds(new Set());
+              });
+          }
+        });
+    } else if (selectedData?.features_json) {
+      axios.get(`${API_BASE}${selectedData.features_json}?t=${Date.now()}`)
+        .then(res => {
+          const records = Array.isArray(res.data) ? res.data : [];
+          setFeatureRecords(records);
+          const initialSelected = records.length <= 15
+            ? records.map((r: any) => r.id)
+            : records.slice(0, 12).map((r: any) => r.id);
+          setSelectedFeatureIds(new Set(initialSelected));
+        })
+        .catch(err => {
+          console.error('Feature records load error:', err);
+          setFeatureRecords([]);
+          setSelectedFeatureIds(new Set());
+        });
+    }
+  }, [results, selectedPart, jobId]);
 
   const toggleFeature = (id: string) => {
     setSelectedFeatureIds(prev => {

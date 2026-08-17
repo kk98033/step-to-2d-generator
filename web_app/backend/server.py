@@ -139,6 +139,80 @@ def _annotation_path(output_dir: str, part_id: str) -> str:
     return os.path.join(output_dir, "_annotations", f"{part_id}_annotations.json")
 
 
+from auto_2d_drawing.step_reader import load_step
+from auto_2d_drawing.feature_extractor import FeatureExtractor
+from auto_2d_drawing.feature_layer import build_feature_records
+
+
+@app.get("/api/features/{model_id}/{part_id}")
+def get_part_features(model_id: str, part_id: str):
+    """
+    動態取得或即時提取任何零件的完整 3D 機械特徵清單
+    若無快取或為舊版 2D 格式，會自動載入實體 STEP 進行即時提取並更新快取
+    """
+    output_dir = _safe_output_dir(model_id)
+    _safe_part_id(part_id)
+
+    parts_map = build_parts_map(output_dir, model_id)
+    part_entry = parts_map.get(part_id, {})
+
+    feature_json_rel = part_entry.get("features_json")
+    json_path = None
+    if feature_json_rel:
+        json_path = os.path.join(output_dir, os.path.basename(feature_json_rel))
+    else:
+        json_path = os.path.join(output_dir, f"{part_id}_feature_records.json")
+
+    # 1. 檢查快取是否有有效 3D 特徵 (center 必須為 3D 座標)
+    if json_path and os.path.exists(json_path):
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                records = json.load(f)
+            if isinstance(records, list) and len(records) > 0:
+                has_3d = any(
+                    isinstance(r.get("geometry"), dict) and
+                    isinstance(r.get("geometry", {}).get("center"), list) and
+                    len(r.get("geometry", {}).get("center", [])) >= 3
+                    for r in records
+                )
+                if has_3d:
+                    return {"status": "ok", "records": records, "source": "cache"}
+        except Exception:
+            pass
+
+    # 2. 若無 3D 快取，即時從實體 STEP 進行 OpenCASCADE 幾何拓撲動態提取
+    stp_candidates = [
+        os.path.join(output_dir, "_parts", f"{part_id}.stp"),
+        os.path.join(output_dir, f"{part_id}.stp"),
+        os.path.join(MODELS_DIR, f"{model_id}.stp"),
+        os.path.join(MODELS_DIR, f"{model_id.replace('_batch', '')}.stp"),
+    ]
+
+    for stp_path in stp_candidates:
+        if os.path.exists(stp_path):
+            try:
+                shape = load_step(stp_path)
+                if shape and not shape.IsNull():
+                    fe = FeatureExtractor(shape)
+                    records = build_feature_records(fe, None)
+                    save_path = json_path or os.path.join(output_dir, f"{part_id}_feature_records.json")
+                    with open(save_path, "w", encoding="utf-8") as f:
+                        json.dump(records, f, indent=2, ensure_ascii=False)
+                    return {"status": "ok", "records": records, "source": "dynamic_extracted"}
+            except Exception as e:
+                print(f"Dynamic feature extraction failed for {stp_path}: {e}")
+
+    # Fallback
+    if json_path and os.path.exists(json_path):
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                return {"status": "ok", "records": json.load(f), "source": "2d_fallback"}
+        except Exception:
+            pass
+
+    return {"status": "ok", "records": [], "source": "none"}
+
+
 def _build_drawing_package(model_id: str) -> dict:
     output_dir = _safe_output_dir(model_id)
     parts_map = build_parts_map(output_dir, model_id)
