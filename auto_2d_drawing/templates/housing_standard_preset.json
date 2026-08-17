@@ -1,0 +1,60 @@
+{
+  "id": "housing_standard_preset",
+  "name": "機殼外框 / 沖壓基板風格 (Housing Standard)",
+  "description": "專為機殼外框與沖壓底座設計：優先標註外框整體包絡、PCD圓周孔群陣列、中心風道腔體孔徑、定位凸台與結構壁厚。",
+  "target_type": "FAN_HOUSING",
+  "rules": [
+    {
+      "feature_type": "overall_size",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "LINEAR",
+      "tolerance": "±0.15",
+      "side": "BOTTOM",
+      "baseline": "NONE",
+      "rank": 2
+    },
+    {
+      "feature_type": "hole_pattern",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "DIAMETER",
+      "tolerance": "±0.05",
+      "side": "RIGHT",
+      "baseline": "NONE",
+      "rank": 1
+    },
+    {
+      "feature_type": "hole",
+      "role_pattern": "(center_bore|duct_cavity)",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "DIAMETER",
+      "tolerance": "±0.05",
+      "side": "LEFT",
+      "baseline": "NONE",
+      "rank": 1
+    },
+    {
+      "feature_type": "shaft_or_boss",
+      "role_pattern": "(mounting_boss|outer_rim)",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "DIAMETER",
+      "tolerance": "±0.05",
+      "side": "RIGHT",
+      "baseline": "NONE",
+      "rank": 1
+    },
+    {
+      "feature_type": "wall_thickness",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "LINEAR",
+      "tolerance": "±0.05",
+      "side": "BOTTOM",
+      "baseline": "NONE",
+      "rank": 1
+    }
+  ]
+}

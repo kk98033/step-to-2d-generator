@@ -1,0 +1,90 @@
+{
+  "id": "general_mechanical_preset",
+  "name": "通用機械標準風格 (General Mechanical)",
+  "description": "適用於所有通用未知零件、外罩、支架、連接件：自動選取整體包絡、主基準、主軸承孔/配合徑、PCD圓周孔群與板厚。",
+  "target_type": "GENERAL_MECHANICAL",
+  "rules": [
+    {
+      "feature_type": "overall_size",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "LINEAR",
+      "tolerance": "±0.1",
+      "side": "BOTTOM",
+      "baseline": "NONE",
+      "rank": 2
+    },
+    {
+      "feature_type": "datum",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "CENTERLINES",
+      "tolerance": "",
+      "side": "TOP",
+      "baseline": "NONE",
+      "rank": 1
+    },
+    {
+      "feature_type": "hole_pattern",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "DIAMETER",
+      "tolerance": "±0.05",
+      "side": "RIGHT",
+      "baseline": "NONE",
+      "rank": 1
+    },
+    {
+      "feature_type": "hole",
+      "role_pattern": "(center_bore|shaft_bore_fit|functional)",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "DIAMETER",
+      "tolerance": "±0.02",
+      "side": "LEFT",
+      "baseline": "NONE",
+      "rank": 1
+    },
+    {
+      "feature_type": "shaft_or_boss",
+      "role_pattern": "(outer_rim|hub_outer|mounting_boss)",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "DIAMETER",
+      "tolerance": "±0.02",
+      "side": "RIGHT",
+      "baseline": "NONE",
+      "rank": 1
+    },
+    {
+      "feature_type": "cone_or_chamfer",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "LEADER",
+      "tolerance": "±0.1",
+      "side": "TOP",
+      "baseline": "NONE",
+      "rank": 1
+    },
+    {
+      "feature_type": "step",
+      "enabled": true,
+      "preferred_view": "right",
+      "dim_type": "LINEAR",
+      "tolerance": "±0.05",
+      "side": "BOTTOM",
+      "baseline": "NONE",
+      "rank": 1
+    },
+    {
+      "feature_type": "wall_thickness",
+      "enabled": true,
+      "preferred_view": "front",
+      "dim_type": "LINEAR",
+      "tolerance": "±0.05",
+      "side": "BOTTOM",
+      "baseline": "NONE",
+      "rank": 1
+    }
+  ]
+}

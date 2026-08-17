@@ -142,6 +142,138 @@ def _annotation_path(output_dir: str, part_id: str) -> str:
 from auto_2d_drawing.step_reader import load_step
 from auto_2d_drawing.feature_extractor import FeatureExtractor
 from auto_2d_drawing.feature_layer import build_feature_records
+from auto_2d_drawing.smart_annotation_engine import TemplateManager, SmartAnnotationEngine
+from auto_2d_drawing.view_projector import ViewProjector
+
+template_manager = TemplateManager()
+
+
+@app.get("/api/annotation/templates")
+def get_annotation_templates():
+    """取得所有可用標註樣板清單"""
+    templates = template_manager.list_templates()
+    return {"status": "ok", "templates": templates}
+
+
+@app.post("/api/annotation/templates")
+def save_annotation_template(data: Dict[str, Any] = Body(...)):
+    """儲存或建立新標註樣板"""
+    try:
+        saved = template_manager.save_template(data)
+        return {"status": "ok", "template": saved}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/annotation/templates/{template_id}")
+def delete_annotation_template(template_id: str):
+    """刪除自訂標註樣板"""
+    try:
+        success = template_manager.delete_template(template_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Template not found")
+        return {"status": "ok", "message": "Template deleted"}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/annotation/apply-template")
+def apply_annotation_template(body: Dict[str, Any] = Body(...)):
+    """
+    將指定樣板的規則動態套用至特徵清單
+    Body: {"template_id": "...", "feature_records": [...]} 或 {"template": {...}, "feature_records": [...]}
+    """
+    template_id = body.get("template_id")
+    template = body.get("template")
+    feature_records = body.get("feature_records", [])
+
+    if not template and template_id:
+        template = template_manager.get_template(template_id)
+
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    updated_records = template_manager.match_and_apply(template, feature_records)
+    return {"status": "ok", "records": updated_records, "applied_template": template.get("name")}
+
+
+@app.post("/api/annotation/render")
+def render_custom_annotation_drawing(body: Dict[str, Any] = Body(...)):
+    """
+    依據使用者選定之特徵與自訂公差組態，即時產出客製化工程圖 (DXF, PDF, PNG)
+    Body: {
+      "model_id": "...",
+      "part_id": "...",
+      "feature_records": [...],
+      "title_info": {...}
+    }
+    """
+    model_id = body.get("model_id")
+    part_id = body.get("part_id")
+    feature_records = body.get("feature_records", [])
+    title_info = body.get("title_info", {})
+
+    if not model_id or not part_id:
+        raise HTTPException(status_code=400, detail="model_id and part_id are required")
+
+    output_dir = _safe_output_dir(model_id)
+    _safe_part_id(part_id)
+
+    # 尋找對應的實體 STEP 檔
+    stp_candidates = [
+        os.path.join(output_dir, "_parts", f"{part_id}.stp"),
+        os.path.join(output_dir, f"{part_id}.stp"),
+        os.path.join(MODELS_DIR, f"{model_id}.stp"),
+        os.path.join(MODELS_DIR, f"{model_id.replace('_batch', '')}.stp"),
+    ]
+    stp_path = None
+    for p in stp_candidates:
+        if os.path.exists(p):
+            stp_path = p
+            break
+
+    if not stp_path:
+        raise HTTPException(status_code=404, detail=f"STEP file for {part_id} not found")
+
+    try:
+        # 1. 載入實體並執行投影
+        shape = load_step(stp_path)
+        projector = ViewProjector()
+        view_data = projector.project_all_views(shape, view_names=['front', 'top', 'right', 'left'])
+
+        # 2. 準備客製輸出目錄
+        custom_out_dir = os.path.join(output_dir, "_custom_annotations", part_id)
+        os.makedirs(custom_out_dir, exist_ok=True)
+
+        dxf_path = os.path.join(custom_out_dir, f"{part_id}_custom.dxf")
+        pdf_path = os.path.join(custom_out_dir, f"{part_id}_custom.pdf")
+        png_path = os.path.join(custom_out_dir, f"{part_id}_custom.png")
+
+        # 3. 呼叫智慧標註引擎渲染
+        engine = SmartAnnotationEngine()
+        engine.render_custom_drawing(
+            dxf_path=dxf_path,
+            pdf_path=pdf_path,
+            png_path=png_path,
+            feature_records=feature_records,
+            view_data=view_data,
+            title_info=title_info
+        )
+
+        return {
+            "status": "ok",
+            "dxf_url": _api_file_url(model_id, "_custom_annotations", part_id, f"{part_id}_custom.dxf"),
+            "pdf_url": _api_file_url(model_id, "_custom_annotations", part_id, f"{part_id}_custom.pdf"),
+            "png_url": _api_file_url(model_id, "_custom_annotations", part_id, f"{part_id}_custom.png"),
+            "timestamp": uuid.uuid4().hex[:8]
+        }
+    except Exception as e:
+        print(f"Custom annotation render error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/features/{model_id}/{part_id}")
