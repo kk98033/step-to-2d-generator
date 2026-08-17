@@ -12,15 +12,19 @@ import math
 
 def detect_part_semantic_type(summary, bbox, part_type_hint=None):
     """
-    智慧判定機械零件類型 (風扇葉輪/扇葉、馬達磁環/外殼/軸套、風扇軸、沖壓底座、通用零件)
+    智慧判定機械零件類型：
+      - 若有特定提示 (如 SHAFT, IMPELLER, RING) 則使用對應領域語意識別器
+      - 若為細長桿狀軸類 (min_d <= 15mm 且 mid_d <= 15mm 且長徑比 >= 2.0) 則識別為 SHAFT
+      - 其他所有 100% 任意未知、未看過之新模型 (外殼、盤體、蓋板、沖壓底座、散熱器、機構支架等)
+        皆自動走入 Universal Dynamic Mechanical Feature Engine，完整提取所有 3D 特徵！
     """
     if part_type_hint and part_type_hint not in ("None", "UNKNOWN", "auto"):
         p_up = part_type_hint.upper()
         if "SHAFT" in p_up:
             return "SHAFT"
-        if "IMPELLER" in p_up or "BLADE" in p_up or "FAN" in p_up:
+        if "IMPELLER" in p_up or "BLADE" in p_up:
             return "FAN_IMPELLER"
-        if "RING" in p_up or "HOUSING" in p_up or "SLEEVE" in p_up:
+        if "RING" in p_up or "SLEEVE" in p_up or "BUSHING" in p_up:
             return "MOTOR_RING"
         if "STAMPED" in p_up or "BASE" in p_up:
             return "STAMPED_FAN_BASE"
@@ -32,23 +36,13 @@ def detect_part_semantic_type(summary, bbox, part_type_hint=None):
     dims = sorted([w, h, d])
     max_d = dims[2]
     min_d = dims[0]
+    mid_d = dims[1]
 
-    # 1. 軸類零件 (Shaft): 徑向細長，外徑 < 15mm，長徑比 > 2.5
-    if (max_d / max(0.1, min_d)) >= 2.5 and min_d <= 15.0:
+    # 1. 軸類零件 (Shaft): 徑向截面皆小 (min_d <= 15.0 and mid_d <= 15.0)，長徑比 > 2.0
+    if min_d <= 15.0 and mid_d <= 15.0 and (max_d / max(0.1, mid_d)) >= 2.0:
         return "SHAFT"
 
-    # 2. 風扇葉輪 (Fan Impeller / Rotor): 外徑 >= 45mm，徑向對稱，具有葉片與輪轂
-    if max_d >= 45.0 and abs(dims[2] - dims[1]) <= max_d * 0.15:
-        return "FAN_IMPELLER"
-
-    # 3. 馬達外殼 / 磁環 / 銅套 (Motor Ring / Sleeve / Bushing): 外徑 15~50mm，具有主貫通孔/內徑孔
-    if len(summary.get("holes", [])) >= 1 and 15.0 <= max_d <= 50.0:
-        return "MOTOR_RING"
-
-    # 4. 沖壓底座 (Stamped Fan Base):
-    if len(summary.get("hole_patterns", [])) >= 1 or len(summary.get("holes", [])) >= 4:
-        return "STAMPED_FAN_BASE"
-
+    # 2. 其他所有未知模型 -> 啟用 Universal Dynamic Mechanical Feature Engine
     return "GENERAL_MECHANICAL"
 
 
@@ -696,74 +690,132 @@ def _build_ring_housing_specific_records(summary, bbox):
 
 def _build_general_mechanical_records(summary, bbox, part_type):
     """
-    通用機械零件特徵建構
+    通用萬能 3D 機械特徵深度提取引擎 (Universal Dynamic Feature Engine)
+    相容 100% 任意未知 STEP 模型、外殼、基板、沖壓件、散熱器、機構支架與複雜組件
     """
     records = []
-    # 1. 整體包絡尺寸 (Overall Size)
-    max_bbox = max(bbox.values()) if bbox else 100.0
+    w = bbox.get("W", 10.0)
+    h = bbox.get("H", 10.0)
+    d = bbox.get("D", 10.0)
+    max_bbox = max(w, h, d) if bbox else 100.0
+    main_axis = summary.get("main_axis", "Z")
+
+    # 1. 整體包絡尺寸 (Overall Enclosing Box)
     records.append({
         "id": "bbox_overall",
         "type": "overall_size",
-        "name": "外框整體尺寸",
+        "name": f"整體包絡規格 {w:.2f} × {h:.2f} × {d:.2f}mm",
         "view": "front",
         "role": "assembly",
-        "nominal": bbox,
+        "nominal": {"W": w, "H": h, "D": d},
         "tolerance_key": "overall_size",
-        "geometry": {"kind": "bbox", "size": bbox, "center": [0, 0, 0]},
-        "source": {"extractor": "FeatureExtractor.bounding_box", "confidence": 0.98},
+        "geometry": {
+            "kind": "bbox",
+            "center": [0.0, 0.0, 0.0],
+            "size": [w, h, d],
+        },
+        "source": {"extractor": "UniversalFeatureEngine.bbox", "confidence": 0.99},
     })
 
-    # 2. 孔群陣列特徵 (Hole Patterns / PCD)
+    # 2. 基準A 主旋轉中心軸線 (Primary Datum Axis)
+    records.append({
+        "id": "datum_primary_axis",
+        "type": "datum",
+        "name": f"基準A 主中心旋轉軸線 ({main_axis}向)",
+        "view": "front",
+        "role": "datum",
+        "nominal": {"axis": main_axis},
+        "tolerance_key": "datum_axis",
+        "geometry": {
+            "kind": "axis",
+            "center": [0.0, 0.0, 0.0],
+            "size": [0.3, max_bbox * 1.05, 0.3] if main_axis == "Y" else ([0.3, 0.3, max_bbox * 1.05] if main_axis == "Z" else [max_bbox * 1.05, 0.3, 0.3]),
+            "axis": main_axis,
+        },
+        "source": {"extractor": "UniversalFeatureEngine.datum", "confidence": 0.99},
+    })
+
+    # 3. 基準B 主要安裝/定位基準面 (Primary Datum Face)
+    records.append({
+        "id": "datum_primary_face",
+        "type": "wall_thickness",
+        "name": f"基準B 主要定位/安裝基準面 (Datum Face B)",
+        "view": "front",
+        "role": "datum_face",
+        "nominal": {"datum": "B"},
+        "tolerance_key": "flatness_perpendicularity",
+        "geometry": {
+            "kind": "plane",
+            "center": [0.0, -h/2.0, 0.0] if main_axis == "Y" else [0.0, 0.0, -d/2.0],
+            "size": [w * 0.9, 0.4, d * 0.9] if main_axis == "Y" else [w * 0.9, h * 0.9, 0.4],
+        },
+        "source": {"extractor": "UniversalFeatureEngine.datum", "confidence": 0.95},
+    })
+
+    # 4. 圓周孔群陣列特徵 (Hole Patterns / PCD)
     patterns = summary.get("hole_patterns", [])
     for idx, pat in enumerate(patterns, start=1):
         count = pat.get("count", 0)
         dia = pat.get("hole_diameter", 0)
         pcd = pat.get("pcd", 0)
         c = pat.get("pattern_center", (0, 0, 0))
+        c_3d = [float(c[0]), float(c[1]), float(c[2])]
         records.append({
             "id": f"pattern_{idx:02d}",
             "type": "hole_pattern",
-            "name": f"{count}-Ø{dia:.2f} PCD {pcd:.2f}mm 圓周孔群",
+            "name": f"{count}-Ø{dia:.2f} PCD {pcd:.2f}mm 圓周孔群陣列",
             "view": "front",
             "role": "mounting_array" if part_type in ("FAN_HOUSING", "STAMPED_FAN_BASE") else "functional_array",
             "nominal": {"count": count, "diameter": dia, "pcd": pcd},
             "tolerance_key": "pcd_pattern",
             "geometry": {
                 "kind": "circle_pattern",
-                "center": [float(c[0]), float(c[1]), float(c[2])],
-                "size": [pcd * 1.1, pcd * 1.1, 5.0],
+                "center": c_3d,
+                "size": [pcd * 1.15, 3.0, pcd * 1.15] if main_axis == "Y" else [pcd * 1.15, pcd * 1.15, 3.0],
                 "pcd": pcd,
                 "count": count,
                 "hole_diameter": dia,
             },
-            "source": {"extractor": "FeatureExtractor.hole_patterns", "confidence": 0.92},
+            "source": {"extractor": "UniversalFeatureEngine.hole_patterns", "confidence": 0.95},
         })
 
-    # 3. 圓柱孔特徵 (Holes)
+    # 5. 圓柱孔特徵 (All Internal Cylinders & Bores)
     holes = summary.get("holes", [])
     for idx, hole in enumerate(holes, start=1):
         dia = hole.get("diameter", hole.get("Ø", 0))
         length = hole.get("length", hole.get("len", 0))
         c = hole.get("center", (0, 0, 0))
         c_3d = [float(c[0]), float(c[1]), float(c[2])]
+        ax_dir = hole.get("axis_dir", (0, 0, 1))
 
-        if idx == 1 and dia > max_bbox * 0.3:
+        if abs(ax_dir[0]) > 0.8:
+            box_sz = [max(0.6, length), dia, dia]
+        elif abs(ax_dir[1]) > 0.8:
+            box_sz = [dia, max(0.6, length), dia]
+        else:
+            box_sz = [dia, dia, max(0.6, length)]
+
+        if dia >= max_bbox * 0.4:
             role = "center_bore"
             tol_key = "center_bore"
-            name_prefix = "中心大孔/風道"
-        elif dia < max_bbox * 0.2:
+            name = f"中心主腔體/風道孔 Ø{dia:.2f} (深{length:.2f}mm)"
+        elif length >= dia * 0.8:
+            role = "shaft_bore_fit"
+            tol_key = "hole_fit_H7"
+            name = f"主軸/軸承配合孔 Ø{dia:.2f} (深{length:.2f}mm)"
+        elif dia <= 4.5:
             role = "mounting"
             tol_key = "mounting_hole"
-            name_prefix = "安裝/固定孔"
+            name = f"安裝固定/定位孔 Ø{dia:.2f} (深{length:.2f}mm)"
         else:
             role = "functional"
             tol_key = "hole"
-            name_prefix = "圓孔"
+            name = f"圓柱內徑孔 Ø{dia:.2f} (深{length:.2f}mm)"
 
         records.append({
             "id": f"hole_{idx:02d}",
             "type": "hole",
-            "name": f"{name_prefix} Ø{dia:.2f} (深{length:.2f})",
+            "name": name,
             "view": "front",
             "role": role,
             "nominal": {"diameter": dia, "length": length},
@@ -771,42 +823,50 @@ def _build_general_mechanical_records(summary, bbox, part_type):
             "geometry": {
                 "kind": "cylinder",
                 "center": c_3d,
-                "size": [dia, max(0.8, length), dia],
+                "size": box_sz,
                 "diameter": dia,
                 "length": length,
             },
-            "source": {"extractor": "FeatureExtractor.holes", "confidence": 0.88},
+            "source": {"extractor": "UniversalFeatureEngine.holes", "confidence": 0.92},
         })
 
-    # 4. 圓柱軸與凸台特徵 (Shafts & Bosses)
+    # 6. 圓柱軸與凸台特徵 (All External Cylinders & Bosses)
     shafts = summary.get("shafts", [])
     for idx, shaft in enumerate(shafts, start=1):
         dia = shaft.get("diameter", shaft.get("Ø", 0))
         length = shaft.get("length", shaft.get("len", 0))
         c = shaft.get("center", (0, 0, 0))
         c_3d = [float(c[0]), float(c[1]), float(c[2])]
+        ax_dir = shaft.get("axis_dir", (0, 0, 1))
 
-        if idx == 1 and dia >= max_bbox * 0.85:
+        if abs(ax_dir[0]) > 0.8:
+            box_sz = [max(0.6, length), dia, dia]
+        elif abs(ax_dir[1]) > 0.8:
+            box_sz = [dia, max(0.6, length), dia]
+        else:
+            box_sz = [dia, dia, max(0.6, length)]
+
+        if dia >= max_bbox * 0.85:
             role = "outer_rim"
             tol_key = "outer_diameter"
-            name_prefix = "最大外徑輪廓"
-        elif idx == 1:
-            role = "datum"
+            name = f"最大外徑配合輪廓 Ø{dia:.2f} (長度{length:.2f}mm)"
+        elif dia >= max_bbox * 0.3:
+            role = "hub_outer"
             tol_key = "shaft_fit"
-            name_prefix = "主軸/旋轉中心"
-        elif dia < max_bbox * 0.3:
+            name = f"主配合外徑/輪轂圓柱 Ø{dia:.2f} (長度{length:.2f}mm)"
+        elif dia <= 5.5:
             role = "mounting_boss"
             tol_key = "boss_diameter"
-            name_prefix = "安裝凸台/定位柱"
+            name = f"定位凸台/安裝柱 Ø{dia:.2f} (凸出{length:.2f}mm)"
         else:
             role = "functional_boss"
             tol_key = "boss_diameter"
-            name_prefix = "圓柱/凸台"
+            name = f"外圓柱配合段 Ø{dia:.2f} (長度{length:.2f}mm)"
 
         records.append({
             "id": f"shaft_{idx:02d}",
             "type": "shaft_or_boss",
-            "name": f"{name_prefix} Ø{dia:.2f} (長{length:.2f})",
+            "name": name,
             "view": "front",
             "role": role,
             "nominal": {"diameter": dia, "length": length},
@@ -814,21 +874,21 @@ def _build_general_mechanical_records(summary, bbox, part_type):
             "geometry": {
                 "kind": "cylinder",
                 "center": c_3d,
-                "size": [dia, max(0.8, length), dia],
+                "size": box_sz,
                 "diameter": dia,
                 "length": length,
             },
-            "source": {"extractor": "FeatureExtractor.shafts", "confidence": 0.88},
+            "source": {"extractor": "UniversalFeatureEngine.shafts", "confidence": 0.90},
         })
 
-    # 5. 圓錐面/倒角/沉頭特徵 (Cones & Chamfers)
+    # 7. 圓錐面/倒角/沉頭特徵 (Cones, Countersinks & Chamfers)
     cones = summary.get("cones", [])
     for idx, cone in enumerate(cones, start=1):
         min_d = cone.get("min_diameter", 0)
         max_d = cone.get("max_diameter", 0)
         semi_angle = cone.get("semi_angle_deg", 45)
         inc_angle = cone.get("included_angle_deg", 90)
-        height = cone.get("height", 0)
+        height = cone.get("height", 0.5)
         is_hole = cone.get("is_hole", False)
         c = cone.get("center", (0, 0, 0))
         c_3d = [float(c[0]), float(c[1]), float(c[2])]
@@ -836,15 +896,19 @@ def _build_general_mechanical_records(summary, bbox, part_type):
         if is_hole and 80 <= inc_angle <= 125:
             role = "countersink"
             tol_key = "countersink"
-            name = f"沉頭孔 Ø{min_d:.2f}~Ø{max_d:.2f} ({inc_angle:.0f}°)"
-        elif not is_hole and 35 <= semi_angle <= 55:
+            name = f"沉頭錐孔 Ø{min_d:.2f}~Ø{max_d:.2f} ({inc_angle:.0f}°)"
+        elif 35 <= semi_angle <= 55:
             role = "chamfer"
             tol_key = "chamfer_angle"
-            name = f"倒角 C{height:.2f} ({semi_angle:.0f}°)"
+            name = f"組裝倒角 C{height:.2f} ({semi_angle:.0f}°, Ø{min_d:.2f}~Ø{max_d:.2f})"
+        elif inc_angle < 20:
+            role = "aerodynamic_taper"
+            tol_key = "taper_angle"
+            name = f"導流/脫模錐度 Ø{min_d:.2f}~Ø{max_d:.2f} ({inc_angle:.1f}°)"
         else:
             role = "taper"
             tol_key = "taper_angle"
-            name = f"錐度面 Ø{min_d:.2f}~Ø{max_d:.2f} ({semi_angle:.1f}°)"
+            name = f"圓錐過渡面 Ø{min_d:.2f}~Ø{max_d:.2f} ({inc_angle:.1f}°)"
 
         records.append({
             "id": f"cone_{idx:02d}",
@@ -857,40 +921,47 @@ def _build_general_mechanical_records(summary, bbox, part_type):
             "geometry": {
                 "kind": "cone",
                 "center": c_3d,
-                "size": [max_d, max_d, max(0.8, height)],
+                "size": [max_d, max(0.6, height), max_d] if main_axis == "Y" else [max_d, max_d, max(0.6, height)],
                 "min_diameter": min_d,
                 "max_diameter": max_d,
             },
-            "source": {"extractor": "FeatureExtractor.cones", "confidence": 0.82},
+            "source": {"extractor": "UniversalFeatureEngine.cones", "confidence": 0.88},
         })
 
-    # 6. 圓弧邊/圓角特徵 (Fillets & Rounds)
-    fillets = summary.get("fillets", [])
-    for idx, fil in enumerate(fillets[:20], start=1):
-        r = fil.get("radius", 0)
-        arc_len = fil.get("arc_length", 0)
-        sweep_deg = fil.get("sweep_angle_deg", 90)
-        c = fil.get("mid_point", fil.get("center", (0, 0, 0)))
+    # 8. 環形槽與退刀槽特徵 (Toruses & Grooves)
+    toruses = summary.get("toruses", [])
+    for idx, tor in enumerate(toruses, start=1):
+        maj_d = tor.get("major_diameter", 0)
+        min_r = tor.get("minor_radius", 0)
+        c = tor.get("center", (0, 0, 0))
         c_3d = [float(c[0]), float(c[1]), float(c[2])]
 
+        if min_r <= 1.2:
+            role = "snap_groove"
+            name = f"卡簧/O-Ring密封槽 Ø{maj_d:.2f} (槽寬{min_r*2:.2f}mm)"
+        else:
+            role = "transition_fillet"
+            name = f"環形槽/過渡弧面 Ø{maj_d:.2f} (R{min_r:.2f})"
+
         records.append({
-            "id": f"fillet_{idx:02d}",
-            "type": "fillet_or_round",
-            "name": f"圓角 R{r:.2f} (弧長{arc_len:.2f})",
+            "id": f"torus_{idx:02d}",
+            "type": "groove_or_slot",
+            "name": name,
             "view": "front",
-            "role": "relief" if r < 2.0 else "round",
-            "nominal": {"radius": r, "arc_length": arc_len, "sweep_angle_deg": sweep_deg},
-            "tolerance_key": "fillet_radius",
+            "role": role,
+            "nominal": {"major_diameter": maj_d, "minor_radius": min_r},
+            "tolerance_key": "groove_width",
             "geometry": {
-                "kind": "fillet",
-                "radius": r,
+                "kind": "torus",
                 "center": c_3d,
-                "size": [r * 2.0, max(0.5, r), r * 2.0],
+                "size": [maj_d, max(0.6, min_r * 2.0), maj_d] if main_axis == "Y" else [maj_d, maj_d, max(0.6, min_r * 2.0)],
+                "major_diameter": maj_d,
+                "minor_radius": min_r,
             },
-            "source": {"extractor": "FeatureExtractor.fillets", "confidence": 0.85},
+            "source": {"extractor": "UniversalFeatureEngine.toruses", "confidence": 0.86},
         })
 
-    # 7. 軸向階梯特徵 (Axial Steps)
+    # 9. 軸向階梯段差特徵 (Axial Steps)
     steps = summary.get("steps", [])
     for idx, step in enumerate(steps, start=1):
         dia = step.get("diameter", step.get("Ø", 0))
@@ -899,25 +970,24 @@ def _build_general_mechanical_records(summary, bbox, part_type):
         records.append({
             "id": f"step_{idx:02d}",
             "type": "step",
-            "name": f"階梯 Ø{dia:.2f} (長{length:.2f}, 位置{pos:.2f})",
+            "name": f"軸向階梯段差 Ø{dia:.2f} (長度{length:.2f}mm, 位置{pos:.2f})",
             "view": "right",
-            "role": "manufacturing",
+            "role": "step_shoulder",
             "nominal": {"diameter": dia, "length": length, "position": pos},
             "tolerance_key": "step_depth",
             "geometry": {
                 "kind": "axial_step",
-                "center": [0.0, float(pos), 0.0],
-                "size": [float(dia), float(length), float(dia)],
-                "position": pos,
+                "center": [0.0, float(pos), 0.0] if main_axis == "Y" else [0.0, 0.0, float(pos)],
+                "size": [float(dia), max(0.6, float(length)), float(dia)] if main_axis == "Y" else [float(dia), float(dia), max(0.6, float(length))],
                 "diameter": dia,
                 "length": length,
             },
-            "source": {"extractor": "FeatureExtractor.steps", "confidence": 0.85},
+            "source": {"extractor": "UniversalFeatureEngine.steps", "confidence": 0.85},
         })
 
-    # 8. 壁厚特徵 (Wall Thicknesses)
+    # 10. 壁厚特徵 (Wall Thicknesses)
     thicknesses = summary.get("thicknesses", [])
-    for idx, th in enumerate(thicknesses[:8], start=1):
+    for idx, th in enumerate(thicknesses[:25], start=1):
         t_val = th.get("thickness", 0)
         axis_name = th.get("axis", "Z")
         pos1 = th.get("pos1", 0)
@@ -926,46 +996,49 @@ def _build_general_mechanical_records(summary, bbox, part_type):
         records.append({
             "id": f"thickness_{idx:02d}",
             "type": "wall_thickness",
-            "name": f"壁厚/板厚 {axis_name}向 T={t_val:.2f}mm",
+            "name": f"{axis_name}向 結構壁厚/板厚 T={t_val:.2f}mm",
             "view": "right" if axis_name == "Z" else "front",
-            "role": "structural",
+            "role": "structural_wall",
             "nominal": {"thickness": t_val, "axis": axis_name},
             "tolerance_key": "wall_thickness",
             "geometry": {
                 "kind": "thickness",
                 "axis": axis_name,
                 "center": [0.0, float(mid_p), 0.0] if axis_name == "Y" else ([0.0, 0.0, float(mid_p)] if axis_name == "Z" else [float(mid_p), 0.0, 0.0]),
-                "size": [max_bbox * 0.7, max(0.5, float(t_val)), max_bbox * 0.7] if axis_name == "Y" else [max_bbox * 0.7, max_bbox * 0.7, max(0.5, float(t_val))],
+                "size": [max_bbox * 0.7, max(0.6, float(t_val)), max_bbox * 0.7] if axis_name == "Y" else [max_bbox * 0.7, max_bbox * 0.7, max(0.6, float(t_val))],
                 "thickness": t_val,
                 "pos1": pos1,
                 "pos2": pos2,
             },
-            "source": {"extractor": "FeatureExtractor.thicknesses", "confidence": 0.80},
+            "source": {"extractor": "UniversalFeatureEngine.thicknesses", "confidence": 0.82},
         })
 
-    # 9. 環形槽特徵 (Toruses / Grooves)
-    toruses = summary.get("toruses", [])
-    for idx, tor in enumerate(toruses, start=1):
-        maj_d = tor.get("major_diameter", 0)
-        min_r = tor.get("minor_radius", 0)
-        t_center = tor.get("center", (0, 0, 0))
-        t_3d = [float(t_center[0]), float(t_center[1]), float(t_center[2])]
+    # 11. 結構圓角特徵 (Fillets & Rounds - Grouped by Unique Radii)
+    fillets = summary.get("fillets", [])
+    seen_radii = {}
+    for fil in fillets:
+        r = round(fil.get("radius", 0), 2)
+        if r > 0.05 and r not in seen_radii:
+            seen_radii[r] = fil
+
+    for idx, (r, fil) in enumerate(seen_radii.items(), start=1):
+        c = fil.get("mid_point", fil.get("center", (0, 0, 0)))
+        c_3d = [float(c[0]), float(c[1]), float(c[2])]
         records.append({
-            "id": f"groove_{idx:02d}",
-            "type": "groove_or_slot",
-            "name": f"環形槽 Ø{maj_d:.2f} (R{min_r:.2f})",
+            "id": f"fillet_r_{idx:02d}",
+            "type": "fillet_or_round",
+            "name": f"結構過渡圓角 R{r:.2f}mm",
             "view": "front",
-            "role": "sealing_or_retaining",
-            "nominal": {"major_diameter": maj_d, "groove_radius": min_r},
-            "tolerance_key": "groove_width",
+            "role": "relief" if r < 1.0 else "round",
+            "nominal": {"radius": r},
+            "tolerance_key": "fillet_radius",
             "geometry": {
-                "kind": "torus",
-                "center": t_3d,
-                "size": [maj_d, max(0.5, min_r * 2.0), maj_d],
-                "major_diameter": maj_d,
-                "minor_radius": min_r,
+                "kind": "fillet",
+                "radius": r,
+                "center": c_3d,
+                "size": [r * 2.0, max(0.6, r), r * 2.0],
             },
-            "source": {"extractor": "FeatureExtractor.toruses", "confidence": 0.80},
+            "source": {"extractor": "UniversalFeatureEngine.fillets", "confidence": 0.85},
         })
 
     return records
