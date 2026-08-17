@@ -240,9 +240,9 @@ function SinglePartViewerWithFeatures({
               <meshStandardMaterial
                 color={boxColor}
                 emissive={boxColor}
-                emissiveIntensity={isHovered ? 0.9 : 0.35}
+                emissiveIntensity={isHovered ? 0.9 : 0.15}
                 transparent={true}
-                opacity={isHovered ? 0.55 : 0.25}
+                opacity={isHovered ? 0.55 : 0.08}
                 roughness={0.2}
                 depthWrite={false}
               />
@@ -250,63 +250,66 @@ function SinglePartViewerWithFeatures({
 
             {/* Glowing 3D Center Marker Pin */}
             <mesh position={[0, rawSize[1] / 2 + 0.1, 0]}>
-              <sphereGeometry args={[isHovered ? 0.3 : 0.18, 16, 16]} />
+              <sphereGeometry args={[isHovered ? 0.25 : 0.12, 16, 16]} />
               <meshStandardMaterial
                 color={boxColor}
                 emissive={boxColor}
-                emissiveIntensity={isHovered ? 1.8 : 0.9}
+                emissiveIntensity={isHovered ? 1.8 : 0.6}
                 roughness={0.2}
               />
             </mesh>
 
-            {/* 3D Floating HTML Label Pin */}
-            <Html
-              position={[0, rawSize[1] / 2 + 0.5, 0]}
-              center
-              distanceFactor={22}
-              style={{
-                pointerEvents: 'auto',
-                cursor: 'pointer',
-                userSelect: 'none',
-                transition: 'all 0.15s ease',
-                transform: isHovered ? 'scale(1.18)' : 'scale(1.0)',
-              }}
-            >
-              <div
-                onMouseEnter={() => onHoverFeature(feat.id)}
-                onMouseLeave={() => onHoverFeature(null)}
-                onClick={() => onSelectFeature(feat.id)}
+            {/* 3D Floating HTML Label Pin (僅在 Hover、聚焦或特徵數量 <= 8 時渲染，避免畫面過度遮擋) */}
+            {(isHovered || focusedFeatureId === feat.id || selectedFeatureIds.size <= 8) && (
+              <Html
+                position={[0, rawSize[1] / 2 + 0.5, 0]}
+                center
+                distanceFactor={22}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  background: isHovered ? 'rgba(15, 23, 42, 0.98)' : 'rgba(15, 23, 42, 0.88)',
-                  border: `1.5px solid ${boxColor}`,
-                  borderRadius: 6,
-                  padding: '3px 8px',
-                  color: '#fff',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  whiteSpace: 'nowrap',
-                  boxShadow: isHovered ? '0 0 18px rgba(251, 191, 36, 0.7)' : '0 2px 8px rgba(0,0,0,0.5)',
-                  backdropFilter: 'blur(4px)',
+                  pointerEvents: 'auto',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                  transition: 'all 0.15s ease',
+                  transform: isHovered ? 'scale(1.18)' : 'scale(1.0)',
+                  zIndex: isHovered ? 99 : 1,
                 }}
               >
-                <span
+                <div
+                  onMouseEnter={() => onHoverFeature(feat.id)}
+                  onMouseLeave={() => onHoverFeature(null)}
+                  onClick={() => onSelectFeature(feat.id)}
                   style={{
-                    fontSize: 9,
-                    padding: '1px 5px',
-                    borderRadius: 3,
-                    background: boxColor,
-                    color: isHovered ? '#000' : '#fff',
-                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    background: isHovered ? 'rgba(15, 23, 42, 0.98)' : 'rgba(15, 23, 42, 0.88)',
+                    border: `1.5px solid ${boxColor}`,
+                    borderRadius: 6,
+                    padding: '3px 8px',
+                    color: '#fff',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                    boxShadow: isHovered ? '0 0 18px rgba(251, 191, 36, 0.7)' : '0 2px 8px rgba(0,0,0,0.5)',
+                    backdropFilter: 'blur(4px)',
                   }}
                 >
-                  {tag}
-                </span>
-                <span>{feat.name}</span>
-              </div>
-            </Html>
+                  <span
+                    style={{
+                      fontSize: 9,
+                      padding: '1px 5px',
+                      borderRadius: 3,
+                      background: boxColor,
+                      color: isHovered ? '#000' : '#fff',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {tag}
+                  </span>
+                  <span>{feat.name}</span>
+                </div>
+              </Html>
+            )}
           </group>
         );
       })}
@@ -693,7 +696,11 @@ function App() {
       .then(res => {
         const records = Array.isArray(res.data) ? res.data : [];
         setFeatureRecords(records);
-        setSelectedFeatureIds(new Set(records.map((r: any) => r.id)));
+        // 若特徵總數過多 (> 15 筆)，預設選取前 12 筆核心特徵，避免一載入就被數百個框框遮蔽畫面；使用者隨時可點「全選」
+        const initialSelected = records.length <= 15
+          ? records.map((r: any) => r.id)
+          : records.slice(0, 12).map((r: any) => r.id);
+        setSelectedFeatureIds(new Set(initialSelected));
       })
       .catch(err => {
         console.error('Feature records load error:', err);
