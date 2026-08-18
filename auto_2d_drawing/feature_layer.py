@@ -86,13 +86,26 @@ def _build_impeller_specific_records(summary, bbox):
     d = bbox.get("D", 18.5)
     main_axis = summary.get("main_axis", "Z")
     
+    bbox_c = list(summary.get("center", [0.0, 0.0, 0.0]))
     outer_dia = max(w, h, d)
     if main_axis == "Z":
         axial_h = d
+        sz_overall = [outer_dia, outer_dia, axial_h]
+        sz_axis = [0.4, 0.4, axial_h * 1.05]
+        face_c = [bbox_c[0], bbox_c[1], bbox_c[2] - axial_h / 2.0]
+        face_sz = [35.0, 35.0, 0.3]
     elif main_axis == "Y":
         axial_h = h
+        sz_overall = [outer_dia, axial_h, outer_dia]
+        sz_axis = [0.4, axial_h * 1.05, 0.4]
+        face_c = [bbox_c[0], bbox_c[1] - axial_h / 2.0, bbox_c[2]]
+        face_sz = [35.0, 0.3, 35.0]
     else:
         axial_h = w
+        sz_overall = [axial_h, outer_dia, outer_dia]
+        sz_axis = [axial_h * 1.05, 0.4, 0.4]
+        face_c = [bbox_c[0] - axial_h / 2.0, bbox_c[1], bbox_c[2]]
+        face_sz = [0.3, 35.0, 35.0]
 
     # 1. 葉輪整體外框規格
     records.append({
@@ -105,8 +118,8 @@ def _build_impeller_specific_records(summary, bbox):
         "tolerance_key": "overall_size",
         "geometry": {
             "kind": "bbox",
-            "center": [0.0, 0.0, 15.0] if main_axis == "Z" else [0.0, -10.0, 0.0],
-            "size": [outer_dia, outer_dia, axial_h] if main_axis == "Z" else [outer_dia, axial_h, outer_dia],
+            "center": bbox_c,
+            "size": sz_overall,
         },
         "source": {"extractor": "FanImpellerAnalyzer", "confidence": 0.98},
     })
@@ -115,15 +128,15 @@ def _build_impeller_specific_records(summary, bbox):
     records.append({
         "id": "datum_a_center_axis",
         "type": "datum",
-        "name": "基準A 旋轉中心軸心線 (Datum A)",
+        "name": f"基準A 旋轉中心軸心線 ({main_axis}向)",
         "view": "front",
         "role": "datum",
         "nominal": {"axis": main_axis},
         "tolerance_key": "datum_axis",
         "geometry": {
             "kind": "axis",
-            "center": [0.0, 0.0, 15.0] if main_axis == "Z" else [0.0, -10.0, 0.0],
-            "size": [0.4, 0.4, axial_h * 1.05] if main_axis == "Z" else [0.4, axial_h * 1.05, 0.4],
+            "center": bbox_c,
+            "size": sz_axis,
             "axis": main_axis,
         },
         "source": {"extractor": "FanImpellerAnalyzer", "confidence": 0.99},
@@ -140,8 +153,8 @@ def _build_impeller_specific_records(summary, bbox):
         "tolerance_key": "flatness_perpendicularity",
         "geometry": {
             "kind": "plane",
-            "center": [0.0, 0.0, 6.0] if main_axis == "Z" else [0.0, -3.0, 0.0],
-            "size": [35.0, 35.0, 0.3] if main_axis == "Z" else [35.0, 0.3, 35.0],
+            "center": face_c,
+            "size": face_sz,
         },
         "source": {"extractor": "FanImpellerAnalyzer", "confidence": 0.95},
     })
@@ -450,8 +463,25 @@ def _build_ring_housing_specific_records(summary, bbox):
     d = bbox.get("D", 35.0)
     main_axis = summary.get("main_axis", "Y")
 
-    outer_dia = max(w, d)
+    bbox_c = list(summary.get("center", [0.0, 0.0, 0.0]))
+    outer_dia = max(w, d) if main_axis == "Y" else (max(w, h) if main_axis == "Z" else max(h, d))
     axial_h = h if main_axis == "Y" else (d if main_axis == "Z" else w)
+
+    if main_axis == "Y":
+        sz_overall = [outer_dia, axial_h, outer_dia]
+        sz_axis = [0.3, axial_h * 1.05, 0.3]
+        face_c = [bbox_c[0], bbox_c[1] - axial_h / 2.0, bbox_c[2]]
+        face_sz = [outer_dia, 0.3, outer_dia]
+    elif main_axis == "Z":
+        sz_overall = [outer_dia, outer_dia, axial_h]
+        sz_axis = [0.3, 0.3, axial_h * 1.05]
+        face_c = [bbox_c[0], bbox_c[1], bbox_c[2] - axial_h / 2.0]
+        face_sz = [outer_dia, outer_dia, 0.3]
+    else:
+        sz_overall = [axial_h, outer_dia, outer_dia]
+        sz_axis = [axial_h * 1.05, 0.3, 0.3]
+        face_c = [bbox_c[0] - axial_h / 2.0, bbox_c[1], bbox_c[2]]
+        face_sz = [0.3, outer_dia, outer_dia]
 
     # 1. 磁環整體外框規格
     records.append({
@@ -464,8 +494,8 @@ def _build_ring_housing_specific_records(summary, bbox):
         "tolerance_key": "overall_size",
         "geometry": {
             "kind": "bbox",
-            "center": [0.0, -10.65, 0.0] if main_axis == "Y" else [0.0, 0.0, 7.5],
-            "size": [outer_dia, axial_h, outer_dia] if main_axis == "Y" else [outer_dia, outer_dia, axial_h],
+            "center": bbox_c,
+            "size": sz_overall,
         },
         "source": {"extractor": "MotorRingAnalyzer", "confidence": 0.98},
     })
@@ -474,15 +504,15 @@ def _build_ring_housing_specific_records(summary, bbox):
     records.append({
         "id": "datum_a_axis",
         "type": "datum",
-        "name": "基準A 主旋轉軸心線 (Datum A)",
+        "name": f"基準A 主旋轉軸心線 ({main_axis}向)",
         "view": "front",
         "role": "datum",
         "nominal": {"axis": main_axis},
         "tolerance_key": "datum_axis",
         "geometry": {
             "kind": "axis",
-            "center": [0.0, -10.65, 0.0] if main_axis == "Y" else [0.0, 0.0, 7.5],
-            "size": [0.3, axial_h * 1.05, 0.3] if main_axis == "Y" else [0.3, 0.3, axial_h * 1.05],
+            "center": bbox_c,
+            "size": sz_axis,
             "axis": main_axis,
         },
         "source": {"extractor": "MotorRingAnalyzer", "confidence": 0.99},
@@ -499,8 +529,8 @@ def _build_ring_housing_specific_records(summary, bbox):
         "tolerance_key": "flatness_perpendicularity",
         "geometry": {
             "kind": "plane",
-            "center": [0.0, -3.4, 0.0] if main_axis == "Y" else [0.0, 0.0, 0.5],
-            "size": [outer_dia, 0.3, outer_dia] if main_axis == "Y" else [outer_dia, outer_dia, 0.3],
+            "center": face_c,
+            "size": face_sz,
         },
         "source": {"extractor": "MotorRingAnalyzer", "confidence": 0.95},
     })
@@ -699,6 +729,20 @@ def _build_general_mechanical_records(summary, bbox, part_type):
     d = bbox.get("D", 10.0)
     max_bbox = max(w, h, d) if bbox else 100.0
     main_axis = summary.get("main_axis", "Z")
+    bbox_c = list(summary.get("center", [0.0, 0.0, 0.0]))
+
+    if main_axis == "Y":
+        sz_axis = [0.3, max_bbox * 1.05, 0.3]
+        face_c = [bbox_c[0], bbox_c[1] - h / 2.0, bbox_c[2]]
+        face_sz = [w * 0.9, 0.4, d * 0.9]
+    elif main_axis == "Z":
+        sz_axis = [0.3, 0.3, max_bbox * 1.05]
+        face_c = [bbox_c[0], bbox_c[1], bbox_c[2] - d / 2.0]
+        face_sz = [w * 0.9, h * 0.9, 0.4]
+    else:
+        sz_axis = [max_bbox * 1.05, 0.3, 0.3]
+        face_c = [bbox_c[0] - w / 2.0, bbox_c[1], bbox_c[2]]
+        face_sz = [0.4, h * 0.9, d * 0.9]
 
     # 1. 整體包絡尺寸 (Overall Enclosing Box)
     records.append({
@@ -711,7 +755,7 @@ def _build_general_mechanical_records(summary, bbox, part_type):
         "tolerance_key": "overall_size",
         "geometry": {
             "kind": "bbox",
-            "center": [0.0, 0.0, 0.0],
+            "center": bbox_c,
             "size": [w, h, d],
         },
         "source": {"extractor": "UniversalFeatureEngine.bbox", "confidence": 0.99},
@@ -728,8 +772,8 @@ def _build_general_mechanical_records(summary, bbox, part_type):
         "tolerance_key": "datum_axis",
         "geometry": {
             "kind": "axis",
-            "center": [0.0, 0.0, 0.0],
-            "size": [0.3, max_bbox * 1.05, 0.3] if main_axis == "Y" else ([0.3, 0.3, max_bbox * 1.05] if main_axis == "Z" else [max_bbox * 1.05, 0.3, 0.3]),
+            "center": bbox_c,
+            "size": sz_axis,
             "axis": main_axis,
         },
         "source": {"extractor": "UniversalFeatureEngine.datum", "confidence": 0.99},
@@ -746,8 +790,8 @@ def _build_general_mechanical_records(summary, bbox, part_type):
         "tolerance_key": "flatness_perpendicularity",
         "geometry": {
             "kind": "plane",
-            "center": [0.0, -h/2.0, 0.0] if main_axis == "Y" else [0.0, 0.0, -d/2.0],
-            "size": [w * 0.9, 0.4, d * 0.9] if main_axis == "Y" else [w * 0.9, h * 0.9, 0.4],
+            "center": face_c,
+            "size": face_sz,
         },
         "source": {"extractor": "UniversalFeatureEngine.datum", "confidence": 0.95},
     })
@@ -1046,7 +1090,7 @@ def _build_general_mechanical_records(summary, bbox, part_type):
 
 def _build_shaft_specific_records(summary, bbox):
     """
-    專為風扇軸 (Shaft) 進行精確的機械特徵語意識別：
+    專為風扇軸與旋轉軸 (Shaft) 進行精確的機械特徵語意識別：
       - 軸總長與最大配合外徑
       - 基準軸心線 (Datum A)
       - 主軸承配合段 (Main Journal)
@@ -1059,6 +1103,8 @@ def _build_shaft_specific_records(summary, bbox):
     records = []
     shaft_len = max(bbox.values()) if bbox else 22.0
     shaft_od = 0.0
+    bbox_c = list(summary.get("center", [0.0, 0.0, 0.0]))
+    main_axis = summary.get("main_axis", "Z")
 
     steps = summary.get("steps", [])
     if steps:
@@ -1066,7 +1112,22 @@ def _build_shaft_specific_records(summary, bbox):
     elif summary.get("shafts"):
         shaft_od = max(s.get("diameter", s.get("Ø", 0)) for s in summary.get("shafts"))
 
-    mid_y = (summary.get("bounding_box", {}).get("H", shaft_len)) / 2.0
+    if main_axis == "X":
+        sz_overall = [shaft_len, shaft_od * 1.05, shaft_od * 1.05]
+        axis_sz = [shaft_len * 1.05, 0.2, 0.2]
+        face_c = [bbox_c[0] - shaft_len / 2.0, bbox_c[1], bbox_c[2]]
+        face_sz = [0.2, shaft_od * 1.05, shaft_od * 1.05]
+    elif main_axis == "Y":
+        sz_overall = [shaft_od * 1.05, shaft_len, shaft_od * 1.05]
+        axis_sz = [0.2, shaft_len * 1.05, 0.2]
+        face_c = [bbox_c[0], bbox_c[1] - shaft_len / 2.0, bbox_c[2]]
+        face_sz = [shaft_od * 1.05, 0.2, shaft_od * 1.05]
+    else:  # Z
+        sz_overall = [shaft_od * 1.05, shaft_od * 1.05, shaft_len]
+        axis_sz = [0.2, 0.2, shaft_len * 1.05]
+        face_c = [bbox_c[0], bbox_c[1], bbox_c[2] - shaft_len / 2.0]
+        face_sz = [shaft_od * 1.05, shaft_od * 1.05, 0.2]
+
     # 1. 軸總長與最大外徑
     records.append({
         "id": "shaft_overall",
@@ -1078,8 +1139,8 @@ def _build_shaft_specific_records(summary, bbox):
         "tolerance_key": "overall_size",
         "geometry": {
             "kind": "bbox",
-            "center": [0.0, -12.05, 0.0],
-            "size": [shaft_od * 1.05, shaft_len, shaft_od * 1.05],
+            "center": bbox_c,
+            "size": sz_overall,
         },
         "source": {"extractor": "ShaftSemanticAnalyzer", "confidence": 0.98},
     })
@@ -1088,16 +1149,16 @@ def _build_shaft_specific_records(summary, bbox):
     records.append({
         "id": "datum_a_axis",
         "type": "datum",
-        "name": "基準A 主旋轉軸心線 (Datum A)",
+        "name": f"基準A 主旋轉軸心線 ({main_axis}向)",
         "view": "front",
         "role": "datum",
-        "nominal": {"axis": summary.get("main_axis", "Y")},
+        "nominal": {"axis": main_axis},
         "tolerance_key": "datum_axis",
         "geometry": {
             "kind": "axis",
-            "center": [0.0, -12.05, 0.0],
-            "size": [0.2, shaft_len * 1.05, 0.2],
-            "axis": summary.get("main_axis", "Y"),
+            "center": bbox_c,
+            "size": axis_sz,
+            "axis": main_axis,
         },
         "source": {"extractor": "ShaftSemanticAnalyzer", "confidence": 0.99},
     })
@@ -1114,10 +1175,22 @@ def _build_shaft_specific_records(summary, bbox):
             length = s.get("length", s.get("len", 0))
             pos = s.get("position", s.get("pos", 0))
 
-            # 判斷是否為主軸配合段
-            center_3d = [0.0, float(pos), 0.0]
-            size_3d = [float(dia), float(length), float(dia)]
-            bbox_3d = [-dia / 2.0, pos - length / 2.0, -dia / 2.0, dia / 2.0, pos + length / 2.0, dia / 2.0]
+            if "center" in s:
+                center_3d = [float(s["center"][0]), float(s["center"][1]), float(s["center"][2])]
+            else:
+                if main_axis == "X":
+                    center_3d = [float(pos), bbox_c[1], bbox_c[2]]
+                elif main_axis == "Y":
+                    center_3d = [bbox_c[0], float(pos), bbox_c[2]]
+                else:
+                    center_3d = [bbox_c[0], bbox_c[1], float(pos)]
+
+            if main_axis == "X":
+                size_3d = [float(length), float(dia), float(dia)]
+            elif main_axis == "Y":
+                size_3d = [float(dia), float(length), float(dia)]
+            else:
+                size_3d = [float(dia), float(dia), float(length)]
 
             if s == max_len_seg:
                 records.append({
@@ -1132,14 +1205,12 @@ def _build_shaft_specific_records(summary, bbox):
                         "kind": "cylinder",
                         "center": center_3d,
                         "size": size_3d,
-                        "bbox3d": bbox_3d,
                         "diameter": dia,
                         "length": length,
-                        "axis": "Y",
+                        "axis": main_axis,
                     },
                     "source": {"extractor": "ShaftSemanticAnalyzer.journal", "confidence": 0.96},
                 })
-            # 判斷是否為卡簧槽 / C型扣環槽 (中間較細且長度較短的槽)
             elif (i > 0 and i < len(segments) - 1 and dia < segments[i - 1].get("diameter", 0) - 0.1 and dia < segments[i + 1].get("diameter", 0) - 0.1) or (dia < shaft_od - 0.35 and 0.5 <= length <= 3.5):
                 groove_depth = (shaft_od - dia) / 2.0
                 records.append({
@@ -1154,16 +1225,14 @@ def _build_shaft_specific_records(summary, bbox):
                         "kind": "groove",
                         "center": center_3d,
                         "size": size_3d,
-                        "bbox3d": bbox_3d,
                         "diameter": dia,
                         "width": length,
                         "depth": groove_depth,
-                        "axis": "Y",
+                        "axis": main_axis,
                     },
                     "source": {"extractor": "ShaftSemanticAnalyzer.groove", "confidence": 0.95},
                 })
                 groove_idx += 1
-            # 退刀槽 / 縮頸
             elif dia < shaft_od - 0.15 and length <= 1.5:
                 records.append({
                     "id": f"relief_{groove_idx:02d}",
@@ -1177,15 +1246,13 @@ def _build_shaft_specific_records(summary, bbox):
                         "kind": "groove",
                         "center": center_3d,
                         "size": size_3d,
-                        "bbox3d": bbox_3d,
                         "diameter": dia,
                         "length": length,
-                        "axis": "Y",
+                        "axis": main_axis,
                     },
                     "source": {"extractor": "ShaftSemanticAnalyzer.relief", "confidence": 0.92},
                 })
                 groove_idx += 1
-            # 軸端台階 / 定位段
             else:
                 records.append({
                     "id": f"step_{step_idx:02d}",
@@ -1199,10 +1266,9 @@ def _build_shaft_specific_records(summary, bbox):
                         "kind": "step",
                         "center": center_3d,
                         "size": size_3d,
-                        "bbox3d": bbox_3d,
                         "diameter": dia,
                         "length": length,
-                        "axis": "Y",
+                        "axis": main_axis,
                     },
                     "source": {"extractor": "ShaftSemanticAnalyzer.step", "confidence": 0.90},
                 })
@@ -1216,12 +1282,15 @@ def _build_shaft_specific_records(summary, bbox):
         inc_angle = cone.get("included_angle_deg", 90)
         semi_angle = cone.get("semi_angle_deg", 45)
         height = cone.get("height", 0.5)
-        c_center = cone.get("center", (0, 0, 0))
+        c_center = cone.get("center", bbox_c)
 
         c_center_3d = [float(c_center[0]), float(c_center[1]), float(c_center[2])]
-        c_size_3d = [float(max_d), float(max(0.2, height)), float(max_d)]
-        c_bbox_3d = [c_center_3d[0] - max_d / 2.0, c_center_3d[1] - height / 2.0, c_center_3d[2] - max_d / 2.0,
-                     c_center_3d[0] + max_d / 2.0, c_center_3d[1] + height / 2.0, c_center_3d[2] + max_d / 2.0]
+        if main_axis == "X":
+            c_size_3d = [float(max(0.2, height)), float(max_d), float(max_d)]
+        elif main_axis == "Y":
+            c_size_3d = [float(max_d), float(max(0.2, height)), float(max_d)]
+        else:
+            c_size_3d = [float(max_d), float(max_d), float(max(0.2, height))]
 
         if 35 <= inc_angle <= 75:
             records.append({
@@ -1236,10 +1305,9 @@ def _build_shaft_specific_records(summary, bbox):
                     "kind": "cone",
                     "center": c_center_3d,
                     "size": c_size_3d,
-                    "bbox3d": c_bbox_3d,
                     "min_diameter": min_d,
                     "max_diameter": max_d,
-                    "axis": "Y",
+                    "axis": main_axis,
                 },
                 "source": {"extractor": "ShaftSemanticAnalyzer.lead_in", "confidence": 0.95},
             })
@@ -1256,9 +1324,8 @@ def _build_shaft_specific_records(summary, bbox):
                     "kind": "cone",
                     "center": c_center_3d,
                     "size": c_size_3d,
-                    "bbox3d": c_bbox_3d,
                     "chamfer": height,
-                    "axis": "Y",
+                    "axis": main_axis,
                 },
                 "source": {"extractor": "ShaftSemanticAnalyzer.chamfer", "confidence": 0.92},
             })
@@ -1269,12 +1336,17 @@ def _build_shaft_specific_records(summary, bbox):
         r = fil.get("radius", 0)
         arc_len = fil.get("arc_length", 0)
         sweep_deg = fil.get("sweep_angle_deg", 90)
-        f_center = fil.get("center", (0, 0, 0))
+        f_center = fil.get("center", bbox_c)
         f_mid = fil.get("mid_point", f_center)
 
         f_center_3d = [float(f_mid[0]), float(f_mid[1]), float(f_mid[2])]
-        f_size_3d = [float(r * 2.0), float(max(0.3, r)), float(r * 2.0)]
-        
+        if main_axis == "X":
+            f_size_3d = [float(max(0.3, r)), float(r * 2.0), float(r * 2.0)]
+        elif main_axis == "Y":
+            f_size_3d = [float(r * 2.0), float(max(0.3, r)), float(r * 2.0)]
+        else:
+            f_size_3d = [float(r * 2.0), float(r * 2.0), float(max(0.3, r))]
+
         name = f"卡簧槽/階梯槽底圓角 R{r:.2f}" if r <= 0.5 else f"過渡圓角 R{r:.2f}"
         records.append({
             "id": f"fillet_{idx:02d}",
@@ -1304,8 +1376,8 @@ def _build_shaft_specific_records(summary, bbox):
         "tolerance_key": "flatness_perpendicularity",
         "geometry": {
             "kind": "plane",
-            "center": [0.0, -1.0, 0.0],
-            "size": [shaft_od * 1.05, 0.2, shaft_od * 1.05],
+            "center": face_c,
+            "size": face_sz,
         },
         "source": {"extractor": "ShaftSemanticAnalyzer", "confidence": 0.95},
     })

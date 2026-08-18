@@ -458,10 +458,21 @@ class FeatureExtractor:
 
     def summary(self):
         """完整回傳所有提取到的特徵資料，不做任何截斷"""
+        main_ax = getattr(self, 'main_axis', None)
+        if not main_ax:
+            if self.H >= self.W and self.H >= self.D:
+                main_ax = "Y"
+            elif self.D >= self.W and self.D >= self.H:
+                main_ax = "Z"
+            else:
+                main_ax = "X"
+
         return {
             "bounding_box": {"W": round(self.W, 3), "H": round(self.H, 3), "D": round(self.D, 3)},
+            "center": (round((self.xmin + self.xmax) / 2.0, 3), round((self.ymin + self.ymax) / 2.0, 3), round((self.zmin + self.zmax) / 2.0, 3)),
+            "bounds": (round(self.xmin, 3), round(self.ymin, 3), round(self.zmin, 3), round(self.xmax, 3), round(self.ymax, 3), round(self.zmax, 3)),
             "spec": self.get_overall_spec(),
-            "main_axis": getattr(self, 'main_axis', None),
+            "main_axis": main_ax,
             "holes_count": len(self.holes),
             "shafts_count": len(self.shafts),
             "cones_count": len(self.cones),
