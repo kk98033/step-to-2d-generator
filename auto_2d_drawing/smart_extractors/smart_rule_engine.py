@@ -263,6 +263,20 @@ class SmartRuleExtractor(BaseExtractor):
                 default_tol = "±0.1"
                 geom_payload = {}
 
+            # 預設多視角標註設定
+            if category in ("overall", "shaft", "hole"):
+                target_views = ["front", "top", "right"]
+            elif category in ("step", "groove", "chamfer"):
+                target_views = ["front", "top"]
+            elif category in ("fillet", "pattern"):
+                target_views = ["top", "front"]
+            elif category in ("thickness",):
+                target_views = ["right", "front"]
+            elif category in ("datum",):
+                target_views = ["front", "right"]
+            else:
+                target_views = ["front", "top", "right"]
+
             # 封裝規則物件
             r_copy["rule_id"] = rec_id
             r_copy["category"] = category
@@ -271,6 +285,8 @@ class SmartRuleExtractor(BaseExtractor):
             r_copy["default_tolerance"] = default_tol
             r_copy["default_prefix"] = default_prefix
             r_copy["preferred_view"] = preferred_view
+            r_copy["target_views"] = target_views
+            r_copy["views"] = target_views
             r_copy["side"] = side
             r_copy["rank"] = rank
             r_copy["baseline"] = baseline
@@ -891,9 +907,10 @@ class SmartDimensionEngine:
             if not rule.get("enabled", True):
                 continue
 
-            target_view = rule.get("preferred_view", "front")
-            if target_view not in view_tasks:
-                target_view = "front"
+            target_views = rule.get("target_views") or rule.get("views")
+            if not target_views:
+                pv = rule.get("preferred_view", "front")
+                target_views = [pv] if isinstance(pv, str) else list(pv)
 
             dim_type = rule.get("dim_type", "LINEAR")
             val = float(rule.get("nominal_value", 0.0))
@@ -929,35 +946,76 @@ class SmartDimensionEngine:
             radius = float(payload.get("radius", val / 2.0 if val > 0 else 10.0))
             angle = float(payload.get("angle", 45.0))
 
-            if dim_type == "DIAMETER" and side in ("LEFT", "BOTTOM"):
-                task_center = None
-            elif dim_type in ("CENTERLINES", "HOLE_PATTERN"):
-                task_center = center
-            elif dim_type == "LEADER":
-                task_center = center if "radius" in payload and payload.get("radius", 0) > 0 and target_view == "top" else None
-            else:
-                task_center = None
+            for tv in target_views:
+                if tv not in view_tasks:
+                    continue
 
-            task = DimensionTask(
-                dim_type=dim_type,
-                value=val,
-                start_proj=start_proj,
-                end_proj=end_proj,
-                p1=start_proj,
-                p2=end_proj,
-                center=task_center,
-                radius=radius,
-                angle=angle,
-                side=side,
-                rank=rank,
-                baseline=baseline,
-                prefix=display_prefix,
-                text=text_content,
-                tolerance=tol_str,
-                view_name=target_view,
-            )
+                tv_side = side
+                tv_start = start_proj
+                tv_end = end_proj
+                tv_center = None
+                tv_radius = radius
+                tv_angle = angle
+                tv_dim_type = dim_type
 
-            view_tasks[target_view].append(task)
+                if tv == "front":
+                    if dim_type in ("CENTERLINES", "HOLE_PATTERN"):
+                        tv_center = center
+                    elif dim_type == "DIAMETER" and side in ("LEFT", "BOTTOM"):
+                        tv_center = None
+                    elif dim_type == "LEADER":
+                        tv_center = center if radius > 0 else None
+
+                elif tv == "top":
+                    vd_t = view_data.get('top', {})
+                    wt, ht = vd_t.get('size', (100, 100))
+                    if dim_type == "DIAMETER":
+                        tv_dim_type = "DIAMETER"
+                        tv_center = center
+                        tv_radius = val / 2.0 if val > 0 else radius
+                        tv_angle = 45.0
+                    elif dim_type == "LINEAR":
+                        tv_side = "TOP"
+                        tv_start = (-wt / 2.0, 0.0) if val <= 0 else (-val / 2.0, 0.0)
+                        tv_end = (wt / 2.0, 0.0) if val <= 0 else (val / 2.0, 0.0)
+                    elif dim_type in ("LEADER", "HOLE_PATTERN", "CENTERLINES"):
+                        tv_center = center
+                        tv_radius = radius
+
+                elif tv == "right":
+                    vd_r = view_data.get('right', {})
+                    wr, hr = vd_r.get('size', (100, 100))
+                    if dim_type == "DIAMETER":
+                        tv_side = "RIGHT"
+                        tv_dim_type = "LINEAR"
+                        tv_start = (0.0, -val / 2.0)
+                        tv_end = (0.0, val / 2.0)
+                    elif dim_type == "LINEAR":
+                        tv_side = "RIGHT"
+                        tv_start = (0.0, 0.0)
+                        tv_end = (0.0, val)
+                    elif dim_type in ("CENTERLINES", "LEADER"):
+                        tv_center = center
+
+                task = DimensionTask(
+                    dim_type=tv_dim_type,
+                    value=val,
+                    start_proj=tv_start,
+                    end_proj=tv_end,
+                    p1=tv_start,
+                    p2=tv_end,
+                    center=tv_center,
+                    radius=tv_radius,
+                    angle=tv_angle,
+                    side=tv_side,
+                    rank=rank,
+                    baseline=baseline,
+                    prefix=display_prefix,
+                    text=text_content,
+                    tolerance=tol_str,
+                    view_name=tv,
+                )
+                view_tasks[tv].append(task)
 
         # 2. 自動排版與比例計算
         try:
