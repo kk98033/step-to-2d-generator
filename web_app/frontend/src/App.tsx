@@ -653,6 +653,8 @@ function App() {
   const [ruleConfig, setRuleConfig] = useState<Record<string, {
     enabled?: boolean;
     preferred_view?: string;
+    views?: string[];
+    target_views?: string[];
     tolerance?: string;
     side?: string;
     baseline?: string;
@@ -928,6 +930,8 @@ function App() {
   const updateRuleConfig = (ruleId: string, updates: Partial<{
     enabled: boolean;
     preferred_view: string;
+    views: string[];
+    target_views: string[];
     tolerance: string;
     side: string;
     baseline: string;
@@ -973,6 +977,28 @@ function App() {
       .catch(err => console.error('Error applying template:', err));
   };
 
+  const handleResetToDefault = () => {
+    const topKeyRules = candidateRules.filter((r: any) => {
+      const cat = (r.category || r.type || '').toLowerCase();
+      return !cat.includes('fillet') && !cat.includes('round');
+    });
+    const defaultSelectedIds = (topKeyRules.length <= 15 ? topKeyRules : topKeyRules.slice(0, 12)).map((r: any) => r.id || r.rule_id);
+    setSelectedRuleIds(new Set(defaultSelectedIds));
+
+    const resetCfg: Record<string, any> = { ...ruleConfig };
+    candidateRules.forEach((r: any) => {
+      const rId = r.id || r.rule_id;
+      resetCfg[rId] = {
+        ...(resetCfg[rId] || {}),
+        views: r.target_views || r.views || ['front', 'top', 'right'],
+        preferred_view: r.preferred_view || r.view || 'front',
+        tolerance: r.tolerance !== undefined ? r.tolerance : (r.default_tolerance || ''),
+        side: r.side || 'BOTTOM',
+      };
+    });
+    setRuleConfig(resetCfg);
+  };
+
   const handleRenderCustomDrawing = async () => {
     const modelId = results?.model_id || results?.output_dir || jobId;
     if (!modelId || !selectedPart) {
@@ -985,9 +1011,12 @@ function App() {
       const payloadRules = candidateRules.map(r => {
         const rId = r.id || r.rule_id;
         const cfg = ruleConfig[rId] || {};
+        const views = cfg.views || cfg.target_views || r.target_views || r.views || [cfg.preferred_view || r.preferred_view || r.view || 'front'];
         return {
           ...r,
           enabled: selectedRuleIds.has(rId),
+          views: views,
+          target_views: views,
           preferred_view: cfg.preferred_view || r.preferred_view || r.view || 'front',
           tolerance: cfg.tolerance !== undefined ? cfg.tolerance : (r.tolerance || r.default_tolerance || ''),
           prefix: cfg.prefix !== undefined ? cfg.prefix : (r.prefix || r.default_prefix || ''),
@@ -1760,18 +1789,18 @@ function App() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {viewTab === 'smart_annotation' ? (
                 <>
-                  <Wand2 size={16} color="#c084fc" />
-                  <span style={{ fontSize: 13, fontWeight: 700, background: 'linear-gradient(90deg, #c084fc, #38bdf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                    ✨ 智慧特徵標註工作室 (Smart Annotation Studio)
+                  <Layers size={15} color="#3b82f6" />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#f5f5f5' }}>
+                    智慧特徵標註 (Smart Annotation)
                   </span>
                 </>
               ) : viewTab === 'features3d' ? (
                 <>
-                  <Sparkles size={16} color="#38bdf8" />
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#38bdf8' }}>3D 空間特徵標註 (3D Feature Space)</span>
+                  <Layers size={15} color="#06b6d4" />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#f5f5f5' }}>3D 特徵圖層 (3D Feature Layer)</span>
                 </>
               ) : (
-                <span style={{ fontSize: 13, fontWeight: 500 }}>2D 工程圖</span>
+                <span style={{ fontSize: 13, fontWeight: 500, color: '#f5f5f5' }}>2D 工程圖</span>
               )}
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -1813,29 +1842,25 @@ function App() {
                   <span>特徵圖層 (3D)</span>
                 </button>
               )}
-              {/* ✨ 新版智慧標註獨立分頁按鈕 */}
+              {/* 智慧特徵標註分頁按鈕 */}
               <button
                 onClick={() => { setViewTab('smart_annotation'); setShowFeatureLayer(false); }}
                 style={{
                   fontSize: 12,
-                  padding: '3px 12px',
-                  background: viewTab === 'smart_annotation'
-                    ? 'linear-gradient(135deg, #7e22ce, #2563eb)'
-                    : '#1e1b4b',
-                  border: `1px solid ${viewTab === 'smart_annotation' ? '#c084fc' : '#4338ca'}`,
+                  padding: '3px 10px',
+                  background: viewTab === 'smart_annotation' ? '#3b82f6' : '#262626',
+                  border: 'none',
                   borderRadius: 4,
                   color: '#fff',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 5,
-                  fontWeight: 700,
-                  boxShadow: viewTab === 'smart_annotation' ? '0 0 12px rgba(192, 132, 252, 0.4)' : 'none',
-                  transition: 'all 0.2s ease',
+                  gap: 4,
+                  fontWeight: viewTab === 'smart_annotation' ? 700 : 500,
                 }}
               >
-                <Wand2 size={13} color="#f472b6" />
-                <span>✨ 智慧特徵標註</span>
+                <Wand2 size={13} />
+                <span>智慧特徵標註</span>
               </button>
 
               <span style={{ width: 1, height: 16, background: '#333', margin: '0 4px' }} />
@@ -1864,12 +1889,12 @@ function App() {
               customDrawingResult?.png_url ? (
                 <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', background: '#090d16' }}>
                   {/* Custom Drawing Action Toolbar */}
-                  <div style={{ padding: '8px 16px', background: '#0f172a', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
+                  <div style={{ padding: '8px 16px', background: '#171717', borderBottom: '1px solid #262626', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#38bdf8' }}>
-                        🎯 客製工程圖 ({selectedPart})
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#f5f5f5' }}>
+                        客製工程圖 ({selectedPart})
                       </span>
-                      <span style={{ fontSize: 11, background: '#166534', color: '#86efac', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
+                      <span style={{ fontSize: 11, background: '#166534', color: '#86efac', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
                         已套用 {selectedFeatureIds.size} 處特徵標註
                       </span>
                     </div>
@@ -1888,23 +1913,23 @@ function App() {
                           gap: 5,
                           fontSize: 11,
                           padding: '4px 10px',
-                          background: '#dc2626',
-                          color: '#fff',
-                          border: 'none',
+                          background: '#334155',
+                          color: '#f8fafc',
+                          border: '1px solid #475569',
                           borderRadius: 4,
                           cursor: 'pointer',
                           fontWeight: 600,
                           transition: 'all 0.15s ease'
                         }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = '#ef4444')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = '#dc2626')}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#475569')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = '#334155')}
                       >
                         <RotateCcw size={13} />
-                        <span>重新編輯 (返回 3D)</span>
+                        <span>返回 3D 檢視</span>
                       </button>
 
                       {/* Zoom Controls & Pan Reset */}
-                      <div style={{ display: 'flex', gap: 4, background: '#1e293b', padding: '2px 6px', borderRadius: 6, border: '1px solid #334155' }}>
+                      <div style={{ display: 'flex', gap: 4, background: '#1f1f1f', padding: '2px 6px', borderRadius: 4, border: '1px solid #333' }}>
                         <button onClick={() => setAnnotationZoom(z => Math.max(0.4, Number((z - 0.2).toFixed(2))))} title="縮小" style={{ background: 'transparent', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: 4 }}><ZoomOut size={14} /></button>
                         <span style={{ fontSize: 11, color: '#94a3b8', minWidth: 36, textAlign: 'center', lineHeight: '22px' }}>{Math.round(annotationZoom * 100)}%</span>
                         <button onClick={() => setAnnotationZoom(z => Math.min(4.0, Number((z + 0.2).toFixed(2))))} title="放大" style={{ background: 'transparent', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: 4 }}><ZoomIn size={14} /></button>
@@ -1950,7 +1975,7 @@ function App() {
                             gap: 4,
                             fontSize: 11,
                             padding: '4px 10px',
-                            background: '#7c3aed',
+                            background: '#2563eb',
                             color: '#fff',
                             borderRadius: 4,
                             textDecoration: 'none',
@@ -2029,44 +2054,44 @@ function App() {
                         maxHeight: '90%',
                         transition: isPanningDrawing ? 'none' : 'transform 0.08s ease-out',
                         boxShadow: '0 16px 48px rgba(0,0,0,0.8)',
-                        borderRadius: 6,
-                        border: '1px solid #1e293b',
+                        borderRadius: 4,
+                        border: '1px solid #262626',
                         background: '#000',
                         pointerEvents: 'none',
                       }}
                     />
 
                     {/* Navigation Pan Hint */}
-                    <div style={{ position: 'absolute', bottom: 12, left: 12, background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(6px)', border: '1px solid #334155', borderRadius: 6, padding: '4px 10px', color: '#94a3b8', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, pointerEvents: 'none' }}>
-                      <Sparkles size={13} color="#38bdf8" />
+                    <div style={{ position: 'absolute', bottom: 12, left: 12, background: 'rgba(23, 23, 23, 0.9)', backdropFilter: 'blur(6px)', border: '1px solid #333', borderRadius: 4, padding: '4px 10px', color: '#a3a3a3', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, pointerEvents: 'none' }}>
+                      <Layers size={13} color="#3b82f6" />
                       <span>滑鼠左鍵按住拖曳平移 | 滾輪縮放 | 工具列 1x 重設</span>
                     </div>
                   </div>
                 </div>
               ) : (
-                <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', background: '#090d16' }}>
+                <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', background: '#0a0a0a' }}>
                   {/* Studio Hero State with 3D Preview */}
-                  <div style={{ padding: '10px 16px', background: 'linear-gradient(90deg, rgba(88, 28, 135, 0.3), rgba(30, 58, 138, 0.3))', borderBottom: '1px solid #334155', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 10 }}>
+                  <div style={{ padding: '8px 16px', background: '#171717', borderBottom: '1px solid #262626', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Wand2 size={16} color="#c084fc" />
-                      <span style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>
-                        智慧標註工作室 — 請在右側勾選欲標註特徵、自訂公差或一鍵套用樣板
+                      <Layers size={15} color="#94a3b8" />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#f5f5f5' }}>
+                        智慧特徵標註 — 請於右側選取欲標註特徵與視角設定
                       </span>
                     </div>
-                    <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                    <span style={{ fontSize: 11, color: '#a3a3a3' }}>
                       零件: <strong style={{ color: '#38bdf8' }}>{selectedPart || '未選取'}</strong>
                     </span>
                   </div>
 
                   <div style={{ flex: 1, position: 'relative' }}>
                     {isLoadingFeatures && (
-                      <div style={{ position: 'absolute', inset: 0, background: 'rgba(9, 13, 22, 0.85)', backdropFilter: 'blur(6px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 25, gap: 12 }}>
-                        <Loader2 size={38} color="#c084fc" className="animate-spin" />
-                        <span style={{ fontSize: 14, color: '#f8fafc', fontWeight: 700, letterSpacing: 0.5 }}>
-                          ✨ 正在即時提取 3D 特徵與標註幾何規則...
+                      <div style={{ position: 'absolute', inset: 0, background: 'rgba(10, 10, 10, 0.85)', backdropFilter: 'blur(6px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 25, gap: 12 }}>
+                        <Loader2 size={32} color="#3b82f6" className="animate-spin" />
+                        <span style={{ fontSize: 13, color: '#f5f5f5', fontWeight: 600 }}>
+                          正在分析 3D 模型特徵與標註幾何規則...
                         </span>
-                        <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                          正在為新模型動態分析拓撲面與尺寸規格，請稍候
+                        <span style={{ fontSize: 11, color: '#737373' }}>
+                          正在動態計算拓撲面與尺寸規格，請稍候
                         </span>
                       </div>
                     )}
@@ -2080,7 +2105,7 @@ function App() {
                           gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                         }}
                       >
-                        <color attach="background" args={["#090d16"]} />
+                        <color attach="background" args={["#0a0a0a"]} />
                         <ambientLight intensity={0.9} />
                         <directionalLight position={[100, 100, 100]} intensity={1.8} />
                         <directionalLight position={[-100, -50, -100]} intensity={0.7} />
@@ -2102,7 +2127,7 @@ function App() {
                         />
 
                         <OrbitControls makeDefault enableDamping dampingFactor={0.1} />
-                        <gridHelper args={[Math.max(20, Math.ceil(feature3DModelRadius * 2.5)), 20, '#1e293b', '#0f172a']} />
+                        <gridHelper args={[Math.max(20, Math.ceil(feature3DModelRadius * 2.5)), 20, '#262626', '#171717']} />
                       </Canvas>
                     ) : (
                       <div style={{ flex: 1, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b', flexDirection: 'column' }}>
@@ -2124,15 +2149,14 @@ function App() {
                           key={v.key}
                           onClick={() => setFeature3DViewMode({ type: v.key, ts: Date.now() })}
                           style={{
-                            background: 'rgba(15, 23, 42, 0.85)',
-                            backdropFilter: 'blur(6px)',
-                            border: '1px solid #334155',
-                            borderRadius: 6,
+                            background: '#171717',
+                            border: '1px solid #333',
+                            borderRadius: 4,
                             padding: '4px 9px',
                             color: '#cbd5e1',
                             fontSize: 11,
                             cursor: 'pointer',
-                            fontWeight: 600,
+                            fontWeight: 500,
                           }}
                         >
                           {v.label}
@@ -2141,31 +2165,30 @@ function App() {
                     </div>
 
                     {/* Floating Callout Button */}
-                    <div style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: 'rgba(15, 23, 42, 0.92)', backdropFilter: 'blur(10px)', border: '1px solid #3b82f6', borderRadius: 10, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 10 }}>
-                      <Sparkles size={18} color="#38bdf8" />
-                      <span style={{ fontSize: 13, color: '#e2e8f0' }}>
-                        已啟用 <strong style={{ color: '#38bdf8' }}>{selectedRuleIds.size}</strong> 條標註規則，準備產出專屬工程圖
+                    <div style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: '#171717', border: '1px solid #262626', borderRadius: 6, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 4px 16px rgba(0,0,0,0.6)', zIndex: 10 }}>
+                      <Layers size={15} color="#3b82f6" />
+                      <span style={{ fontSize: 12, color: '#e5e5e5' }}>
+                        已選取 <strong style={{ color: '#38bdf8' }}>{selectedRuleIds.size}</strong> 條標註規則
                       </span>
                       <button
                         onClick={handleRenderCustomDrawing}
                         disabled={isRenderingDrawing || selectedRuleIds.size === 0}
                         style={{
-                          background: selectedRuleIds.size > 0 ? 'linear-gradient(135deg, #0284c7, #2563eb)' : '#334155',
+                          background: selectedRuleIds.size > 0 ? '#2563eb' : '#262626',
                           color: '#fff',
                           border: 'none',
-                          borderRadius: 6,
-                          padding: '6px 14px',
+                          borderRadius: 4,
+                          padding: '5px 12px',
                           fontSize: 12,
-                          fontWeight: 700,
+                          fontWeight: 600,
                           cursor: selectedRuleIds.size > 0 ? 'pointer' : 'not-allowed',
                           display: 'flex',
                           alignItems: 'center',
                           gap: 6,
-                          boxShadow: selectedRuleIds.size > 0 ? '0 4px 12px rgba(2, 132, 199, 0.4)' : 'none',
                         }}
                       >
-                        {isRenderingDrawing ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
-                        <span>{isRenderingDrawing ? '生成中...' : '立即產出新版圖紙'}</span>
+                        {isRenderingDrawing ? <Loader2 size={13} className="animate-spin" /> : <Layers size={13} />}
+                        <span>{isRenderingDrawing ? '生成中...' : '產出標註工程圖'}</span>
                       </button>
                     </div>
                   </div>
@@ -2313,42 +2336,42 @@ function App() {
             const allFilteredSelected = filtered.length > 0 && filtered.every(r => selectedRuleIds.has(r.id || r.rule_id));
 
             return (
-              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0b1120' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0f0f0f' }}>
                 {/* Panel Header */}
-                <div style={{ height: 44, borderBottom: '1px solid #1e293b', background: '#0f172a', display: 'flex', alignItems: 'center', padding: '0 14px', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#c084fc' }}>
-                    <Wand2 size={16} />
+                <div style={{ height: 44, borderBottom: '1px solid #262626', background: '#171717', display: 'flex', alignItems: 'center', padding: '0 14px', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#f5f5f5' }}>
+                    <Layers size={15} color="#3b82f6" />
                     <span>標註控制台 (Annotation Controller)</span>
                   </div>
-                  <span style={{ fontSize: 11, background: '#7e22ce', color: '#fff', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
+                  <span style={{ fontSize: 11, background: '#262626', color: '#a3a3a3', border: '1px solid #333', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
                     {selectedRuleIds.size} / {candidateRules.length} 規則已選
                   </span>
                 </div>
 
-                {/* 🌟 樣板風格庫與一鍵套用區塊 (Template Preset Section) */}
-                <div style={{ padding: '10px 12px', background: '#0f172a', borderBottom: '1px solid #1e293b' }}>
+                {/* 樣板風格庫與一鍵套用區塊 (Template Preset Section) */}
+                <div style={{ padding: '10px 12px', background: '#141414', borderBottom: '1px solid #262626' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#a3a3a3', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                       風格偏好樣板 (Template Presets)
                     </span>
                     <button
                       onClick={() => setSaveTemplateModalOpen(true)}
                       style={{
                         background: 'transparent',
-                        border: '1px solid #38bdf8',
-                        borderRadius: 4,
-                        color: '#38bdf8',
+                        border: '1px solid #404040',
+                        borderRadius: 3,
+                        color: '#cbd5e1',
                         fontSize: 10,
                         padding: '2px 6px',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         gap: 3,
-                        fontWeight: 600,
+                        fontWeight: 500,
                       }}
                     >
                       <Save size={11} />
-                      <span>儲存偏好為新樣板</span>
+                      <span>儲存為新樣板</span>
                     </button>
                   </div>
 
@@ -2358,11 +2381,11 @@ function App() {
                       onChange={(e) => setSelectedTemplateId(e.target.value)}
                       style={{
                         flex: 1,
-                        background: '#0b1120',
-                        border: '1px solid #334155',
-                        borderRadius: 6,
-                        color: '#f8fafc',
-                        padding: '6px 8px',
+                        background: '#1f1f1f',
+                        border: '1px solid #333',
+                        borderRadius: 4,
+                        color: '#f5f5f5',
+                        padding: '5px 8px',
                         fontSize: 11,
                         outline: 'none',
                         cursor: 'pointer',
@@ -2378,23 +2401,22 @@ function App() {
                     <button
                       onClick={() => handleApplyTemplate(selectedTemplateId)}
                       style={{
-                        background: 'linear-gradient(135deg, #7c3aed, #2563eb)',
+                        background: '#2563eb',
                         border: 'none',
-                        borderRadius: 6,
+                        borderRadius: 4,
                         color: '#fff',
                         fontSize: 11,
-                        padding: '6px 12px',
-                        fontWeight: 700,
+                        padding: '5px 12px',
+                        fontWeight: 600,
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         gap: 4,
-                        boxShadow: '0 2px 8px rgba(124, 58, 237, 0.4)',
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      <Sparkles size={12} />
-                      <span>一鍵套用</span>
+                      <CheckCircle size={12} />
+                      <span>套用樣板</span>
                     </button>
 
                     {!selectedTemplateId.endsWith('_standard_preset') && (
@@ -2404,9 +2426,9 @@ function App() {
                         style={{
                           background: '#7f1d1d',
                           border: '1px solid #991b1b',
-                          borderRadius: 6,
+                          borderRadius: 4,
                           color: '#fca5a5',
-                          padding: '6px',
+                          padding: '5px',
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
@@ -2420,7 +2442,7 @@ function App() {
                 </div>
 
                 {/* Batch Action Bar */}
-                <div style={{ padding: '6px 12px', background: '#0b1120', borderBottom: '1px solid #1e293b', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ padding: '6px 12px', background: '#141414', borderBottom: '1px solid #262626', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button
                       onClick={() => selectAllRules(filtered.map(r => r.id || r.rule_id))}
@@ -2430,12 +2452,12 @@ function App() {
                         gap: 4,
                         fontSize: 10,
                         padding: '3px 7px',
-                        borderRadius: 4,
-                        border: '1px solid #0284c7',
-                        background: allFilteredSelected ? '#0284c7' : '#1e293b',
+                        borderRadius: 3,
+                        border: '1px solid #333',
+                        background: allFilteredSelected ? '#2563eb' : '#262626',
                         color: '#fff',
                         cursor: 'pointer',
-                        fontWeight: 600,
+                        fontWeight: 500,
                       }}
                     >
                       <CheckSquare size={12} />
@@ -2449,9 +2471,9 @@ function App() {
                         gap: 4,
                         fontSize: 10,
                         padding: '3px 7px',
-                        borderRadius: 4,
-                        border: '1px solid #475569',
-                        background: '#1e293b',
+                        borderRadius: 3,
+                        border: '1px solid #333',
+                        background: '#262626',
                         color: '#cbd5e1',
                         cursor: 'pointer',
                         fontWeight: 500,
@@ -2460,24 +2482,44 @@ function App() {
                       <Square size={12} />
                       <span>取消全選</span>
                     </button>
+                    <button
+                      onClick={handleResetToDefault}
+                      title="重設為預設核心特徵勾選（同特徵圖層）"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        fontSize: 10,
+                        padding: '3px 7px',
+                        borderRadius: 3,
+                        border: '1px solid #3b82f6',
+                        background: '#1e3a8a',
+                        color: '#93c5fd',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <RotateCcw size={11} />
+                      <span>回復預設</span>
+                    </button>
                   </div>
-                  <span style={{ fontSize: 10, color: '#64748b' }}>
+                  <span style={{ fontSize: 10, color: '#737373' }}>
                     顯示 {filtered.length} 條規則
                   </span>
                 </div>
 
                 {/* Search & Category Tabs */}
-                <div style={{ padding: '6px 12px', background: '#0b1120' }}>
+                <div style={{ padding: '6px 12px', background: '#141414' }}>
                   <input
                     type="text"
                     value={ruleSearch}
                     onChange={(e) => setRuleSearch(e.target.value)}
                     placeholder="搜尋標註規則、軸徑、階梯、公差..."
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '5px 8px', background: '#0f172a', border: '1px solid #334155', borderRadius: 4, color: '#f8fafc', fontSize: 11 }}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '5px 8px', background: '#1f1f1f', border: '1px solid #333', borderRadius: 4, color: '#f5f5f5', fontSize: 11 }}
                   />
                 </div>
 
-                <div style={{ padding: '0 12px 6px 12px', display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                <div style={{ padding: '0 12px 6px 12px', display: 'flex', flexWrap: 'wrap', gap: 3, background: '#141414' }}>
                   {[
                     { id: 'ALL', label: '全部' },
                     { id: 'datum', label: '基準/中心線' },
@@ -2500,8 +2542,8 @@ function App() {
                         borderRadius: 3,
                         border: 'none',
                         cursor: 'pointer',
-                        background: ruleFilter === tab.id ? '#7c3aed' : '#1e293b',
-                        color: ruleFilter === tab.id ? '#fff' : '#94a3b8',
+                        background: ruleFilter === tab.id ? '#2563eb' : '#262626',
+                        color: ruleFilter === tab.id ? '#fff' : '#a3a3a3',
                         fontWeight: ruleFilter === tab.id ? 700 : 500
                       }}
                     >
@@ -2511,15 +2553,15 @@ function App() {
                 </div>
 
                 {/* Rule Customization List */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 10px 12px', display: 'flex', flexDirection: 'column', gap: 6, background: '#0f0f0f' }}>
                   {isLoadingFeatures ? (
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 30 }}>
-                      <Loader2 size={28} color="#c084fc" className="animate-spin" />
-                      <span style={{ fontSize: 12, color: '#f8fafc', fontWeight: 600 }}>正在載入標註規則幾何...</span>
-                      <span style={{ fontSize: 10, color: '#64748b' }}>分析尺寸候選特徵中</span>
+                      <Loader2 size={24} color="#3b82f6" className="animate-spin" />
+                      <span style={{ fontSize: 12, color: '#f5f5f5', fontWeight: 600 }}>正在載入標註規則幾何...</span>
+                      <span style={{ fontSize: 10, color: '#737373' }}>分析尺寸候選特徵中</span>
                     </div>
                   ) : filtered.length === 0 ? (
-                    <div style={{ padding: 24, textAlign: 'center', color: '#64748b', fontSize: 12 }}>
+                    <div style={{ padding: 24, textAlign: 'center', color: '#737373', fontSize: 12 }}>
                       未找到符合條件的規則
                     </div>
                   ) : (
@@ -2529,134 +2571,162 @@ function App() {
                       const isHovered = hoveredFeatureId === rId;
                       const cat = (rule.category || rule.type || '').toLowerCase();
                       const cfg = ruleConfig[rId] || {};
-                      const currentView = cfg.preferred_view || rule.preferred_view || rule.view || 'front';
                       const currentTol = cfg.tolerance !== undefined ? cfg.tolerance : (rule.tolerance || rule.default_tolerance || '');
                       const currentSide = cfg.side || rule.side || 'BOTTOM';
+                      const currentViews = cfg.views || rule.target_views || rule.views || ['front', 'top', 'right'];
 
-                      let badgeBg = '#334155';
-                      let badgeColor = '#94a3b8';
+                      let badgeBg = '#262626';
+                      let badgeColor = '#a3a3a3';
                       if (cat.includes('shaft') || cat.includes('boss') || cat.includes('journal')) { badgeBg = '#1e3a8a'; badgeColor = '#60a5fa'; }
-                      else if (cat.includes('groove') || cat.includes('slot') || cat.includes('torus')) { badgeBg = '#581c87'; badgeColor = '#c084fc'; }
+                      else if (cat.includes('groove') || cat.includes('slot') || cat.includes('torus')) { badgeBg = '#4c1d95'; badgeColor = '#c084fc'; }
                       else if (cat.includes('cone') || cat.includes('chamfer') || cat.includes('taper')) { badgeBg = '#713f12'; badgeColor = '#facc15'; }
                       else if (cat.includes('step')) { badgeBg = '#7c2d12'; badgeColor = '#fb923c'; }
                       else if (cat.includes('fillet') || cat.includes('round')) { badgeBg = '#831843'; badgeColor = '#f472b6'; }
                       else if (cat.includes('hole')) { badgeBg = '#065f46'; badgeColor = '#34d399'; }
                       else if (cat.includes('datum') || cat.includes('axis')) { badgeBg = '#0e7490'; badgeColor = '#67e8f9'; }
-                      else if (cat.includes('overall') || cat.includes('bbox')) { badgeBg = '#374151'; badgeColor = '#9ca3af'; }
-                      else if (cat.includes('pattern') || cat.includes('pcd')) { badgeBg = '#4c1d95'; badgeColor = '#e9d5ff'; }
+                      else if (cat.includes('overall') || cat.includes('bbox')) { badgeBg = '#262626'; badgeColor = '#9ca3af'; }
+                      else if (cat.includes('pattern') || cat.includes('pcd')) { badgeBg = '#312e81'; badgeColor = '#a5b4fc'; }
                       else if (cat.includes('thickness') || cat.includes('wall')) { badgeBg = '#14532d'; badgeColor = '#86efac'; }
 
                       return (
                         <div
-                        key={rId || idx}
-                        onMouseEnter={() => setHoveredFeatureId(rId)}
-                        onMouseLeave={() => setHoveredFeatureId(null)}
-                        style={{
-                          padding: '8px 10px',
-                          background: isHovered ? '#1e293b' : isSelected ? '#111c33' : '#0f172a',
-                          borderRadius: 6,
-                          border: `1px solid ${isHovered ? '#38bdf8' : isSelected ? '#2563eb' : '#1e293b'}`,
-                          transition: 'all 0.15s ease',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: 6,
-                        }}
-                      >
-                        {/* Header Row: Checkbox + Rule ID + Category Badge */}
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1 }}>
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleRule(rId)}
-                              style={{ cursor: 'pointer', accentColor: '#3b82f6', width: 15, height: 15 }}
-                            />
-                            <span style={{ fontWeight: 700, color: isSelected ? '#f8fafc' : '#64748b', fontSize: 12 }}>
-                              {rId}
-                            </span>
-                          </label>
-                          <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: badgeBg, color: badgeColor, fontWeight: 600 }}>
-                            {rule.category || rule.type || rule.dim_type}
-                          </span>
-                        </div>
-
-                        {/* Rule Name */}
-                        <div style={{ fontWeight: 600, color: isSelected ? '#38bdf8' : '#94a3b8', fontSize: 12, paddingLeft: 23 }}>
-                          {rule.name}
-                        </div>
-
-                        {/* Annotation Customization Controls (View, Tolerance, Side) */}
-                        {isSelected && (
-                          <div style={{ marginLeft: 23, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, background: '#090d16', padding: '6px 8px', borderRadius: 4, border: '1px solid #1e293b' }}>
-                            <div>
-                              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 2 }}>標註視圖</div>
-                              <select
-                                value={currentView}
-                                onChange={(e) => updateRuleConfig(rId, { preferred_view: e.target.value })}
-                                style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 3, color: '#f8fafc', fontSize: 10, padding: 2 }}
-                              >
-                                <option value="front">正視圖 (Front)</option>
-                                <option value="top">俯視圖 (Top)</option>
-                                <option value="right">右側視圖 (Right)</option>
-                                <option value="left">左側視圖 (Left)</option>
-                              </select>
-                            </div>
-
-                            <div>
-                              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 2 }}>公差設定</div>
+                          key={rId || idx}
+                          onMouseEnter={() => setHoveredFeatureId(rId)}
+                          onMouseLeave={() => setHoveredFeatureId(null)}
+                          style={{
+                            padding: '8px 10px',
+                            background: isHovered ? '#1f2937' : isSelected ? '#172554' : '#171717',
+                            borderRadius: 4,
+                            border: `1px solid ${isHovered ? '#3b82f6' : isSelected ? '#2563eb' : '#262626'}`,
+                            transition: 'all 0.12s ease',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 6,
+                          }}
+                        >
+                          {/* Header Row: Checkbox + Rule ID + Category Badge */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1 }}>
                               <input
-                                type="text"
-                                value={currentTol}
-                                onChange={(e) => updateRuleConfig(rId, { tolerance: e.target.value })}
-                                placeholder="如 ±0.005"
-                                style={{ width: '100%', boxSizing: 'border-box', background: '#0f172a', border: '1px solid #334155', borderRadius: 3, color: '#facc15', fontSize: 10, padding: '2px 4px' }}
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleRule(rId)}
+                                style={{ cursor: 'pointer', accentColor: '#2563eb', width: 14, height: 14 }}
                               />
-                            </div>
-
-                            <div>
-                              <div style={{ fontSize: 9, color: '#64748b', marginBottom: 2 }}>標註側向</div>
-                              <select
-                                value={currentSide}
-                                onChange={(e) => updateRuleConfig(rId, { side: e.target.value })}
-                                style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 3, color: '#f8fafc', fontSize: 10, padding: 2 }}
-                              >
-                                <option value="BOTTOM">底部 (Bottom)</option>
-                                <option value="TOP">頂部 (Top)</option>
-                                <option value="LEFT">左側 (Left)</option>
-                                <option value="RIGHT">右側 (Right)</option>
-                              </select>
-                            </div>
+                              <span style={{ fontWeight: 600, color: isSelected ? '#f5f5f5' : '#737373', fontSize: 12 }}>
+                                {rId}
+                              </span>
+                            </label>
+                            <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: badgeBg, color: badgeColor, fontWeight: 500 }}>
+                              {rule.category || rule.type || rule.dim_type}
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    );
-                  }))}
+
+                          {/* Rule Name */}
+                          <div style={{ fontWeight: 500, color: isSelected ? '#93c5fd' : '#a3a3a3', fontSize: 11, paddingLeft: 22 }}>
+                            {rule.name}
+                          </div>
+
+                          {/* Annotation Customization Controls (Multi-View, Tolerance, Side) */}
+                          {isSelected && (
+                            <div style={{ marginLeft: 22, display: 'flex', flexDirection: 'column', gap: 6, background: '#121212', padding: '6px 8px', borderRadius: 4, border: '1px solid #262626' }}>
+                              {/* Multi-View Selection Toggles */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontSize: 10, color: '#737373', width: 48 }}>標註視圖:</span>
+                                <div style={{ display: 'flex', gap: 4 }}>
+                                  {[
+                                    { id: 'front', label: '正視圖' },
+                                    { id: 'top', label: '俯視圖' },
+                                    { id: 'right', label: '側視圖' },
+                                  ].map(v => {
+                                    const isViewActive = currentViews.includes(v.id);
+                                    return (
+                                      <button
+                                        key={v.id}
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const nextViews = isViewActive
+                                            ? currentViews.filter((x: string) => x !== v.id)
+                                            : [...currentViews, v.id];
+                                          updateRuleConfig(rId, { views: nextViews, target_views: nextViews });
+                                        }}
+                                        style={{
+                                          fontSize: 10,
+                                          padding: '2px 6px',
+                                          borderRadius: 3,
+                                          border: isViewActive ? '1px solid #2563eb' : '1px solid #333',
+                                          background: isViewActive ? '#1e3a8a' : '#1f1f1f',
+                                          color: isViewActive ? '#93c5fd' : '#737373',
+                                          cursor: 'pointer',
+                                          fontWeight: isViewActive ? 600 : 400,
+                                        }}
+                                      >
+                                        {isViewActive ? '✓ ' : ''}{v.label}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              {/* Tolerance & Side Row */}
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                                <div>
+                                  <div style={{ fontSize: 9, color: '#737373', marginBottom: 2 }}>公差設定</div>
+                                  <input
+                                    type="text"
+                                    value={currentTol}
+                                    onChange={(e) => updateRuleConfig(rId, { tolerance: e.target.value })}
+                                    placeholder="如 ±0.005"
+                                    style={{ width: '100%', boxSizing: 'border-box', background: '#1f1f1f', border: '1px solid #333', borderRadius: 3, color: '#facc15', fontSize: 10, padding: '2px 4px' }}
+                                  />
+                                </div>
+
+                                <div>
+                                  <div style={{ fontSize: 9, color: '#737373', marginBottom: 2 }}>標註側向</div>
+                                  <select
+                                    value={currentSide}
+                                    onChange={(e) => updateRuleConfig(rId, { side: e.target.value })}
+                                    style={{ width: '100%', background: '#1f1f1f', border: '1px solid #333', borderRadius: 3, color: '#f5f5f5', fontSize: 10, padding: 2 }}
+                                  >
+                                    <option value="BOTTOM">底部 (Bottom)</option>
+                                    <option value="TOP">頂部 (Top)</option>
+                                    <option value="LEFT">左側 (Left)</option>
+                                    <option value="RIGHT">右側 (Right)</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
 
                 {/* Sticky Action Footer */}
-                <div style={{ padding: '12px', background: '#0f172a', borderTop: '1px solid #1e293b' }}>
+                <div style={{ padding: '12px', background: '#141414', borderTop: '1px solid #262626' }}>
                   <button
                     onClick={handleRenderCustomDrawing}
                     disabled={isRenderingDrawing || selectedRuleIds.size === 0}
                     style={{
                       width: '100%',
-                      background: selectedRuleIds.size > 0 ? 'linear-gradient(135deg, #0284c7, #7c3aed)' : '#334155',
+                      background: selectedRuleIds.size > 0 ? '#2563eb' : '#262626',
                       color: '#fff',
                       border: 'none',
-                      borderRadius: 6,
-                      padding: '10px 0',
+                      borderRadius: 4,
+                      padding: '9px 0',
                       fontSize: 13,
-                      fontWeight: 700,
+                      fontWeight: 600,
                       cursor: selectedRuleIds.size > 0 ? 'pointer' : 'not-allowed',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: 8,
-                      boxShadow: selectedRuleIds.size > 0 ? '0 4px 14px rgba(2, 132, 199, 0.4)' : 'none',
+                      gap: 6,
                     }}
                   >
-                    {isRenderingDrawing ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
-                    <span>{isRenderingDrawing ? '正在產出客製工程圖...' : `🚀 產出新版標註圖紙 (${selectedRuleIds.size} 規則)`}</span>
+                    {isRenderingDrawing ? <Loader2 size={15} className="animate-spin" /> : <FileText size={15} />}
+                    <span>{isRenderingDrawing ? '正在產出客製工程圖...' : `產出標註工程圖 (${selectedRuleIds.size} 規則)`}</span>
                   </button>
                 </div>
               </div>
