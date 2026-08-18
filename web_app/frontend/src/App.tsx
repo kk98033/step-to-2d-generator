@@ -672,6 +672,10 @@ function App() {
   const [newTemplateName, setNewTemplateName] = useState('');
   const [newTemplateDesc, setNewTemplateDesc] = useState('');
   const [annotationZoom, setAnnotationZoom] = useState(1);
+  const [drawingPan, setDrawingPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isPanningDrawing, setIsPanningDrawing] = useState(false);
+  const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isLoadingFeatures, setIsLoadingFeatures] = useState<boolean>(false);
 
   // --- Tree Diff State ---
   const [diffedTreeOld, setDiffedTreeOld] = useState<any>(null);
@@ -692,6 +696,8 @@ function App() {
 
   useEffect(() => {
     setCustomDrawingResult(null);
+    setDrawingPan({ x: 0, y: 0 });
+    setAnnotationZoom(1);
   }, [selectedPart]);
 
   useEffect(() => {
@@ -730,7 +736,9 @@ function App() {
   }, [results]);
 
   useEffect(() => {
-    setShowFeatureLayer(false);
+    if (viewTab !== 'features3d') {
+      setShowFeatureLayer(false);
+    }
     setFeatureRecords([]);
     setSelectedFeatureIds(new Set());
 
@@ -740,6 +748,8 @@ function App() {
 
     if (!selectedPart) return;
 
+    setIsLoadingFeatures(true);
+
     // 優先調用後端即時 3D 特徵動態提取 API (保證 100% 所有零件/新舊模型皆有 3D 特徵)
     if (modelId) {
       axios.get(`${API_BASE}/api/features/${modelId}/${selectedPart}?t=${Date.now()}`)
@@ -747,9 +757,11 @@ function App() {
           const records = Array.isArray(res.data?.records) ? res.data.records : [];
           if (records.length > 0) {
             setFeatureRecords(records);
-            const initialSelected = records.length <= 15
-              ? records.map((r: any) => r.id)
-              : records.slice(0, 12).map((r: any) => r.id);
+            const topKeyFeatures = records.filter((r: any) => {
+              const type = (r.type || '').toLowerCase();
+              return !type.includes('fillet') && !type.includes('round');
+            });
+            const initialSelected = (topKeyFeatures.length <= 15 ? topKeyFeatures : topKeyFeatures.slice(0, 12)).map((r: any) => r.id);
             setSelectedFeatureIds(new Set(initialSelected));
             return;
           }
@@ -758,9 +770,11 @@ function App() {
               .then(res2 => {
                 const recs = Array.isArray(res2.data) ? res2.data : [];
                 setFeatureRecords(recs);
-                const initial = recs.length <= 15
-                  ? recs.map((r: any) => r.id)
-                  : recs.slice(0, 12).map((r: any) => r.id);
+                const topKeyFeatures = recs.filter((r: any) => {
+                  const type = (r.type || '').toLowerCase();
+                  return !type.includes('fillet') && !type.includes('round');
+                });
+                const initial = (topKeyFeatures.length <= 15 ? topKeyFeatures : topKeyFeatures.slice(0, 12)).map((r: any) => r.id);
                 setSelectedFeatureIds(new Set(initial));
               })
               .catch(() => {});
@@ -773,9 +787,11 @@ function App() {
               .then(res2 => {
                 const recs = Array.isArray(res2.data) ? res2.data : [];
                 setFeatureRecords(recs);
-                const initial = recs.length <= 15
-                  ? recs.map((r: any) => r.id)
-                  : recs.slice(0, 12).map((r: any) => r.id);
+                const topKeyFeatures = recs.filter((r: any) => {
+                  const type = (r.type || '').toLowerCase();
+                  return !type.includes('fillet') && !type.includes('round');
+                });
+                const initial = (topKeyFeatures.length <= 15 ? topKeyFeatures : topKeyFeatures.slice(0, 12)).map((r: any) => r.id);
                 setSelectedFeatureIds(new Set(initial));
               })
               .catch(() => {
@@ -783,6 +799,9 @@ function App() {
                 setSelectedFeatureIds(new Set());
               });
           }
+        })
+        .finally(() => {
+          setIsLoadingFeatures(false);
         });
 
       // 提取候選標註幾何規則 (Candidate Dimension Rules)
@@ -790,11 +809,9 @@ function App() {
         .then(res => {
           const rules = Array.isArray(res.data?.rules) ? res.data.rules : [];
           setCandidateRules(rules);
-          const initialSet = new Set<string>();
           const initialCfg: Record<string, any> = {};
           rules.forEach((r: any) => {
             const rId = r.id || r.rule_id;
-            if (r.enabled) initialSet.add(rId);
             initialCfg[rId] = {
               enabled: !!r.enabled,
               preferred_view: r.preferred_view || r.view || 'front',
@@ -804,7 +821,14 @@ function App() {
               prefix: r.prefix !== undefined ? r.prefix : (r.default_prefix || '')
             };
           });
-          setSelectedRuleIds(initialSet);
+
+          // 🌟 預設選取與 3D 特徵圖層完全一致（優先選取核心特徵，最多 12 項，排除微小圓角，避免模型雜亂）
+          const topKeyRules = rules.filter((r: any) => {
+            const cat = (r.category || r.type || '').toLowerCase();
+            return !cat.includes('fillet') && !cat.includes('round');
+          });
+          const defaultSelectedIds = (topKeyRules.length <= 15 ? topKeyRules : topKeyRules.slice(0, 12)).map((r: any) => r.id || r.rule_id);
+          setSelectedRuleIds(new Set(defaultSelectedIds));
           setRuleConfig(initialCfg);
         })
         .catch(err => {
@@ -817,15 +841,20 @@ function App() {
         .then(res => {
           const records = Array.isArray(res.data) ? res.data : [];
           setFeatureRecords(records);
-          const initialSelected = records.length <= 15
-            ? records.map((r: any) => r.id)
-            : records.slice(0, 12).map((r: any) => r.id);
+          const topKeyFeatures = records.filter((r: any) => {
+            const type = (r.type || '').toLowerCase();
+            return !type.includes('fillet') && !type.includes('round');
+          });
+          const initialSelected = (topKeyFeatures.length <= 15 ? topKeyFeatures : topKeyFeatures.slice(0, 12)).map((r: any) => r.id);
           setSelectedFeatureIds(new Set(initialSelected));
         })
         .catch(err => {
           console.error('Feature records load error:', err);
           setFeatureRecords([]);
           setSelectedFeatureIds(new Set());
+        })
+        .finally(() => {
+          setIsLoadingFeatures(false);
         });
     }
   }, [results, selectedPart, jobId]);
@@ -1845,12 +1874,18 @@ function App() {
                       </span>
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      {/* Zoom Controls */}
+                      {/* Zoom Controls & Pan Reset */}
                       <div style={{ display: 'flex', gap: 4, background: '#1e293b', padding: '2px 6px', borderRadius: 6, border: '1px solid #334155' }}>
-                        <button onClick={() => setAnnotationZoom(z => Math.max(0.4, z - 0.2))} style={{ background: 'transparent', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: 4 }}><ZoomOut size={14} /></button>
+                        <button onClick={() => setAnnotationZoom(z => Math.max(0.4, Number((z - 0.2).toFixed(2))))} title="縮小" style={{ background: 'transparent', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: 4 }}><ZoomOut size={14} /></button>
                         <span style={{ fontSize: 11, color: '#94a3b8', minWidth: 36, textAlign: 'center', lineHeight: '22px' }}>{Math.round(annotationZoom * 100)}%</span>
-                        <button onClick={() => setAnnotationZoom(z => Math.min(3.0, z + 0.2))} style={{ background: 'transparent', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: 4 }}><ZoomIn size={14} /></button>
-                        <button onClick={() => setAnnotationZoom(1)} style={{ background: 'transparent', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: 10, fontWeight: 700, padding: '0 4px' }}>1x</button>
+                        <button onClick={() => setAnnotationZoom(z => Math.min(4.0, Number((z + 0.2).toFixed(2))))} title="放大" style={{ background: 'transparent', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: 4 }}><ZoomIn size={14} /></button>
+                        <button
+                          onClick={() => { setAnnotationZoom(1); setDrawingPan({ x: 0, y: 0 }); }}
+                          title="重設大小與置中"
+                          style={{ background: 'transparent', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: 10, fontWeight: 700, padding: '0 4px' }}
+                        >
+                          1x 重設
+                        </button>
                       </div>
 
                       {/* Download Actions */}
@@ -1922,22 +1957,61 @@ function App() {
                     </div>
                   </div>
 
-                  {/* High-Res Drawing Image Viewport */}
-                  <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+                  {/* High-Res Drawing Image Viewport with Interactive Pan/Drag & Wheel Zoom */}
+                  <div
+                    style={{
+                      flex: 1,
+                      overflow: 'hidden',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative',
+                      cursor: isPanningDrawing ? 'grabbing' : 'grab',
+                      background: '#060911',
+                      userSelect: 'none',
+                    }}
+                    onMouseDown={(e) => {
+                      if (e.button === 0) {
+                        setIsPanningDrawing(true);
+                        setPanStart({ x: e.clientX - drawingPan.x, y: e.clientY - drawingPan.y });
+                      }
+                    }}
+                    onMouseMove={(e) => {
+                      if (isPanningDrawing) {
+                        setDrawingPan({ x: e.clientX - panStart.x, y: e.clientY - panStart.y });
+                      }
+                    }}
+                    onMouseUp={() => setIsPanningDrawing(false)}
+                    onMouseLeave={() => setIsPanningDrawing(false)}
+                    onWheel={(e) => {
+                      e.preventDefault();
+                      const zoomDelta = e.deltaY < 0 ? 0.15 : -0.15;
+                      setAnnotationZoom(z => Math.max(0.3, Math.min(4.5, Number((z + zoomDelta).toFixed(2)))));
+                    }}
+                  >
                     <img
                       src={`${API_BASE}${customDrawingResult.png_url}?t=${customDrawingResult.timestamp || Date.now()}`}
                       alt="Custom Drawing"
+                      draggable={false}
                       style={{
-                        width: `${100 * annotationZoom}%`,
-                        maxWidth: 'none',
-                        maxHeight: 'none',
-                        transition: 'width 0.15s ease',
-                        boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+                        transform: `translate(${drawingPan.x}px, ${drawingPan.y}px) scale(${annotationZoom})`,
+                        transformOrigin: 'center center',
+                        maxWidth: '90%',
+                        maxHeight: '90%',
+                        transition: isPanningDrawing ? 'none' : 'transform 0.08s ease-out',
+                        boxShadow: '0 16px 48px rgba(0,0,0,0.8)',
                         borderRadius: 6,
                         border: '1px solid #1e293b',
                         background: '#000',
+                        pointerEvents: 'none',
                       }}
                     />
+
+                    {/* Navigation Pan Hint */}
+                    <div style={{ position: 'absolute', bottom: 12, left: 12, background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(6px)', border: '1px solid #334155', borderRadius: 6, padding: '4px 10px', color: '#94a3b8', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, pointerEvents: 'none' }}>
+                      <Sparkles size={13} color="#38bdf8" />
+                      <span>滑鼠左鍵按住拖曳平移 | 滾輪縮放 | 工具列 1x 重設</span>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1956,6 +2030,18 @@ function App() {
                   </div>
 
                   <div style={{ flex: 1, position: 'relative' }}>
+                    {isLoadingFeatures && (
+                      <div style={{ position: 'absolute', inset: 0, background: 'rgba(9, 13, 22, 0.85)', backdropFilter: 'blur(6px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 25, gap: 12 }}>
+                        <Loader2 size={38} color="#c084fc" className="animate-spin" />
+                        <span style={{ fontSize: 14, color: '#f8fafc', fontWeight: 700, letterSpacing: 0.5 }}>
+                          ✨ 正在即時提取 3D 特徵與標註幾何規則...
+                        </span>
+                        <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                          正在為新模型動態分析拓撲面與尺寸規格，請稍候
+                        </span>
+                      </div>
+                    )}
+
                     {currentStlUrl ? (
                       <Canvas
                         key={`studio-3d-${currentStlUrl}`}
@@ -2059,6 +2145,18 @@ function App() {
             ) : viewTab === 'features3d' ? (
               currentStlUrl ? (
                 <div style={{ flex: 1, position: 'relative', cursor: 'grab' }}>
+                  {isLoadingFeatures && (
+                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(9, 13, 22, 0.85)', backdropFilter: 'blur(6px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 25, gap: 12 }}>
+                      <Loader2 size={38} color="#38bdf8" className="animate-spin" />
+                      <span style={{ fontSize: 14, color: '#f8fafc', fontWeight: 700, letterSpacing: 0.5 }}>
+                        ✨ 正在即時提取 3D 特徵圖層...
+                      </span>
+                      <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                        正在分析零件拓撲面與特徵幾何，請稍候
+                      </span>
+                    </div>
+                  )}
+
                   <Canvas
                     key={`feature-3d-${currentStlUrl}`}
                     camera={{ position: [40, 40, 40], fov: 45, near: 0.01, far: 100000 }}
@@ -2154,7 +2252,7 @@ function App() {
         </div>
 
         {/* Right Panel: Smart Annotation Studio Controller OR Feature Inspector OR 3D Viewer */}
-        <div style={{ width: viewTab === 'smart_annotation' ? '42%' : showFeatureLayer ? '38%' : '33%', minWidth: 340, display: 'flex', flexDirection: 'column', background: '#111', transition: 'width 0.2s ease' }}>
+        <div style={{ width: viewTab === 'smart_annotation' ? '42%' : (viewTab === 'features3d' || showFeatureLayer) ? '38%' : '33%', minWidth: 340, display: 'flex', flexDirection: 'column', background: '#111', transition: 'width 0.2s ease' }}>
           {viewTab === 'smart_annotation' ? (() => {
             const filtered = candidateRules.filter(r => {
               const rId = r.id || r.rule_id;
@@ -2385,31 +2483,42 @@ function App() {
 
                 {/* Rule Customization List */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {filtered.map((rule, idx) => {
-                    const rId = rule.id || rule.rule_id;
-                    const isSelected = selectedRuleIds.has(rId);
-                    const isHovered = hoveredFeatureId === rId;
-                    const cat = (rule.category || rule.type || '').toLowerCase();
-                    const cfg = ruleConfig[rId] || {};
-                    const currentView = cfg.preferred_view || rule.preferred_view || rule.view || 'front';
-                    const currentTol = cfg.tolerance !== undefined ? cfg.tolerance : (rule.tolerance || rule.default_tolerance || '');
-                    const currentSide = cfg.side || rule.side || 'BOTTOM';
+                  {isLoadingFeatures ? (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 30 }}>
+                      <Loader2 size={28} color="#c084fc" className="animate-spin" />
+                      <span style={{ fontSize: 12, color: '#f8fafc', fontWeight: 600 }}>正在載入標註規則幾何...</span>
+                      <span style={{ fontSize: 10, color: '#64748b' }}>分析尺寸候選特徵中</span>
+                    </div>
+                  ) : filtered.length === 0 ? (
+                    <div style={{ padding: 24, textAlign: 'center', color: '#64748b', fontSize: 12 }}>
+                      未找到符合條件的規則
+                    </div>
+                  ) : (
+                    filtered.map((rule, idx) => {
+                      const rId = rule.id || rule.rule_id;
+                      const isSelected = selectedRuleIds.has(rId);
+                      const isHovered = hoveredFeatureId === rId;
+                      const cat = (rule.category || rule.type || '').toLowerCase();
+                      const cfg = ruleConfig[rId] || {};
+                      const currentView = cfg.preferred_view || rule.preferred_view || rule.view || 'front';
+                      const currentTol = cfg.tolerance !== undefined ? cfg.tolerance : (rule.tolerance || rule.default_tolerance || '');
+                      const currentSide = cfg.side || rule.side || 'BOTTOM';
 
-                    let badgeBg = '#334155';
-                    let badgeColor = '#94a3b8';
-                    if (cat.includes('shaft') || cat.includes('boss') || cat.includes('journal')) { badgeBg = '#1e3a8a'; badgeColor = '#60a5fa'; }
-                    else if (cat.includes('groove') || cat.includes('slot') || cat.includes('torus')) { badgeBg = '#581c87'; badgeColor = '#c084fc'; }
-                    else if (cat.includes('cone') || cat.includes('chamfer') || cat.includes('taper')) { badgeBg = '#713f12'; badgeColor = '#facc15'; }
-                    else if (cat.includes('step')) { badgeBg = '#7c2d12'; badgeColor = '#fb923c'; }
-                    else if (cat.includes('fillet') || cat.includes('round')) { badgeBg = '#831843'; badgeColor = '#f472b6'; }
-                    else if (cat.includes('hole')) { badgeBg = '#065f46'; badgeColor = '#34d399'; }
-                    else if (cat.includes('datum') || cat.includes('axis')) { badgeBg = '#0e7490'; badgeColor = '#67e8f9'; }
-                    else if (cat.includes('overall') || cat.includes('bbox')) { badgeBg = '#374151'; badgeColor = '#9ca3af'; }
-                    else if (cat.includes('pattern') || cat.includes('pcd')) { badgeBg = '#4c1d95'; badgeColor = '#e9d5ff'; }
-                    else if (cat.includes('thickness') || cat.includes('wall')) { badgeBg = '#14532d'; badgeColor = '#86efac'; }
+                      let badgeBg = '#334155';
+                      let badgeColor = '#94a3b8';
+                      if (cat.includes('shaft') || cat.includes('boss') || cat.includes('journal')) { badgeBg = '#1e3a8a'; badgeColor = '#60a5fa'; }
+                      else if (cat.includes('groove') || cat.includes('slot') || cat.includes('torus')) { badgeBg = '#581c87'; badgeColor = '#c084fc'; }
+                      else if (cat.includes('cone') || cat.includes('chamfer') || cat.includes('taper')) { badgeBg = '#713f12'; badgeColor = '#facc15'; }
+                      else if (cat.includes('step')) { badgeBg = '#7c2d12'; badgeColor = '#fb923c'; }
+                      else if (cat.includes('fillet') || cat.includes('round')) { badgeBg = '#831843'; badgeColor = '#f472b6'; }
+                      else if (cat.includes('hole')) { badgeBg = '#065f46'; badgeColor = '#34d399'; }
+                      else if (cat.includes('datum') || cat.includes('axis')) { badgeBg = '#0e7490'; badgeColor = '#67e8f9'; }
+                      else if (cat.includes('overall') || cat.includes('bbox')) { badgeBg = '#374151'; badgeColor = '#9ca3af'; }
+                      else if (cat.includes('pattern') || cat.includes('pcd')) { badgeBg = '#4c1d95'; badgeColor = '#e9d5ff'; }
+                      else if (cat.includes('thickness') || cat.includes('wall')) { badgeBg = '#14532d'; badgeColor = '#86efac'; }
 
-                    return (
-                      <div
+                      return (
+                        <div
                         key={rId || idx}
                         onMouseEnter={() => setHoveredFeatureId(rId)}
                         onMouseLeave={() => setHoveredFeatureId(null)}
@@ -2492,7 +2601,7 @@ function App() {
                         )}
                       </div>
                     );
-                  })}
+                  }))}
                 </div>
 
                 {/* Sticky Action Footer */}
@@ -2523,7 +2632,7 @@ function App() {
                 </div>
               </div>
             );
-          })() : showFeatureLayer ? (() => {
+          })() : (viewTab === 'features3d' || showFeatureLayer) ? (() => {
             const filtered = featureRecords.filter(f => {
               const type = (f.type || '').toLowerCase();
               const role = (f.role || '').toLowerCase();
@@ -2658,24 +2767,35 @@ function App() {
 
                 {/* Feature Items Scrollable List */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 12px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {filtered.map((feature, idx) => {
-                    const isSelected = selectedFeatureIds.has(feature.id);
-                    const isHovered = hoveredFeatureId === feature.id;
-                    const fType = (feature.type || '').toLowerCase();
+                  {isLoadingFeatures ? (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 30 }}>
+                      <Loader2 size={28} color="#38bdf8" className="animate-spin" />
+                      <span style={{ fontSize: 12, color: '#f8fafc', fontWeight: 600 }}>正在載入 3D 特徵幾何...</span>
+                      <span style={{ fontSize: 10, color: '#64748b' }}>分析零件拓撲結構中</span>
+                    </div>
+                  ) : filtered.length === 0 ? (
+                    <div style={{ padding: 24, textAlign: 'center', color: '#64748b', fontSize: 12 }}>
+                      未找到符合條件的特徵
+                    </div>
+                  ) : (
+                    filtered.map((feature, idx) => {
+                      const isSelected = selectedFeatureIds.has(feature.id);
+                      const isHovered = hoveredFeatureId === feature.id;
+                      const fType = (feature.type || '').toLowerCase();
 
-                    let badgeBg = '#334155';
-                    let badgeColor = '#94a3b8';
-                    if (fType.includes('journal') || fType.includes('shaft')) { badgeBg = '#1e3a8a'; badgeColor = '#60a5fa'; }
-                    else if (fType.includes('groove') || fType.includes('slot')) { badgeBg = '#581c87'; badgeColor = '#c084fc'; }
-                    else if (fType.includes('cone') || fType.includes('chamfer')) { badgeBg = '#713f12'; badgeColor = '#facc15'; }
-                    else if (fType.includes('step')) { badgeBg = '#7c2d12'; badgeColor = '#fb923c'; }
-                    else if (fType.includes('fillet')) { badgeBg = '#831843'; badgeColor = '#f472b6'; }
-                    else if (fType.includes('hole')) { badgeBg = '#065f46'; badgeColor = '#34d399'; }
-                    else if (fType.includes('thickness') || fType.includes('plane')) { badgeBg = '#374151'; badgeColor = '#9ca3af'; }
-                    else if (fType.includes('pattern')) { badgeBg = '#4c1d95'; badgeColor = '#e9d5ff'; }
+                      let badgeBg = '#334155';
+                      let badgeColor = '#94a3b8';
+                      if (fType.includes('journal') || fType.includes('shaft')) { badgeBg = '#1e3a8a'; badgeColor = '#60a5fa'; }
+                      else if (fType.includes('groove') || fType.includes('slot')) { badgeBg = '#581c87'; badgeColor = '#c084fc'; }
+                      else if (fType.includes('cone') || fType.includes('chamfer')) { badgeBg = '#713f12'; badgeColor = '#facc15'; }
+                      else if (fType.includes('step')) { badgeBg = '#7c2d12'; badgeColor = '#fb923c'; }
+                      else if (fType.includes('fillet')) { badgeBg = '#831843'; badgeColor = '#f472b6'; }
+                      else if (fType.includes('hole')) { badgeBg = '#065f46'; badgeColor = '#34d399'; }
+                      else if (fType.includes('thickness') || fType.includes('plane')) { badgeBg = '#374151'; badgeColor = '#9ca3af'; }
+                      else if (fType.includes('pattern')) { badgeBg = '#4c1d95'; badgeColor = '#e9d5ff'; }
 
-                    return (
-                      <div
+                      return (
+                        <div
                         key={feature.id || idx}
                         onMouseEnter={() => setHoveredFeatureId(feature.id)}
                         onMouseLeave={() => setHoveredFeatureId(null)}
@@ -2718,7 +2838,7 @@ function App() {
                         </div>
                       </div>
                     );
-                  })}
+                  }))}
                 </div>
               </div>
             );
