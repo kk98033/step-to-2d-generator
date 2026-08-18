@@ -3,7 +3,7 @@ import {
   FileText, File, Folder, FolderOpen, Loader2, CheckCircle, 
   ChevronRight, ChevronDown, AlertTriangle, BookOpen, ArrowLeft, 
   Home, ZoomIn, ZoomOut, CheckSquare, Square, 
-  Layers, Sparkles, Wand2, Download, Save, Trash2
+  Layers, Sparkles, Wand2, Download, Save, Trash2, RotateCcw
 } from 'lucide-react';
 import axios from 'axios';
 import { Canvas, useThree } from '@react-three/fiber';
@@ -1874,6 +1874,35 @@ function App() {
                       </span>
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      {/* Return / Delete Image Button */}
+                      <button
+                        onClick={() => {
+                          setCustomDrawingResult(null);
+                          setDrawingPan({ x: 0, y: 0 });
+                          setAnnotationZoom(1);
+                        }}
+                        title="清除當前圖紙並返回 3D 模型重新調整特徵標註"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          fontSize: 11,
+                          padding: '4px 10px',
+                          background: '#dc2626',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: 4,
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                          transition: 'all 0.15s ease'
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#ef4444')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = '#dc2626')}
+                      >
+                        <RotateCcw size={13} />
+                        <span>重新編輯 (返回 3D)</span>
+                      </button>
+
                       {/* Zoom Controls & Pan Reset */}
                       <div style={{ display: 'flex', gap: 4, background: '#1e293b', padding: '2px 6px', borderRadius: 6, border: '1px solid #334155' }}>
                         <button onClick={() => setAnnotationZoom(z => Math.max(0.4, Number((z - 0.2).toFixed(2))))} title="縮小" style={{ background: 'transparent', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: 4 }}><ZoomOut size={14} /></button>
