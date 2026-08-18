@@ -36,33 +36,248 @@ class SmartRuleExtractor(BaseExtractor):
     def extract_all_candidate_rules(self, shape, view_data: Dict[str, Any], part_type: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         掃描 3D 實體與所有投影視圖，產生結構化的候選標註規則列表。
+        完全繼承 3D 特徵圖層中的所有 3D 特徵幾何定義 (38~44項特徵)，保證 3D 高亮與 2D 尺寸規則 100% 同步。
         """
         feat = FeatureExtractor(shape)
         if not part_type:
             classifier = PartClassifier()
             part_type = classifier.classify(feat, None)
 
+        try:
+            from auto_2d_drawing.feature_layer import build_feature_records
+        except ImportError:
+            from feature_layer import build_feature_records
+
+        raw_3d_records = build_feature_records(feat, part_type)
         rules: List[Dict[str, Any]] = []
 
-        # 1. 軸類零件 (SHAFT) 規則提煉
-        if part_type == "SHAFT":
-            rules.extend(self._extract_shaft_rules(feat, view_data))
-        # 2. 風扇葉輪 (FAN) 規則提煉
-        elif part_type == "FAN":
-            rules.extend(self._extract_fan_rules(feat, view_data))
-        # 3. 風扇外框 (FAN_HOUSING) 規則提煉
-        elif part_type == "FAN_HOUSING":
-            rules.extend(self._extract_housing_rules(feat, view_data))
-        # 4. 沖壓底座 (STAMPED_FAN_BASE) 規則提煉
-        elif part_type == "STAMPED_FAN_BASE":
-            rules.extend(self._extract_stamped_base_rules(feat, view_data))
-        # 5. 通用/其他機械零件 (GENERIC) 規則提煉
-        else:
-            rules.extend(self._extract_generic_rules(feat, view_data))
+        vd_front = view_data.get('front', {})
+        vd_top = view_data.get('top', {})
+        vd_right = view_data.get('right', {})
 
-        # 若專用規則偏少，補足通用外框與全域基準
-        if len(rules) < 3:
-            rules.extend(self._extract_generic_rules(feat, view_data))
+        w_real, h_real = vd_front.get('size', (feat.W, feat.H))
+        is_horizontal = w_real >= h_real
+
+        # 計算 2D 前視圖輪廓頂點
+        front_verts = []
+        if vd_front and vd_front.get('visible'):
+            axis = 'x' if is_horizontal else 'y'
+            front_verts = self._find_contour_vertices(vd_front['visible'], axis=axis, tol=0.1, max_vertices=16)
+
+        base_left = front_verts[0] if len(front_verts) >= 2 else -w_real / 2.0
+        base_right = front_verts[-1] if len(front_verts) >= 2 else w_real / 2.0
+        midpoint = (base_left + base_right) / 2.0
+        overall_len = abs(base_right - base_left)
+
+        for rec in raw_3d_records:
+            r_copy = dict(rec)
+            rec_id = rec.get("id", "")
+            rec_type = rec.get("type", "")
+            rec_name = rec.get("name", "")
+            rec_role = str(rec.get("role", ""))
+            rec_nom = rec.get("nominal", {})
+            geo = rec.get("geometry", {})
+            c_3d = geo.get("center", [0.0, 0.0, 0.0])
+
+            # 預設屬性
+            category = "general"
+            dim_type = "LINEAR"
+            nominal_val = 0.0
+            default_tol = ""
+            default_prefix = ""
+            preferred_view = rec.get("view", "front")
+            side = "BOTTOM"
+            rank = 1
+            baseline = "NONE"
+            geom_payload = {}
+
+            # 1. 軸整體包絡 (overall_size)
+            if rec_type == "overall_size":
+                category = "overall"
+                dim_type = "LINEAR"
+                rank = 2
+                side = "BOTTOM"
+                baseline = "NONE"
+                nominal_val = round(rec_nom.get("length", rec_nom.get("height", overall_len)), 2)
+                default_tol = "±0.10"
+                default_prefix = ""
+                geom_payload = {
+                    "start_proj": [base_left, 0.0] if is_horizontal else [0.0, base_left],
+                    "end_proj": [base_right, 0.0] if is_horizontal else [0.0, base_right],
+                    "axis": 'x' if is_horizontal else 'y'
+                }
+
+            # 2. 基準軸心線 (datum)
+            elif rec_type == "datum":
+                category = "datum"
+                dim_type = "CENTERLINES"
+                rank = 1
+                side = "TOP"
+                nominal_val = 0.0
+                default_tol = ""
+                default_prefix = ""
+                geom_payload = {
+                    "center": [0.0, 0.0],
+                    "start_proj": [0.0, -h_real / 2.0],
+                    "end_proj": [0.0, h_real / 2.0]
+                }
+
+            # 3. 階梯段差長度 (step)
+            elif rec_type == "step":
+                category = "step"
+                dim_type = "LINEAR"
+                rank = 1
+                side = "BOTTOM"
+                nominal_val = round(rec_nom.get("length", rec_nom.get("depth", 1.0)), 2)
+                default_tol = "±0.05"
+                default_prefix = ""
+                step_pos_3d = float(c_3d[1] if is_horizontal else c_3d[2])
+                if step_pos_3d < midpoint:
+                    baseline = "LEFT"
+                    start_p = (base_left, 0.0) if is_horizontal else (0.0, base_left)
+                    end_p = (base_left + nominal_val, 0.0) if is_horizontal else (0.0, base_left + nominal_val)
+                else:
+                    baseline = "RIGHT"
+                    start_p = (base_right - nominal_val, 0.0) if is_horizontal else (0.0, base_right - nominal_val)
+                    end_p = (base_right, 0.0) if is_horizontal else (0.0, base_right)
+                geom_payload = {
+                    "start_proj": list(start_p),
+                    "end_proj": list(end_p),
+                    "axis": 'x' if is_horizontal else 'y'
+                }
+
+            # 4. 圓柱軸徑 / 配合段 (shaft_or_boss)
+            elif rec_type == "shaft_or_boss":
+                category = "shaft"
+                dim_type = "DIAMETER"
+                rank = 1
+                side = "LEFT" if is_horizontal else "BOTTOM"
+                nominal_val = round(rec_nom.get("diameter", 3.0), 2)
+                is_main_journal = "journal" in rec_role or "bearing" in rec_name or "main" in rec_id
+                default_tol = "±0.005" if is_main_journal else "±0.02"
+                default_prefix = "Φ"
+                geom_payload = {
+                    "start_proj": [0.0, 0.0],
+                    "end_proj": [0.0, 0.0],
+                    "center": c_3d
+                }
+
+            # 5. 卡簧槽 / 溝槽 (groove_or_slot)
+            elif rec_type == "groove_or_slot":
+                category = "groove"
+                dim_type = "DIAMETER"
+                rank = 1
+                side = "LEFT"
+                nominal_val = round(rec_nom.get("diameter", rec_nom.get("major_diameter", 2.5)), 2)
+                default_tol = "H13"
+                default_prefix = "Φ"
+                geom_payload = {
+                    "start_proj": [0.0, 0.0],
+                    "end_proj": [0.0, 0.0],
+                    "center": c_3d
+                }
+
+            # 6. 倒角 (cone_or_chamfer)
+            elif rec_type == "cone_or_chamfer":
+                category = "chamfer"
+                dim_type = "LEADER"
+                rank = 1
+                side = "TOP"
+                nominal_val = round(rec_nom.get("chamfer", rec_nom.get("height", 0.5)), 2)
+                default_tol = ""
+                default_prefix = "C"
+                geom_payload = {
+                    "start_proj": [base_left if float(c_3d[1]) < midpoint else base_right, 0.0],
+                    "angle": 45.0,
+                    "center": c_3d
+                }
+
+            # 7. 圓角 (fillet_or_round)
+            elif rec_type == "fillet_or_round":
+                category = "fillet"
+                dim_type = "LEADER"
+                rank = 1
+                side = "TOP"
+                nominal_val = round(rec_nom.get("radius", rec_nom.get("R", 0.5)), 2)
+                default_tol = ""
+                default_prefix = "R"
+                geom_payload = {
+                    "start_proj": [float(c_3d[1]), 0.0] if is_horizontal else [0.0, float(c_3d[2])],
+                    "angle": 45.0,
+                    "center": c_3d
+                }
+
+            # 8. 內徑孔 (hole)
+            elif rec_type == "hole":
+                category = "hole"
+                dim_type = "DIAMETER"
+                rank = 1
+                side = "LEFT"
+                nominal_val = round(rec_nom.get("diameter", 3.0), 2)
+                default_tol = "H7"
+                default_prefix = "Φ"
+                geom_payload = {
+                    "start_proj": [0.0, 0.0],
+                    "end_proj": [0.0, 0.0],
+                    "center": c_3d
+                }
+
+            # 9. 壁厚 / 基準面 (wall_thickness)
+            elif rec_type == "wall_thickness":
+                category = "thickness"
+                dim_type = "LINEAR"
+                rank = 1
+                side = "RIGHT"
+                preferred_view = "right"
+                nominal_val = round(rec_nom.get("thickness", 1.0), 2)
+                default_tol = "±0.05"
+                default_prefix = "T="
+                geom_payload = {
+                    "start_proj": [0.0, 0.0],
+                    "end_proj": [0.0, nominal_val],
+                    "axis": "y"
+                }
+
+            # 10. 孔群 (hole_pattern)
+            elif rec_type == "hole_pattern":
+                category = "pattern"
+                dim_type = "HOLE_PATTERN"
+                rank = 1
+                side = "TOP"
+                preferred_view = "top"
+                nominal_val = round(rec_nom.get("pcd", 20.0), 2)
+                default_tol = "±0.05"
+                count = rec_nom.get("count", 4)
+                default_prefix = f"{count}-M3 PCD "
+                geom_payload = {
+                    "center": c_3d[:2],
+                    "radius": nominal_val / 2.0,
+                    "count": count,
+                    "hole_diameter": rec_nom.get("hole_diameter", 3.0)
+                }
+
+            else:
+                category = "general"
+                dim_type = "LINEAR"
+                nominal_val = 1.0
+                default_tol = "±0.1"
+                geom_payload = {}
+
+            # 封裝規則物件
+            r_copy["rule_id"] = rec_id
+            r_copy["category"] = category
+            r_copy["dim_type"] = dim_type
+            r_copy["nominal_value"] = nominal_val
+            r_copy["default_tolerance"] = default_tol
+            r_copy["default_prefix"] = default_prefix
+            r_copy["preferred_view"] = preferred_view
+            r_copy["side"] = side
+            r_copy["rank"] = rank
+            r_copy["baseline"] = baseline
+            r_copy["geometry_payload"] = geom_payload
+            r_copy["enabled"] = True
+
+            rules.append(r_copy)
 
         return rules
 

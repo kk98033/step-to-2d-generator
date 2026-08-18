@@ -793,14 +793,15 @@ function App() {
           const initialSet = new Set<string>();
           const initialCfg: Record<string, any> = {};
           rules.forEach((r: any) => {
-            if (r.enabled) initialSet.add(r.rule_id);
-            initialCfg[r.rule_id] = {
+            const rId = r.id || r.rule_id;
+            if (r.enabled) initialSet.add(rId);
+            initialCfg[rId] = {
               enabled: !!r.enabled,
-              preferred_view: r.preferred_view || 'front',
-              tolerance: r.default_tolerance || '',
+              preferred_view: r.preferred_view || r.view || 'front',
+              tolerance: r.tolerance !== undefined ? r.tolerance : (r.default_tolerance || ''),
               side: r.side || 'BOTTOM',
               baseline: r.baseline || 'NONE',
-              prefix: r.default_prefix || ''
+              prefix: r.prefix !== undefined ? r.prefix : (r.default_prefix || '')
             };
           });
           setSelectedRuleIds(initialSet);
@@ -879,7 +880,7 @@ function App() {
         return next;
       });
     } else {
-      setSelectedRuleIds(new Set(candidateRules.map(r => r.rule_id)));
+      setSelectedRuleIds(new Set(candidateRules.map(r => r.id || r.rule_id)));
     }
   };
 
@@ -910,14 +911,6 @@ function App() {
         ...updates
       }
     }));
-    if (updates.enabled !== undefined) {
-      setSelectedRuleIds(prev => {
-        const next = new Set(prev);
-        if (updates.enabled) next.add(ruleId);
-        else next.delete(ruleId);
-        return next;
-      });
-    }
   };
 
   const handleApplyTemplate = (templateId: string) => {
@@ -933,15 +926,16 @@ function App() {
           const newConfig: Record<string, any> = {};
           const newSelectedIds = new Set<string>();
           updated.forEach((r: any) => {
-            newConfig[r.rule_id] = {
+            const rId = r.id || r.rule_id;
+            newConfig[rId] = {
               enabled: !!r.enabled,
-              preferred_view: r.preferred_view || 'front',
+              preferred_view: r.preferred_view || r.view || 'front',
               tolerance: r.tolerance !== undefined ? r.tolerance : (r.default_tolerance || ''),
               side: r.side || 'BOTTOM',
               baseline: r.baseline || 'NONE',
               prefix: r.prefix !== undefined ? r.prefix : (r.default_prefix || '')
             };
-            if (r.enabled) newSelectedIds.add(r.rule_id);
+            if (r.enabled) newSelectedIds.add(rId);
           });
           setRuleConfig(newConfig);
           setSelectedRuleIds(newSelectedIds);
@@ -960,13 +954,14 @@ function App() {
     setIsRenderingDrawing(true);
     try {
       const payloadRules = candidateRules.map(r => {
-        const cfg = ruleConfig[r.rule_id] || {};
+        const rId = r.id || r.rule_id;
+        const cfg = ruleConfig[rId] || {};
         return {
           ...r,
-          enabled: selectedRuleIds.has(r.rule_id) || !!cfg.enabled,
-          preferred_view: cfg.preferred_view || r.preferred_view || 'front',
-          tolerance: cfg.tolerance !== undefined ? cfg.tolerance : (r.default_tolerance || ''),
-          prefix: cfg.prefix !== undefined ? cfg.prefix : (r.default_prefix || ''),
+          enabled: selectedRuleIds.has(rId),
+          preferred_view: cfg.preferred_view || r.preferred_view || r.view || 'front',
+          tolerance: cfg.tolerance !== undefined ? cfg.tolerance : (r.tolerance || r.default_tolerance || ''),
+          prefix: cfg.prefix !== undefined ? cfg.prefix : (r.prefix || r.default_prefix || ''),
           side: cfg.side || r.side || 'BOTTOM',
           baseline: cfg.baseline || r.baseline || 'NONE'
         };
@@ -1978,15 +1973,15 @@ function App() {
 
                         <SinglePartViewerWithFeatures
                           stlUrl={currentStlUrl}
-                          featureRecords={featureRecords}
-                          selectedFeatureIds={selectedFeatureIds}
+                          featureRecords={candidateRules.length > 0 ? candidateRules : featureRecords}
+                          selectedFeatureIds={selectedRuleIds}
                           hoveredFeatureId={hoveredFeatureId}
                           focusedFeatureId={focusedFeatureId}
                           viewMode={feature3DViewMode}
                           onHoverFeature={setHoveredFeatureId}
                           onSelectFeature={(id) => {
                             setFocusedFeatureId(id);
-                            toggleFeature(id);
+                            toggleRule(id);
                           }}
                           onModelLoaded={setFeature3DModelRadius}
                         />
@@ -2162,32 +2157,33 @@ function App() {
         <div style={{ width: viewTab === 'smart_annotation' ? '42%' : showFeatureLayer ? '38%' : '33%', minWidth: 340, display: 'flex', flexDirection: 'column', background: '#111', transition: 'width 0.2s ease' }}>
           {viewTab === 'smart_annotation' ? (() => {
             const filtered = candidateRules.filter(r => {
-              const cat = (r.category || '').toLowerCase();
+              const rId = r.id || r.rule_id;
+              const cat = (r.category || r.type || '').toLowerCase();
               const dimType = (r.dim_type || '').toLowerCase();
               let matchType = true;
-              if (ruleFilter === 'shaft') matchType = cat.includes('shaft') || dimType.includes('diameter');
-              else if (ruleFilter === 'groove') matchType = cat.includes('groove');
-              else if (ruleFilter === 'cone' || ruleFilter === 'chamfer') matchType = cat.includes('chamfer') || cat.includes('cone');
+              if (ruleFilter === 'shaft') matchType = cat.includes('shaft') || cat.includes('boss') || cat.includes('journal') || dimType.includes('diameter');
+              else if (ruleFilter === 'groove') matchType = cat.includes('groove') || cat.includes('slot') || cat.includes('torus');
+              else if (ruleFilter === 'cone' || ruleFilter === 'chamfer') matchType = cat.includes('chamfer') || cat.includes('cone') || cat.includes('taper');
               else if (ruleFilter === 'step') matchType = cat.includes('step');
-              else if (ruleFilter === 'fillet') matchType = cat.includes('fillet');
+              else if (ruleFilter === 'fillet') matchType = cat.includes('fillet') || cat.includes('round');
               else if (ruleFilter === 'hole') matchType = cat.includes('hole');
-              else if (ruleFilter === 'datum') matchType = cat.includes('datum') || dimType.includes('centerline');
-              else if (ruleFilter === 'overall') matchType = cat.includes('overall');
-              else if (ruleFilter === 'pattern') matchType = cat.includes('pattern');
-              else if (ruleFilter === 'thickness') matchType = cat.includes('thickness');
+              else if (ruleFilter === 'datum') matchType = cat.includes('datum') || cat.includes('axis') || dimType.includes('centerline');
+              else if (ruleFilter === 'overall') matchType = cat.includes('overall') || cat.includes('bbox');
+              else if (ruleFilter === 'pattern') matchType = cat.includes('pattern') || cat.includes('pcd');
+              else if (ruleFilter === 'thickness') matchType = cat.includes('thickness') || cat.includes('wall');
 
               if (!matchType) return false;
               if (!ruleSearch) return true;
               const q = ruleSearch.toLowerCase();
               return (
-                (r.rule_id && r.rule_id.toLowerCase().includes(q)) ||
+                (rId && rId.toLowerCase().includes(q)) ||
                 (r.name && r.name.toLowerCase().includes(q)) ||
-                (r.category && r.category.toLowerCase().includes(q)) ||
-                (r.dim_type && r.dim_type.toLowerCase().includes(q))
+                (cat && cat.includes(q)) ||
+                (dimType && dimType.includes(q))
               );
             });
 
-            const allFilteredSelected = filtered.length > 0 && filtered.every(r => selectedRuleIds.has(r.rule_id));
+            const allFilteredSelected = filtered.length > 0 && filtered.every(r => selectedRuleIds.has(r.id || r.rule_id));
 
             return (
               <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0b1120' }}>
@@ -2300,7 +2296,7 @@ function App() {
                 <div style={{ padding: '6px 12px', background: '#0b1120', borderBottom: '1px solid #1e293b', display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button
-                      onClick={() => selectAllRules(filtered.map(r => r.rule_id))}
+                      onClick={() => selectAllRules(filtered.map(r => r.id || r.rule_id))}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -2319,7 +2315,7 @@ function App() {
                       <span>全選 ({filtered.length})</span>
                     </button>
                     <button
-                      onClick={() => deselectAllRules(filtered.map(r => r.rule_id))}
+                      onClick={() => deselectAllRules(filtered.map(r => r.id || r.rule_id))}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -2362,9 +2358,11 @@ function App() {
                     { id: 'shaft', label: '配合軸徑' },
                     { id: 'groove', label: '卡簧/凹槽' },
                     { id: 'chamfer', label: '倒角' },
+                    { id: 'fillet', label: '圓角' },
                     { id: 'hole', label: '孔洞' },
                     { id: 'overall', label: '外框' },
                     { id: 'pattern', label: '孔群' },
+                    { id: 'thickness', label: '壁厚' },
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -2388,30 +2386,32 @@ function App() {
                 {/* Rule Customization List */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {filtered.map((rule, idx) => {
-                    const isSelected = selectedRuleIds.has(rule.rule_id);
-                    const isHovered = hoveredFeatureId === rule.rule_id;
-                    const cat = (rule.category || '').toLowerCase();
-                    const cfg = ruleConfig[rule.rule_id] || {};
-                    const currentView = cfg.preferred_view || rule.preferred_view || 'front';
-                    const currentTol = cfg.tolerance !== undefined ? cfg.tolerance : (rule.default_tolerance || '');
+                    const rId = rule.id || rule.rule_id;
+                    const isSelected = selectedRuleIds.has(rId);
+                    const isHovered = hoveredFeatureId === rId;
+                    const cat = (rule.category || rule.type || '').toLowerCase();
+                    const cfg = ruleConfig[rId] || {};
+                    const currentView = cfg.preferred_view || rule.preferred_view || rule.view || 'front';
+                    const currentTol = cfg.tolerance !== undefined ? cfg.tolerance : (rule.tolerance || rule.default_tolerance || '');
                     const currentSide = cfg.side || rule.side || 'BOTTOM';
 
                     let badgeBg = '#334155';
                     let badgeColor = '#94a3b8';
-                    if (cat.includes('shaft')) { badgeBg = '#1e3a8a'; badgeColor = '#60a5fa'; }
-                    else if (cat.includes('groove')) { badgeBg = '#581c87'; badgeColor = '#c084fc'; }
-                    else if (cat.includes('cone') || cat.includes('chamfer')) { badgeBg = '#713f12'; badgeColor = '#facc15'; }
+                    if (cat.includes('shaft') || cat.includes('boss') || cat.includes('journal')) { badgeBg = '#1e3a8a'; badgeColor = '#60a5fa'; }
+                    else if (cat.includes('groove') || cat.includes('slot') || cat.includes('torus')) { badgeBg = '#581c87'; badgeColor = '#c084fc'; }
+                    else if (cat.includes('cone') || cat.includes('chamfer') || cat.includes('taper')) { badgeBg = '#713f12'; badgeColor = '#facc15'; }
                     else if (cat.includes('step')) { badgeBg = '#7c2d12'; badgeColor = '#fb923c'; }
-                    else if (cat.includes('fillet')) { badgeBg = '#831843'; badgeColor = '#f472b6'; }
+                    else if (cat.includes('fillet') || cat.includes('round')) { badgeBg = '#831843'; badgeColor = '#f472b6'; }
                     else if (cat.includes('hole')) { badgeBg = '#065f46'; badgeColor = '#34d399'; }
-                    else if (cat.includes('datum')) { badgeBg = '#0e7490'; badgeColor = '#67e8f9'; }
-                    else if (cat.includes('overall')) { badgeBg = '#374151'; badgeColor = '#9ca3af'; }
-                    else if (cat.includes('pattern')) { badgeBg = '#4c1d95'; badgeColor = '#e9d5ff'; }
+                    else if (cat.includes('datum') || cat.includes('axis')) { badgeBg = '#0e7490'; badgeColor = '#67e8f9'; }
+                    else if (cat.includes('overall') || cat.includes('bbox')) { badgeBg = '#374151'; badgeColor = '#9ca3af'; }
+                    else if (cat.includes('pattern') || cat.includes('pcd')) { badgeBg = '#4c1d95'; badgeColor = '#e9d5ff'; }
+                    else if (cat.includes('thickness') || cat.includes('wall')) { badgeBg = '#14532d'; badgeColor = '#86efac'; }
 
                     return (
                       <div
-                        key={rule.rule_id || idx}
-                        onMouseEnter={() => setHoveredFeatureId(rule.rule_id)}
+                        key={rId || idx}
+                        onMouseEnter={() => setHoveredFeatureId(rId)}
                         onMouseLeave={() => setHoveredFeatureId(null)}
                         style={{
                           padding: '8px 10px',
@@ -2430,15 +2430,15 @@ function App() {
                             <input
                               type="checkbox"
                               checked={isSelected}
-                              onChange={() => toggleRule(rule.rule_id)}
+                              onChange={() => toggleRule(rId)}
                               style={{ cursor: 'pointer', accentColor: '#3b82f6', width: 15, height: 15 }}
                             />
                             <span style={{ fontWeight: 700, color: isSelected ? '#f8fafc' : '#64748b', fontSize: 12 }}>
-                              {rule.rule_id}
+                              {rId}
                             </span>
                           </label>
                           <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: badgeBg, color: badgeColor, fontWeight: 600 }}>
-                            {rule.category || rule.dim_type}
+                            {rule.category || rule.type || rule.dim_type}
                           </span>
                         </div>
 
@@ -2454,7 +2454,7 @@ function App() {
                               <div style={{ fontSize: 9, color: '#64748b', marginBottom: 2 }}>標註視圖</div>
                               <select
                                 value={currentView}
-                                onChange={(e) => updateRuleConfig(rule.rule_id, { preferred_view: e.target.value })}
+                                onChange={(e) => updateRuleConfig(rId, { preferred_view: e.target.value })}
                                 style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 3, color: '#f8fafc', fontSize: 10, padding: 2 }}
                               >
                                 <option value="front">正視圖 (Front)</option>
@@ -2469,7 +2469,7 @@ function App() {
                               <input
                                 type="text"
                                 value={currentTol}
-                                onChange={(e) => updateRuleConfig(rule.rule_id, { tolerance: e.target.value })}
+                                onChange={(e) => updateRuleConfig(rId, { tolerance: e.target.value })}
                                 placeholder="如 ±0.005"
                                 style={{ width: '100%', boxSizing: 'border-box', background: '#0f172a', border: '1px solid #334155', borderRadius: 3, color: '#facc15', fontSize: 10, padding: '2px 4px' }}
                               />
@@ -2479,7 +2479,7 @@ function App() {
                               <div style={{ fontSize: 9, color: '#64748b', marginBottom: 2 }}>標註側向</div>
                               <select
                                 value={currentSide}
-                                onChange={(e) => updateRuleConfig(rule.rule_id, { side: e.target.value })}
+                                onChange={(e) => updateRuleConfig(rId, { side: e.target.value })}
                                 style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 3, color: '#f8fafc', fontSize: 10, padding: 2 }}
                               >
                                 <option value="BOTTOM">底部 (Bottom)</option>
