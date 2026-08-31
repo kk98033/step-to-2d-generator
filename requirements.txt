@@ -1,0 +1,22 @@
+# === Web Server & API ===
+fastapi>=0.100.0
+uvicorn>=0.20.0
+python-multipart>=0.0.6
+pydantic>=2.0.0
+
+# === 2D CAD & Graphics ===
+ezdxf>=1.1.0
+matplotlib>=3.7.0
+pillow>=9.0.0
+svgwrite>=1.4.0
+
+# === Vector PDF & Clean Rendering (Watermark-free Pipeline) ===
+svglib>=2.2.0
+reportlab>=4.0.0
+pypdfium2>=4.0.0
+
+# === Numerical & CAD Data ===
+numpy>=1.24.0
+
+# Note: OpenCASCADE (pythonocc-core) must be installed via Conda:
+# conda install -c conda-forge pythonocc-core
