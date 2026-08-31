@@ -24,7 +24,9 @@ def export_svg(doc, msp, output_path, paper="A3", dark_bg=True):
         paper: 紙張尺寸
         dark_bg: True=暗色背景(CAD風格), False=白底(列印風格)
     """
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    dir_name = os.path.dirname(output_path)
+    if dir_name:
+        os.makedirs(dir_name, exist_ok=True)
     ctx = RenderContext(doc)
     
     if dark_bg:
@@ -49,7 +51,9 @@ def export_pdf(doc, msp, output_path, paper="A3", dpi=150, dark_bg=True):
     2. 使用系統 rsvg-convert 工具 (若有安裝)
     3. 使用 aspose-cad 備援渲染
     """
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    dir_name = os.path.dirname(output_path)
+    if dir_name:
+        os.makedirs(dir_name, exist_ok=True)
     svg_path = output_path.replace('.pdf', '.svg')
     export_svg(doc, msp, svg_path, paper, dark_bg)
 
@@ -110,7 +114,9 @@ def export_png(doc, msp, output_path, paper="A3", dpi=150, dark_bg=True):
     1. 使用 pypdfium2 將生成的向量 PDF 高速光柵化為高清晰 PNG 圖檔
     2. 使用 aspose-cad 直接由 DXF 光柵化為 PNG
     """
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    dir_name = os.path.dirname(output_path)
+    if dir_name:
+        os.makedirs(dir_name, exist_ok=True)
     pdf_path = output_path.replace('.png', '.pdf')
     
     # 若 PDF 尚未產出，先嘗試產出 PDF

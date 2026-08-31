@@ -1,7 +1,13 @@
 fastapi
 uvicorn
 python-multipart
+pydantic
 ezdxf
 matplotlib
+pillow
+svglib
+reportlab
+pypdfium2
+numpy
 # pythonocc-core 需要透過 conda 安裝
 # conda install -c conda-forge pythonocc-core
