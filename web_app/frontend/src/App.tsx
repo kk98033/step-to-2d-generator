@@ -813,23 +813,27 @@ function App() {
           setCandidateRules(rules);
           const initialCfg: Record<string, any> = {};
           rules.forEach((r: any) => {
-            const rId = r.id || r.rule_id;
+            const rId = r.rule_id || r.id;
+            const rawSides = r.sides || r.side || 'BOTTOM';
+            const sides = Array.isArray(rawSides) ? rawSides : [rawSides];
             initialCfg[rId] = {
               enabled: !!r.enabled,
               preferred_view: r.preferred_view || r.view || 'front',
+              views: r.target_views || r.views || ['front'],
               tolerance: r.tolerance !== undefined ? r.tolerance : (r.default_tolerance || ''),
-              side: r.side || 'BOTTOM',
+              sides: sides,
+              side: sides[0] || 'BOTTOM',
               baseline: r.baseline || 'NONE',
               prefix: r.prefix !== undefined ? r.prefix : (r.default_prefix || '')
             };
           });
 
-          // 🌟 預設選取與 3D 特徵圖層完全一致（優先選取核心特徵，最多 12 項，排除微小圓角，避免模型雜亂）
+          // 🌟 預設選取與 3D 特徵圖層完全一致（優先選取核心特徵，最多 15 項，排除微小圓角，避免模型雜亂）
           const topKeyRules = rules.filter((r: any) => {
             const cat = (r.category || r.type || '').toLowerCase();
             return !cat.includes('fillet') && !cat.includes('round');
           });
-          const defaultSelectedIds = (topKeyRules.length <= 15 ? topKeyRules : topKeyRules.slice(0, 12)).map((r: any) => r.id || r.rule_id);
+          const defaultSelectedIds = (topKeyRules.length <= 15 ? topKeyRules : topKeyRules.slice(0, 15)).map((r: any) => r.rule_id || r.id);
           setSelectedRuleIds(new Set(defaultSelectedIds));
           setRuleConfig(initialCfg);
         })
@@ -1009,18 +1013,21 @@ function App() {
     setIsRenderingDrawing(true);
     try {
       const payloadRules = candidateRules.map(r => {
-        const rId = r.id || r.rule_id;
+        const rId = r.rule_id || r.id;
         const cfg = ruleConfig[rId] || {};
         const views = cfg.views || cfg.target_views || r.target_views || r.views || [cfg.preferred_view || r.preferred_view || r.view || 'front'];
+        const rawSides = cfg.sides || cfg.side || r.sides || r.side || ['BOTTOM'];
+        const sides = Array.isArray(rawSides) ? rawSides : [rawSides];
         return {
           ...r,
           enabled: selectedRuleIds.has(rId),
           views: views,
           target_views: views,
+          sides: sides,
+          side: sides[0] || 'BOTTOM',
           preferred_view: cfg.preferred_view || r.preferred_view || r.view || 'front',
           tolerance: cfg.tolerance !== undefined ? cfg.tolerance : (r.tolerance || r.default_tolerance || ''),
           prefix: cfg.prefix !== undefined ? cfg.prefix : (r.prefix || r.default_prefix || ''),
-          side: cfg.side || r.side || 'BOTTOM',
           baseline: cfg.baseline || r.baseline || 'NONE'
         };
       });
@@ -2566,13 +2573,14 @@ function App() {
                     </div>
                   ) : (
                     filtered.map((rule, idx) => {
-                      const rId = rule.id || rule.rule_id;
+                      const rId = rule.rule_id || rule.id;
                       const isSelected = selectedRuleIds.has(rId);
                       const isHovered = hoveredFeatureId === rId;
                       const cat = (rule.category || rule.type || '').toLowerCase();
                       const cfg = ruleConfig[rId] || {};
                       const currentTol = cfg.tolerance !== undefined ? cfg.tolerance : (rule.tolerance || rule.default_tolerance || '');
-                      const currentSide = cfg.side || rule.side || 'BOTTOM';
+                      const rawSides = cfg.sides || cfg.side || rule.sides || rule.side || ['BOTTOM'];
+                      const currentSides: string[] = Array.isArray(rawSides) ? rawSides : [rawSides];
                       const currentViews = cfg.views || rule.target_views || rule.views || ['front', 'top', 'right'];
 
                       let badgeBg = '#262626';
@@ -2627,7 +2635,7 @@ function App() {
                             {rule.name}
                           </div>
 
-                          {/* Annotation Customization Controls (Multi-View, Tolerance, Side) */}
+                          {/* Annotation Customization Controls (Multi-View, Multi-Side, Tolerance) */}
                           {isSelected && (
                             <div style={{ marginLeft: 22, display: 'flex', flexDirection: 'column', gap: 6, background: '#121212', padding: '6px 8px', borderRadius: 4, border: '1px solid #262626' }}>
                               {/* Multi-View Selection Toggles */}
@@ -2669,32 +2677,56 @@ function App() {
                                 </div>
                               </div>
 
-                              {/* Tolerance & Side Row */}
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                                <div>
-                                  <div style={{ fontSize: 9, color: '#737373', marginBottom: 2 }}>公差設定</div>
-                                  <input
-                                    type="text"
-                                    value={currentTol}
-                                    onChange={(e) => updateRuleConfig(rId, { tolerance: e.target.value })}
-                                    placeholder="如 ±0.005"
-                                    style={{ width: '100%', boxSizing: 'border-box', background: '#1f1f1f', border: '1px solid #333', borderRadius: 3, color: '#facc15', fontSize: 10, padding: '2px 4px' }}
-                                  />
+                              {/* Multi-Side Selection Toggles (複選側向) */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontSize: 10, color: '#737373', width: 48 }}>標註側向:</span>
+                                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                  {[
+                                    { id: 'BOTTOM', label: '底部' },
+                                    { id: 'TOP', label: '頂部' },
+                                    { id: 'LEFT', label: '左側' },
+                                    { id: 'RIGHT', label: '右側' },
+                                  ].map(s => {
+                                    const isSideActive = currentSides.includes(s.id);
+                                    return (
+                                      <button
+                                        key={s.id}
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const nextSides = isSideActive
+                                            ? currentSides.filter((x: string) => x !== s.id)
+                                            : [...currentSides, s.id];
+                                          updateRuleConfig(rId, { sides: nextSides, side: nextSides[0] || 'BOTTOM' });
+                                        }}
+                                        style={{
+                                          fontSize: 10,
+                                          padding: '2px 6px',
+                                          borderRadius: 3,
+                                          border: isSideActive ? '1px solid #2563eb' : '1px solid #333',
+                                          background: isSideActive ? '#1e3a8a' : '#1f1f1f',
+                                          color: isSideActive ? '#93c5fd' : '#737373',
+                                          cursor: 'pointer',
+                                          fontWeight: isSideActive ? 600 : 400,
+                                        }}
+                                      >
+                                        {isSideActive ? '✓ ' : ''}{s.label}
+                                      </button>
+                                    );
+                                  })}
                                 </div>
+                              </div>
 
-                                <div>
-                                  <div style={{ fontSize: 9, color: '#737373', marginBottom: 2 }}>標註側向</div>
-                                  <select
-                                    value={currentSide}
-                                    onChange={(e) => updateRuleConfig(rId, { side: e.target.value })}
-                                    style={{ width: '100%', background: '#1f1f1f', border: '1px solid #333', borderRadius: 3, color: '#f5f5f5', fontSize: 10, padding: 2 }}
-                                  >
-                                    <option value="BOTTOM">底部 (Bottom)</option>
-                                    <option value="TOP">頂部 (Top)</option>
-                                    <option value="LEFT">左側 (Left)</option>
-                                    <option value="RIGHT">右側 (Right)</option>
-                                  </select>
-                                </div>
+                              {/* Tolerance Setting */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontSize: 10, color: '#737373', width: 48 }}>公差設定:</span>
+                                <input
+                                  type="text"
+                                  value={currentTol}
+                                  onChange={(e) => updateRuleConfig(rId, { tolerance: e.target.value })}
+                                  placeholder="如 ±0.005 或 H13"
+                                  style={{ flex: 1, background: '#1f1f1f', border: '1px solid #333', borderRadius: 3, color: '#facc15', fontSize: 10, padding: '2px 6px' }}
+                                />
                               </div>
                             </div>
                           )}

@@ -45,8 +45,9 @@ class LayoutEngine:
 
         # 按 side 或 dim_type 分組
         bottom_tasks = [t for t in tasks if t.side == "BOTTOM" and t.dim_type == "LINEAR"]
-        right_tasks = [t for t in tasks if t.side == "RIGHT" and t.dim_type == "LINEAR"]
-        left_tasks = [t for t in tasks if t.side == "LEFT" and t.dim_type == "DIAMETER" and not t.center]
+        right_linear_tasks = [t for t in tasks if t.side == "RIGHT" and t.dim_type == "LINEAR"]
+        right_dia_tasks = [t for t in tasks if t.side == "RIGHT" and t.dim_type == "DIAMETER" and not t.center]
+        left_dia_tasks = [t for t in tasks if t.side == "LEFT" and t.dim_type == "DIAMETER" and not t.center]
         top_tasks = [t for t in tasks if t.side == "TOP" and t.dim_type == "LINEAR"]
         
         # 極座標與特殊任務
@@ -61,10 +62,12 @@ class LayoutEngine:
             self._render_horizontal(msp, bottom_tasks, ox, oy, sw, sh, bbox, scale, side="BOTTOM")
         if top_tasks:
             self._render_horizontal(msp, top_tasks, ox, oy, sw, sh, bbox, scale, side="TOP")
-        if right_tasks:
-            self._render_vertical(msp, right_tasks, ox, oy, sw, sh, bbox, scale, side="RIGHT")
-        if left_tasks:
-            self._render_left_diameters(msp, left_tasks, ox, oy, sw, sh, bbox, scale)
+        if right_linear_tasks:
+            self._render_vertical(msp, right_linear_tasks, ox, oy, sw, sh, bbox, scale, side="RIGHT")
+        if left_dia_tasks:
+            self._render_side_diameters(msp, left_dia_tasks, ox, oy, sw, sh, bbox, scale, side="LEFT")
+        if right_dia_tasks:
+            self._render_side_diameters(msp, right_dia_tasks, ox, oy, sw, sh, bbox, scale, side="RIGHT")
             
         # 渲染極座標與特殊任務
         if centerline_tasks:
@@ -169,41 +172,24 @@ class LayoutEngine:
             sign = -1 if side == "BOTTOM" else 1
 
             has_overall = bool(overall)
-            total_layers = 1 + len(overall) if has_overall else 1
-            max_extent = self.ext_gap + total_layers * self.layer_spacing + 2
-
-            # 建立每個端點對應的真實物理輪廓 Y 座標映射 (避免延伸線浮空)
-            point_y_map = {}
-            all_papers = set()
-            for t in chain + overall:
-                if t.start_proj:
-                    px1 = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
-                    py1 = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy)
-                    all_papers.add(px1)
-                    if px1 not in point_y_map or (side == "BOTTOM" and py1 > point_y_map[px1]) or (side == "TOP" and py1 < point_y_map[px1]):
-                        point_y_map[px1] = py1
-                if t.end_proj:
-                    px2 = self._proj_to_paper_x(t.end_proj[0], bbox[0], scale, ox)
-                    py2 = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy)
-                    all_papers.add(px2)
-                    if px2 not in point_y_map or (side == "BOTTOM" and py2 > point_y_map[px2]) or (side == "TOP" and py2 < point_y_map[px2]):
-                        point_y_map[px2] = py2
-
-            # 畫延伸線 (從實體邊界角點直連到尺寸線)
-            for vp in all_papers:
-                start_y = point_y_map.get(vp, contour_edge)
-                msp.add_line(
-                    (vp, start_y),
-                    (vp, contour_edge + sign * max_extent),
-                    dxfattribs={'layer': 'DIM', 'color': 2}
-                )
-
-            # 內層: 相鄰對
             inner_pos = contour_edge + sign * self.ext_gap
             char_width = 1.3
+            
+            # 1. 內層分段 (Tier 1): 延伸線精確終止於內層尺寸線，絕不超長穿越外層
+            drawn_witness_x = set()
             for idx, t in enumerate(chain):
                 p1 = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
                 p2 = self._proj_to_paper_x(t.end_proj[0], bbox[0], scale, ox)
+                py1 = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy) if t.start_proj else contour_edge
+                py2 = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy) if t.end_proj else contour_edge
+
+                if p1 not in drawn_witness_x:
+                    msp.add_line((p1, py1), (p1, inner_pos + sign * (-1.5)), dxfattribs={'layer': 'DIM', 'color': 2})
+                    drawn_witness_x.add(p1)
+                if p2 not in drawn_witness_x:
+                    msp.add_line((p2, py2), (p2, inner_pos + sign * (-1.5)), dxfattribs={'layer': 'DIM', 'color': 2})
+                    drawn_witness_x.add(p2)
+
                 paper_dist = abs(p2 - p1)
                 stagger = 0.0
                 req_space = len(t.display_text) * char_width + 1.0
@@ -211,12 +197,18 @@ class LayoutEngine:
                     stagger = 2.5 if idx % 2 == 0 else -2.5
                 self._draw_hdim(msp, p1, p2, inner_pos, t.display_text, text_stagger=stagger)
 
+            # 2. 外層總尺寸 (Tier 2 / Tier 3): 延伸線由實體端點拉至外層尺寸線
             if overall:
                 overall.sort(key=lambda t: (t.rank, -t.value))
                 for oi, t in enumerate(overall):
                     outer_pos = inner_pos + sign * self.layer_spacing * (oi + 1)
                     p1 = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
                     p2 = self._proj_to_paper_x(t.end_proj[0], bbox[0], scale, ox)
+                    py1 = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy) if t.start_proj else contour_edge
+                    py2 = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy) if t.end_proj else contour_edge
+
+                    msp.add_line((p1, py1), (p1, outer_pos + sign * (-1.5)), dxfattribs={'layer': 'DIM', 'color': 2})
+                    msp.add_line((p2, py2), (p2, outer_pos + sign * (-1.5)), dxfattribs={'layer': 'DIM', 'color': 2})
                     self._draw_hdim(msp, p1, p2, outer_pos, t.display_text)
 
         elif overall:
@@ -375,12 +367,12 @@ class LayoutEngine:
                 self._draw_vdim(msp, p1, p2, pos, t.display_text)
 
     # =================================================================
-    # 左側直徑標註渲染 (特殊: 水平延伸線 + 垂直尺寸線)
+    # 兩側直徑標註渲染 (水平延伸線 + 垂直尺寸線，左側/右側自適應)
     # =================================================================
 
-    def _render_left_diameters(self, msp, tasks, ox, oy, sw, sh, bbox, scale):
-        """渲染左側的直徑標註 (水平延伸線 + 垂直尺寸線)"""
-        dia_tasks = [t for t in tasks if t.dim_type == "DIAMETER"]
+    def _render_side_diameters(self, msp, tasks, ox, oy, sw, sh, bbox, scale, side="LEFT"):
+        """渲染兩側的直徑標註 (水平延伸線 + 垂直尺寸線)，支援左側與右側自適應"""
+        dia_tasks = [t for t in tasks if t.dim_type == "DIAMETER" and not t.center]
         if not dia_tasks:
             return
 
@@ -395,30 +387,37 @@ class LayoutEngine:
 
         sorted_tasks = sorted(seen_dias.values(), key=lambda t: t.value)
 
+        sign = -1 if side == "LEFT" else 1
+        base_edge = ox if side == "LEFT" else ox + sw
+
         for i, t in enumerate(sorted_tasks[:4]):
-            label_x = ox - 12 - i * 11
+            label_x = base_edge + sign * (12 + i * 11)
             y_center = oy + sh / 2
             half_h = (t.value * scale) / 2
             y1 = y_center - half_h
             y2 = y_center + half_h
 
-            # 特徵真實紙張 X 座標 (延伸線從實體輪廓角點向左拉出)
-            feat_x = ox
-            if t.start_proj:
+            # 特徵真實紙張錨點 (從零件物理輪廓出發向外拉，絕不穿越軸身)
+            feat_x = base_edge
+            if side == "LEFT" and t.start_proj:
                 px = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
+                if ox <= px <= ox + sw:
+                    feat_x = px
+            elif side == "RIGHT" and t.end_proj:
+                px = self._proj_to_paper_x(t.end_proj[0], bbox[0], scale, ox)
                 if ox <= px <= ox + sw:
                     feat_x = px
 
             # 水平延伸線 (牢牢連到零件實體邊緣)
-            msp.add_line((feat_x, y1), (label_x - 1.5, y1), dxfattribs={'layer': 'DIM', 'color': 2})
-            msp.add_line((feat_x, y2), (label_x - 1.5, y2), dxfattribs={'layer': 'DIM', 'color': 2})
+            msp.add_line((feat_x, y1), (label_x - sign * 1.5, y1), dxfattribs={'layer': 'DIM', 'color': 2})
+            msp.add_line((feat_x, y2), (label_x - sign * 1.5, y2), dxfattribs={'layer': 'DIM', 'color': 2})
 
             # 垂直尺寸線
             self._draw_vdim(msp, y1, y2, label_x, t.display_text)
 
             # 公差
             if t.tolerance:
-                self._add_text(msp, label_x + 1.2, y_center - 2.5, t.tolerance,
+                self._add_text(msp, label_x + (1.2 if side == "LEFT" else 1.2), y_center - 2.5, t.tolerance,
                                height=1.0, layer='TOLERANCE', color=4)
 
     # =================================================================
