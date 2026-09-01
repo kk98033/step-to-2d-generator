@@ -592,35 +592,37 @@ class LayoutEngine:
             k = len(cluster)
             pref_side = cluster[0]["pref_side"]
 
-            # 扇形展開角度 (動態依數量縮放展開扇形範圍)
+            # 安全扇形角度區間:
+            # 左端群組: 一律斜向右上 (58° ~ 35°)，確保起點拉伸後 X 迅速往右越過 TOP VIEW 邊界，完全不碰觸 TOP VIEW 與左側直徑標註！
+            # 右端群組: 一律斜向左上 (110° ~ 135°)，同樣朝軸件中段上方開闊區延伸！
             if pref_side == "LEFT":
                 if k == 1:
-                    angles = [cluster[0]["default_ang"]]
+                    angles = [50.0]
                 elif k <= 3:
-                    span_start = 115.0
-                    span_end = 145.0
+                    span_start = 55.0
+                    span_end = 40.0
                     step_ang = (span_end - span_start) / max(1, k - 1)
                     angles = [span_start + i * step_ang for i in range(k)]
                 else:
-                    span_start = 100.0
-                    span_end = 165.0
+                    span_start = 58.0
+                    span_end = 35.0
                     step_ang = (span_end - span_start) / max(1, k - 1)
                     angles = [span_start + i * step_ang for i in range(k)]
             else:
                 if k == 1:
-                    angles = [cluster[0]["default_ang"]]
+                    angles = [115.0]
                 elif k <= 3:
-                    span_start = 65.0
-                    span_end = 35.0
+                    span_start = 110.0
+                    span_end = 130.0
                     step_ang = (span_end - span_start) / max(1, k - 1)
                     angles = [span_start + i * step_ang for i in range(k)]
                 else:
-                    span_start = 75.0
-                    span_end = 15.0
+                    span_start = 105.0
+                    span_end = 135.0
                     step_ang = (span_end - span_start) / max(1, k - 1)
                     angles = [span_start + i * step_ang for i in range(k)]
 
-            # 4. 碰撞檢測與迭代修正
+            # 4. 碰撞檢測與幾何邊界限制
             for idx, item in enumerate(cluster):
                 p_start = item["p_start"]
                 ang_deg = angles[idx]
@@ -628,17 +630,32 @@ class LayoutEngine:
                 text_len = len(text) * 1.5
                 landing_len = max(8.0, text_len + 2.0)
 
-                base_ext = 8.0 + idx * 3.2
-                max_iter = 12
+                base_ext = 8.0 + idx * 3.5
+                max_iter = 15
                 curr_ext = base_ext
                 curr_ang = ang_deg
 
-                for _ in range(max_iter):
+                for it in range(max_iter):
                     rad = math.radians(curr_ang)
                     p_elbow = (p_start[0] + curr_ext * math.cos(rad),
                                p_start[1] + curr_ext * math.sin(rad))
-                    tail_dir = 1 if math.cos(rad) >= 0 else -1
+
+                    # 決定停機坪方向：
+                    # 左側群組統一向右延伸 (tail_dir = 1)，右側群組統一向左延伸 (tail_dir = -1)
+                    # 兩側引線全部朝零件中段上方開闊區收斂，100% 絕不干涉左側直徑標註、正上方俯視圖或右側視圖！
+                    if pref_side == "LEFT":
+                        tail_dir = 1
+                    else:
+                        tail_dir = -1
+
                     p_end = (p_elbow[0] + tail_dir * landing_len, p_elbow[1])
+
+                    # 檢查上邊界：限制最高高度避免侵入 TOP VIEW
+                    if p_elbow[1] > oy + 32.0:
+                        curr_ext = max(8.0, curr_ext - 2.0)
+                        p_elbow = (p_start[0] + curr_ext * math.cos(rad),
+                                   p_start[1] + curr_ext * math.sin(rad))
+                        p_end = (p_elbow[0] + tail_dir * landing_len, p_elbow[1])
 
                     tx = p_elbow[0] + (1.0 if tail_dir > 0 else (-landing_len + 1.0))
                     ty = p_elbow[1] + 0.8
@@ -650,7 +667,7 @@ class LayoutEngine:
 
                     has_collision = False
                     for occ in occupied_bboxes:
-                        if check_bbox_overlap(candidate_bbox, occ, buffer=1.6):
+                        if check_bbox_overlap(candidate_bbox, occ, buffer=1.5):
                             has_collision = True
                             break
 
@@ -670,11 +687,12 @@ class LayoutEngine:
                         })
                         break
                     else:
-                        curr_ext += 3.5
-                        if pref_side == "LEFT":
-                            curr_ang = min(170.0, curr_ang + 2.0)
+                        curr_ext += 3.2
+                        # 角度微調：始終保持在安全錐區 55° ~ 125° 之間
+                        if curr_ang > 90.0:
+                            curr_ang = max(85.0, curr_ang - 2.5)
                         else:
-                            curr_ang = max(10.0, curr_ang - 2.0)
+                            curr_ang = min(95.0, curr_ang + 2.5)
                 else:
                     occupied_bboxes.append(candidate_bbox)
                     positioned_leaders.append({
