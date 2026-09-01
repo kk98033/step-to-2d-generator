@@ -1276,7 +1276,17 @@ def _build_shaft_specific_records(summary, bbox):
 
     # 4. 圓錐與倒角特徵 (尖端組裝導角 / 端部倒角)
     cones = summary.get("cones", [])
-    for idx, cone in enumerate(cones, start=1):
+    dedup_cones = []
+    seen_cone_keys = set()
+    for cone in cones:
+        c_center = cone.get("center", bbox_c)
+        ax_pos = c_center[1] if main_axis == "Y" else (c_center[2] if main_axis == "Z" else c_center[0])
+        key = (round(ax_pos, 1), round(cone.get("included_angle_deg", 90), 1))
+        if key not in seen_cone_keys:
+            seen_cone_keys.add(key)
+            dedup_cones.append(cone)
+
+    for idx, cone in enumerate(dedup_cones, start=1):
         min_d = cone.get("min_diameter", 0)
         max_d = cone.get("max_diameter", shaft_od)
         inc_angle = cone.get("included_angle_deg", 90)
@@ -1330,9 +1340,20 @@ def _build_shaft_specific_records(summary, bbox):
                 "source": {"extractor": "ShaftSemanticAnalyzer.chamfer", "confidence": 0.92},
             })
 
-    # 5. 槽底圓角與過渡圓角
+    # 5. 槽底圓角與過渡圓角 (依軸向位置與半徑去重)
     fillets = summary.get("fillets", [])
-    for idx, fil in enumerate(fillets, start=1):
+    dedup_fillets = []
+    seen_fillet_keys = set()
+    for fil in fillets:
+        r = round(fil.get("radius", 0), 2)
+        f_mid = fil.get("mid_point", fil.get("center", bbox_c))
+        ax_pos = f_mid[1] if main_axis == "Y" else (f_mid[2] if main_axis == "Z" else f_mid[0])
+        key = (round(ax_pos, 1), r)
+        if key not in seen_fillet_keys:
+            seen_fillet_keys.add(key)
+            dedup_fillets.append(fil)
+
+    for idx, fil in enumerate(dedup_fillets, start=1):
         r = fil.get("radius", 0)
         arc_len = fil.get("arc_length", 0)
         sweep_deg = fil.get("sweep_angle_deg", 90)
