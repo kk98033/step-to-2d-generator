@@ -18,7 +18,7 @@ from auto_2d_drawing.layout_engine import LayoutEngine
 from auto_2d_drawing.feature_extractor import FeatureExtractor
 from auto_2d_drawing.part_classifier import PartClassifier
 from auto_2d_drawing.extractors.base_extractor import BaseExtractor
-from auto_2d_drawing.title_block import TitleBlock
+from auto_2d_drawing.title_block import TitleBlock, setup_document
 from auto_2d_drawing.dxf_drawer import DxfDrawer
 from auto_2d_drawing.config import VIEW_CONFIG, PAPER_SIZES
 from auto_2d_drawing.pdf_exporter import export_pdf, export_png, export_svg
@@ -992,7 +992,7 @@ class SmartDimensionEngine:
         """
         將已設定的規則清單渲染為 DXF、向量 PDF、SVG 與高解析 PNG 工程圖。
         """
-        doc = ezdxf.new('R2010', setup=True)
+        doc = setup_document()
         msp = doc.modelspace()
 
         # 1. 依據視圖分組建立 DimensionTask
