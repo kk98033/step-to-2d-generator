@@ -9,6 +9,7 @@
 """
 import os
 import math
+import copy
 from typing import List, Dict, Any, Optional
 import ezdxf
 
@@ -101,9 +102,10 @@ class SmartRuleExtractor(BaseExtractor):
                 nominal_val = round(rec_nom.get("length", rec_nom.get("height", overall_len)), 2)
                 default_tol = "±0.10"
                 default_prefix = ""
+                bottom_rim_y = -h_real / 2.0 if is_horizontal else -w_real / 2.0
                 geom_payload = {
-                    "start_proj": [base_left, 0.0] if is_horizontal else [0.0, base_left],
-                    "end_proj": [base_right, 0.0] if is_horizontal else [0.0, base_right],
+                    "start_proj": [base_left, bottom_rim_y] if is_horizontal else [bottom_rim_y, base_left],
+                    "end_proj": [base_right, bottom_rim_y] if is_horizontal else [bottom_rim_y, base_right],
                     "axis": 'x' if is_horizontal else 'y'
                 }
 
@@ -133,14 +135,15 @@ class SmartRuleExtractor(BaseExtractor):
                 default_tol = "±0.05"
                 default_prefix = ""
                 step_pos_3d = float(c_3d[1] if is_horizontal else c_3d[2])
+                bottom_rim_y = -h_real / 2.0 if is_horizontal else -w_real / 2.0
                 if step_pos_3d < midpoint:
-                    baseline = "LEFT"
-                    start_p = (base_left, 0.0) if is_horizontal else (0.0, base_left)
-                    end_p = (base_left + nominal_val, 0.0) if is_horizontal else (0.0, base_left + nominal_val)
+                    baseline = "NONE"
+                    start_p = (base_left, bottom_rim_y) if is_horizontal else (bottom_rim_y, base_left)
+                    end_p = (base_left + nominal_val, bottom_rim_y) if is_horizontal else (bottom_rim_y, base_left + nominal_val)
                 else:
-                    baseline = "RIGHT"
-                    start_p = (base_right - nominal_val, 0.0) if is_horizontal else (0.0, base_right - nominal_val)
-                    end_p = (base_right, 0.0) if is_horizontal else (0.0, base_right)
+                    baseline = "NONE"
+                    start_p = (base_right - nominal_val, bottom_rim_y) if is_horizontal else (bottom_rim_y, base_right - nominal_val)
+                    end_p = (base_right, bottom_rim_y) if is_horizontal else (bottom_rim_y, base_right)
                 geom_payload = {
                     "start_proj": list(start_p),
                     "end_proj": list(end_p),
@@ -157,11 +160,40 @@ class SmartRuleExtractor(BaseExtractor):
                 is_main_journal = "journal" in rec_role or "bearing" in rec_name or "main" in rec_id
                 default_tol = "±0.005" if is_main_journal else "±0.02"
                 default_prefix = "Φ"
+                axial_pos = float(c_3d[1] if is_horizontal else c_3d[2])
                 geom_payload = {
-                    "start_proj": [base_left, -nominal_val / 2.0] if is_horizontal else [-nominal_val / 2.0, base_left],
-                    "end_proj": [base_left, nominal_val / 2.0] if is_horizontal else [nominal_val / 2.0, base_left],
+                    "start_proj": [axial_pos, -nominal_val / 2.0] if is_horizontal else [-nominal_val / 2.0, axial_pos],
+                    "end_proj": [axial_pos, nominal_val / 2.0] if is_horizontal else [nominal_val / 2.0, axial_pos],
                     "diameter": nominal_val,
                 }
+                
+                # 若具備顯著軸向長度，額外追加段落長度標註規則
+                seg_len = round(rec_nom.get("length", 0.0), 2)
+                if seg_len > 1.0:
+                    bottom_rim_y = -h_real / 2.0 if is_horizontal else -w_real / 2.0
+                    x_st = axial_pos - seg_len / 2.0
+                    x_en = axial_pos + seg_len / 2.0
+                    extra_rule = copy.deepcopy(r_copy)
+                    extra_rule["rule_id"] = f"{rec_id}_len"
+                    extra_rule["category"] = "step"
+                    extra_rule["name"] = f"主軸承配合段長度 L{seg_len:.2f}mm"
+                    extra_rule["dim_type"] = "LINEAR"
+                    extra_rule["nominal_value"] = seg_len
+                    extra_rule["default_tolerance"] = "±0.05"
+                    extra_rule["default_prefix"] = ""
+                    extra_rule["preferred_view"] = "front"
+                    extra_rule["target_views"] = ["front"]
+                    extra_rule["views"] = ["front"]
+                    extra_rule["side"] = "BOTTOM"
+                    extra_rule["rank"] = 1
+                    extra_rule["baseline"] = "NONE"
+                    extra_rule["geometry_payload"] = {
+                        "start_proj": [x_st, bottom_rim_y] if is_horizontal else [bottom_rim_y, x_st],
+                        "end_proj": [x_en, bottom_rim_y] if is_horizontal else [bottom_rim_y, x_en],
+                        "axis": 'x' if is_horizontal else 'y'
+                    }
+                    extra_rule["enabled"] = True
+                    rules.append(extra_rule)
 
             # 5. 卡簧槽 / 溝槽 (groove_or_slot)
             elif rec_type == "groove_or_slot":
@@ -169,14 +201,43 @@ class SmartRuleExtractor(BaseExtractor):
                 dim_type = "DIAMETER"
                 rank = 1
                 side = "LEFT"
-                nominal_val = round(rec_nom.get("diameter", rec_nom.get("major_diameter", 2.5)), 2)
+                nominal_val = round(rec_nom.get("diameter", rec_nom.get("groove_diameter", rec_nom.get("major_diameter", 2.5))), 2)
                 default_tol = "H13"
                 default_prefix = "Φ"
+                axial_pos = float(c_3d[1] if is_horizontal else c_3d[2])
                 geom_payload = {
-                    "start_proj": [base_left, -nominal_val / 2.0] if is_horizontal else [-nominal_val / 2.0, base_left],
-                    "end_proj": [base_left, nominal_val / 2.0] if is_horizontal else [nominal_val / 2.0, base_left],
+                    "start_proj": [axial_pos, -nominal_val / 2.0] if is_horizontal else [-nominal_val / 2.0, axial_pos],
+                    "end_proj": [axial_pos, nominal_val / 2.0] if is_horizontal else [nominal_val / 2.0, axial_pos],
                     "diameter": nominal_val,
                 }
+                
+                # 槽寬度線性標註規則 (下側鏈式尺寸)
+                groove_w = round(rec_nom.get("groove_width", rec_nom.get("length", rec_nom.get("width", 0.9))), 2)
+                if groove_w > 0:
+                    bottom_rim_y = -h_real / 2.0 if is_horizontal else -w_real / 2.0
+                    x_st = axial_pos - groove_w / 2.0
+                    x_en = axial_pos + groove_w / 2.0
+                    extra_rule = copy.deepcopy(r_copy)
+                    extra_rule["rule_id"] = f"{rec_id}_width"
+                    extra_rule["category"] = "step"
+                    extra_rule["name"] = f"卡簧/退刀槽寬度 W{groove_w:.2f}mm"
+                    extra_rule["dim_type"] = "LINEAR"
+                    extra_rule["nominal_value"] = groove_w
+                    extra_rule["default_tolerance"] = "±0.05"
+                    extra_rule["default_prefix"] = ""
+                    extra_rule["preferred_view"] = "front"
+                    extra_rule["target_views"] = ["front"]
+                    extra_rule["views"] = ["front"]
+                    extra_rule["side"] = "BOTTOM"
+                    extra_rule["rank"] = 1
+                    extra_rule["baseline"] = "NONE"
+                    extra_rule["geometry_payload"] = {
+                        "start_proj": [x_st, bottom_rim_y] if is_horizontal else [bottom_rim_y, x_st],
+                        "end_proj": [x_en, bottom_rim_y] if is_horizontal else [bottom_rim_y, x_en],
+                        "axis": 'x' if is_horizontal else 'y'
+                    }
+                    extra_rule["enabled"] = True
+                    rules.append(extra_rule)
 
             # 6. 倒角 (cone_or_chamfer)
             elif rec_type == "cone_or_chamfer":
@@ -286,16 +347,18 @@ class SmartRuleExtractor(BaseExtractor):
                 geom_payload = {}
 
             # 預設多視角標註設定 (合理指派具備可見輪廓的視圖)
-            if category in ("overall", "shaft", "hole"):
-                target_views = ["front", "right"]
-            elif category in ("step", "groove"):
+            if category in ("overall", "step"):
                 target_views = ["front"]
+            elif category in ("shaft", "hole"):
+                target_views = ["front", "top"]
+            elif category in ("groove",):
+                target_views = ["front", "top"]
             elif category in ("chamfer", "fillet"):
                 target_views = ["front"]
             elif category in ("thickness",):
                 target_views = ["right", "front"]
             elif category in ("datum",):
-                target_views = ["front", "right"]
+                target_views = ["front", "top"]
             elif category in ("pattern",):
                 target_views = ["top", "front"]
             else:
@@ -952,6 +1015,7 @@ class SmartDimensionEngine:
             else:
                 display_prefix = prefix
 
+            rule_id = rule.get("rule_id", rule.get("id", ""))
             if dim_type == "DIAMETER":
                 text_content = f"{val:.2f}"
             elif dim_type == "HOLE_PATTERN":
@@ -1006,15 +1070,22 @@ class SmartDimensionEngine:
                         tv_dim_type = "DIAMETER"
                         tv_center = (0.0, 0.0)
                         tv_radius = val / 2.0 if val > 0 else radius
-                        tv_angle = float(payload.get("angle", 45.0))
+                        # 依規則 ID 錯開頂視圖直徑引線角度 (45°, 135°, -45°)
+                        if "overall" in rule_id or "journal" in rule_id:
+                            tv_angle = 45.0
+                        elif "groove_01" in rule_id:
+                            tv_angle = 135.0
+                        else:
+                            tv_angle = -45.0
                     elif dim_type == "LINEAR":
                         tv_side = "TOP"
                         tv_start = start_proj if start_proj and start_proj != (0.0, 0.0) else (-wt / 2.0, 0.0)
                         tv_end = end_proj if end_proj and end_proj != (0.0, 0.0) else (wt / 2.0, 0.0)
                     elif dim_type in ("CENTERLINES",):
-                        tv_center = None
-                        tv_start = start_proj
-                        tv_end = end_proj
+                        tv_center = (0.0, 0.0)
+                        tv_radius = max(wt, ht) / 2.0 + 3.0
+                        tv_start = None
+                        tv_end = None
                     elif dim_type in ("LEADER",):
                         tv_center = None
                         tv_radius = 0.0
