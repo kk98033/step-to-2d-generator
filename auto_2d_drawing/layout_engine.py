@@ -510,59 +510,220 @@ class LayoutEngine:
             except Exception as e:
                 print(f"Angular dim error: {e}")
 
-    def _render_leaders(self, msp, tasks, ox, oy, bbox, scale):
-        """渲染單箭頭引線與停機坪"""
+    # =================================================================
+    # 引線標註空間防碰撞排版與渲染 (Collision Avoidance Leader Engine)
+    # =================================================================
+
+    def _layout_leaders_without_collision(self, tasks, ox, oy, bbox, scale):
+        """
+        引線空間防碰撞最佳化排版演算法:
+        1. 空間幾何聚類 (Spatial Clustering by anchor position)
+        2. 扇形角度自適應分佈 (Adaptive Fan-out Angle Assignment)
+        3. 多層次階梯伸長 (Multi-Tier Extension Staggering)
+        4. 2D Bounding Box 碰撞檢測與迭代避讓 (AABB Collision Resolver)
+        """
         import math
-        for idx, t in enumerate(tasks):
-            # 1. 決定引線起點 (p_start)
+
+        # 1. 取得每個任務的紙張座標起點 p_start
+        leader_items = []
+        for t in tasks:
             if t.center and t.radius and t.radius > 0:
-                # 圓形極座標特徵 (由圓周出發)
+                # 極座標特徵 (由圓周出發)
                 cx = self._proj_to_paper_x(t.center[0], bbox[0], scale, ox)
                 cy = self._proj_to_paper_y(t.center[1], bbox[1], scale, oy)
                 r_paper = t.radius * scale
-                ang_deg = t.angle if t.angle else (45.0 + (idx % 4) * 30.0)
-                ang_rad = math.radians(ang_deg)
+                default_ang = t.angle if t.angle else 45.0
+                ang_rad = math.radians(default_ang)
                 p_start = (cx + r_paper * math.cos(ang_rad), cy + r_paper * math.sin(ang_rad))
+                pref_side = "RIGHT" if math.cos(ang_rad) >= 0 else "LEFT"
             else:
-                # 線性/輪廓特徵 (由精確輪廓邊緣頂點出發)
+                # 輪廓邊緣頂點
                 start_x = t.start_proj[0] if t.start_proj else 0.0
                 start_y = t.start_proj[1] if t.start_proj else 0.0
                 cx = self._proj_to_paper_x(start_x, bbox[0], scale, ox)
                 cy = self._proj_to_paper_y(start_y, bbox[1], scale, oy)
                 p_start = (cx, cy)
-                ang_deg = t.angle if t.angle else (45.0 if idx % 2 == 0 else 135.0)
-                ang_rad = math.radians(ang_deg)
+                default_ang = t.angle if t.angle else 45.0
+                pref_side = "LEFT" if default_ang > 90.0 else "RIGHT"
 
-            # 2. 拉伸線 (向外延伸 10~22mm，動態階梯錯開避免重疊)
-            ext_len = 10.0 + (idx % 5) * 3.5
-            stagger_ang_deg = ang_deg + ((idx % 3) - 1) * 7.0
-            stagger_ang_rad = math.radians(stagger_ang_deg)
-            p_elbow = (p_start[0] + ext_len * math.cos(stagger_ang_rad), 
-                       p_start[1] + ext_len * math.sin(stagger_ang_rad))
+            leader_items.append({
+                "task": t,
+                "p_start": p_start,
+                "default_ang": default_ang,
+                "pref_side": pref_side,
+                "text": t.display_text,
+            })
 
-            # 3. 水平停機坪 (Landing line)
-            tail_dir = 1 if math.cos(stagger_ang_rad) >= 0 else -1
-            text_len = len(t.display_text) * 1.5
-            landing_len = max(8.0, text_len + 2.0)
-            p_end = (p_elbow[0] + tail_dir * landing_len, p_elbow[1])
+        if not leader_items:
+            return []
 
+        # 2. 空間聚類 (依據 p_start 的 X 座標將相近特徵分組)
+        leader_items.sort(key=lambda item: item["p_start"][0])
+
+        clusters = []
+        curr_cluster = []
+        cluster_tol = 6.0  # mm 紙張距離容差
+
+        for item in leader_items:
+            if not curr_cluster:
+                curr_cluster.append(item)
+            else:
+                last_p = curr_cluster[-1]["p_start"]
+                dist_x = abs(item["p_start"][0] - last_p[0])
+                if dist_x <= cluster_tol:
+                    curr_cluster.append(item)
+                else:
+                    clusters.append(curr_cluster)
+                    curr_cluster = [item]
+        if curr_cluster:
+            clusters.append(curr_cluster)
+
+        # 3. 針對每個 Cluster 指派初始扇形角度與階梯伸長
+        positioned_leaders = []
+        occupied_bboxes = []  # 已定案標註之 [(xmin, ymin, xmax, ymax)]
+
+        def check_bbox_overlap(box1, box2, buffer=1.8):
+            return not (box1[2] + buffer < box2[0] or 
+                        box1[0] - buffer > box2[2] or 
+                        box1[3] + buffer < box2[1] or 
+                        box1[1] - buffer > box2[3])
+
+        for cluster in clusters:
+            k = len(cluster)
+            pref_side = cluster[0]["pref_side"]
+
+            # 扇形展開角度 (動態依數量縮放展開扇形範圍)
+            if pref_side == "LEFT":
+                if k == 1:
+                    angles = [cluster[0]["default_ang"]]
+                elif k <= 3:
+                    span_start = 115.0
+                    span_end = 145.0
+                    step_ang = (span_end - span_start) / max(1, k - 1)
+                    angles = [span_start + i * step_ang for i in range(k)]
+                else:
+                    span_start = 100.0
+                    span_end = 165.0
+                    step_ang = (span_end - span_start) / max(1, k - 1)
+                    angles = [span_start + i * step_ang for i in range(k)]
+            else:
+                if k == 1:
+                    angles = [cluster[0]["default_ang"]]
+                elif k <= 3:
+                    span_start = 65.0
+                    span_end = 35.0
+                    step_ang = (span_end - span_start) / max(1, k - 1)
+                    angles = [span_start + i * step_ang for i in range(k)]
+                else:
+                    span_start = 75.0
+                    span_end = 15.0
+                    step_ang = (span_end - span_start) / max(1, k - 1)
+                    angles = [span_start + i * step_ang for i in range(k)]
+
+            # 4. 碰撞檢測與迭代修正
+            for idx, item in enumerate(cluster):
+                p_start = item["p_start"]
+                ang_deg = angles[idx]
+                text = item["text"]
+                text_len = len(text) * 1.5
+                landing_len = max(8.0, text_len + 2.0)
+
+                base_ext = 8.0 + idx * 3.2
+                max_iter = 12
+                curr_ext = base_ext
+                curr_ang = ang_deg
+
+                for _ in range(max_iter):
+                    rad = math.radians(curr_ang)
+                    p_elbow = (p_start[0] + curr_ext * math.cos(rad),
+                               p_start[1] + curr_ext * math.sin(rad))
+                    tail_dir = 1 if math.cos(rad) >= 0 else -1
+                    p_end = (p_elbow[0] + tail_dir * landing_len, p_elbow[1])
+
+                    tx = p_elbow[0] + (1.0 if tail_dir > 0 else (-landing_len + 1.0))
+                    ty = p_elbow[1] + 0.8
+                    bx1 = min(p_elbow[0], p_end[0], tx)
+                    bx2 = max(p_elbow[0], p_end[0], tx + text_len)
+                    by1 = p_elbow[1] - 0.5
+                    by2 = ty + 2.0
+                    candidate_bbox = (bx1, by1, bx2, by2)
+
+                    has_collision = False
+                    for occ in occupied_bboxes:
+                        if check_bbox_overlap(candidate_bbox, occ, buffer=1.6):
+                            has_collision = True
+                            break
+
+                    if not has_collision:
+                        occupied_bboxes.append(candidate_bbox)
+                        positioned_leaders.append({
+                            "task": item["task"],
+                            "p_start": p_start,
+                            "p_elbow": p_elbow,
+                            "p_end": p_end,
+                            "ang_deg": curr_ang,
+                            "tail_dir": tail_dir,
+                            "tx": tx,
+                            "ty": ty,
+                            "text": text,
+                            "landing_len": landing_len,
+                        })
+                        break
+                    else:
+                        curr_ext += 3.5
+                        if pref_side == "LEFT":
+                            curr_ang = min(170.0, curr_ang + 2.0)
+                        else:
+                            curr_ang = max(10.0, curr_ang - 2.0)
+                else:
+                    occupied_bboxes.append(candidate_bbox)
+                    positioned_leaders.append({
+                        "task": item["task"],
+                        "p_start": p_start,
+                        "p_elbow": p_elbow,
+                        "p_end": p_end,
+                        "ang_deg": curr_ang,
+                        "tail_dir": tail_dir,
+                        "tx": tx,
+                        "ty": ty,
+                        "text": text,
+                        "landing_len": landing_len,
+                    })
+
+        return positioned_leaders
+
+    def _render_leaders(self, msp, tasks, ox, oy, bbox, scale):
+        """渲染單箭頭引線與停機坪 (具備智慧空間防碰撞排版)"""
+        import math
+        leaders_layout = self._layout_leaders_without_collision(tasks, ox, oy, bbox, scale)
+
+        for item in leaders_layout:
+            p_start = item["p_start"]
+            p_elbow = item["p_elbow"]
+            p_end = item["p_end"]
+            ang_rad = math.radians(item["ang_deg"])
+            tx = item["tx"]
+            ty = item["ty"]
+            text = item["text"]
+
+            # 1. 繪製引線主體與水平停機坪
             msp.add_line(p_start, p_elbow, dxfattribs={'layer': 'DIM', 'color': 2})
             msp.add_line(p_elbow, p_end, dxfattribs={'layer': 'DIM', 'color': 2})
 
-            # 4. 箭頭 (指向特徵起點 p_start)
+            # 2. 繪製箭頭 (指向特徵起點 p_start)
             arr = 1.5
-            arr_dx = math.cos(stagger_ang_rad) * arr
-            arr_dy = math.sin(stagger_ang_rad) * arr
-            sdx = -math.sin(stagger_ang_rad) * arr * 0.35
-            sdy = math.cos(stagger_ang_rad) * arr * 0.35
+            arr_dx = math.cos(ang_rad) * arr
+            arr_dy = math.sin(ang_rad) * arr
+            sdx = -math.sin(ang_rad) * arr * 0.35
+            sdy = math.cos(ang_rad) * arr * 0.35
 
-            msp.add_line(p_start, (p_start[0] + arr_dx + sdx, p_start[1] + arr_dy + sdy), dxfattribs={'layer': 'DIM', 'color': 2})
-            msp.add_line(p_start, (p_start[0] + arr_dx - sdx, p_start[1] + arr_dy - sdy), dxfattribs={'layer': 'DIM', 'color': 2})
+            msp.add_line(p_start, (p_start[0] + arr_dx + sdx, p_start[1] + arr_dy + sdy),
+                         dxfattribs={'layer': 'DIM', 'color': 2})
+            msp.add_line(p_start, (p_start[0] + arr_dx - sdx, p_start[1] + arr_dy - sdy),
+                         dxfattribs={'layer': 'DIM', 'color': 2})
 
-            # 5. 文字 (停機坪上方)
-            tx = p_elbow[0] + (1.0 if tail_dir > 0 else (-landing_len + 1.0))
-            ty = p_elbow[1] + 0.8
-            self._add_text(msp, tx, ty, t.display_text, height=1.8, layer='DIM', color=2)
+            # 3. 繪製文字 (停機坪上方)
+            self._add_text(msp, tx, ty, text, height=1.8, layer='DIM', color=2)
 
     def _render_notes(self, msp, tasks, ox, oy, bbox, scale):
         """渲染全域工藝註解"""
