@@ -203,8 +203,7 @@ class FeatureExtractor:
 
     def _extract_edges(self):
         """遍歷所有 EDGE，提取圓弧邊 (圓角 Fillet/Round) 與全圓邊"""
-        seen_fillet = set()
-        seen_circle = set()
+        raw_circ_edges = []
 
         exp = TopExp_Explorer(self.shape, TopAbs_EDGE)
         while exp.More():
@@ -224,37 +223,70 @@ class FeatureExtractor:
                         p_end = curve.Value(u_max)
                         d = circ.Axis().Direction()
 
-                        # 判斷是否為封閉全圓邊 vs 圓弧圓角邊
-                        is_full_circle = abs(sweep - 2 * math.pi) < 0.05
-
-                        if is_full_circle:
-                            ckey = (round(loc.X(), 2), round(loc.Y(), 2), round(loc.Z(), 2), round(r, 3))
-                            if ckey not in seen_circle:
-                                seen_circle.add(ckey)
-                                self.circle_edges.append({
-                                    "radius": round(r, 4),
-                                    "diameter": round(r * 2, 4),
-                                    "center": (round(loc.X(), 3), round(loc.Y(), 3), round(loc.Z(), 3)),
-                                    "axis_dir": (round(d.X(), 3), round(d.Y(), 3), round(d.Z(), 3)),
-                                })
-                        else:
-                            fkey = (round(mid_pnt.X(), 2), round(mid_pnt.Y(), 2), round(mid_pnt.Z(), 2), round(r, 3))
-                            if fkey not in seen_fillet:
-                                seen_fillet.add(fkey)
-                                arc_len = r * sweep
-                                self.fillets.append({
-                                    "radius": round(r, 4),
-                                    "diameter": round(r * 2, 4),
-                                    "center": (round(loc.X(), 3), round(loc.Y(), 3), round(loc.Z(), 3)),
-                                    "mid_point": (round(mid_pnt.X(), 3), round(mid_pnt.Y(), 3), round(mid_pnt.Z(), 3)),
-                                    "start_point": (round(p_start.X(), 3), round(p_start.Y(), 3), round(p_start.Z(), 3)),
-                                    "end_point": (round(p_end.X(), 3), round(p_end.Y(), 3), round(p_end.Z(), 3)),
-                                    "sweep_angle_deg": round(math.degrees(sweep), 2),
-                                    "arc_length": round(arc_len, 3),
-                                })
+                        raw_circ_edges.append({
+                            "radius": r,
+                            "center": (loc.X(), loc.Y(), loc.Z()),
+                            "axis_dir": (d.X(), d.Y(), d.Z()),
+                            "sweep": sweep,
+                            "mid_pnt": (mid_pnt.X(), mid_pnt.Y(), mid_pnt.Z()),
+                            "p_start": (p_start.X(), p_start.Y(), p_start.Z()),
+                            "p_end": (p_end.X(), p_end.Y(), p_end.Z()),
+                        })
             except Exception:
                 pass
             exp.Next()
+
+        # 依 (center, axis_dir, radius) 聚合圓邊
+        circle_groups = {}
+        for edge_info in raw_circ_edges:
+            cx, cy, cz = edge_info["center"]
+            dx, dy, dz = edge_info["axis_dir"]
+            r = edge_info["radius"]
+            # 軸向方向統一 (同一直線正負號同向化)
+            sign = 1 if (dx + dy + dz) >= 0 else -1
+            ckey = (
+                round(cx, 2), round(cy, 2), round(cz, 2),
+                round(dx * sign, 1), round(dy * sign, 1), round(dz * sign, 1),
+                round(r, 2)
+            )
+            if ckey not in circle_groups:
+                circle_groups[ckey] = []
+            circle_groups[ckey].append(edge_info)
+
+        for ckey, group in circle_groups.items():
+            total_sweep = sum(e["sweep"] for e in group)
+            first_e = group[0]
+            r = first_e["radius"]
+            c = first_e["center"]
+            ax_d = first_e["axis_dir"]
+
+            if total_sweep >= 2 * math.pi - 0.15:
+                # 總弧度達到 360° -> 封閉整圓邊 (Step / Cylinder rim)
+                self.circle_edges.append({
+                    "radius": round(r, 4),
+                    "diameter": round(r * 2, 4),
+                    "center": (round(c[0], 3), round(c[1], 3), round(c[2], 3)),
+                    "axis_dir": (round(ax_d[0], 3), round(ax_d[1], 3), round(ax_d[2], 3)),
+                })
+            else:
+                # 真正的不完全圓弧 -> 圓角 Fillet
+                seen_mids = set()
+                for e in group:
+                    m = e["mid_pnt"]
+                    mkey = (round(m[0], 2), round(m[1], 2), round(m[2], 2))
+                    if mkey not in seen_mids:
+                        seen_mids.add(mkey)
+                        arc_len = r * e["sweep"]
+                        self.fillets.append({
+                            "radius": round(r, 4),
+                            "diameter": round(r * 2, 4),
+                            "center": (round(c[0], 3), round(c[1], 3), round(c[2], 3)),
+                            "mid_point": (round(m[0], 3), round(m[1], 3), round(m[2], 3)),
+                            "start_point": (round(e["p_start"][0], 3), round(e["p_start"][1], 3), round(e["p_start"][2], 3)),
+                            "end_point": (round(e["p_end"][0], 3), round(e["p_end"][1], 3), round(e["p_end"][2], 3)),
+                            "sweep_angle_deg": round(math.degrees(e["sweep"]), 2),
+                            "arc_length": round(arc_len, 3),
+                        })
 
         self.fillets.sort(key=lambda x: -x["radius"])
         self.circle_edges.sort(key=lambda x: -x["radius"])
