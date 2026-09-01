@@ -4,7 +4,10 @@
 接收 List[DimensionTask]，計算排版位置，處理碰撞偵測，最終渲染到 DXF。
 這個引擎完全不需要知道零件是軸還是風扇。
 """
-from config import DIM_STYLE
+try:
+    from config import DIM_STYLE
+except ImportError:
+    from auto_2d_drawing.config import DIM_STYLE
 
 
 class LayoutEngine:
@@ -391,28 +394,46 @@ class LayoutEngine:
     # =================================================================
 
     def _render_centerlines(self, msp, tasks, ox, oy, bbox, scale):
-        """渲染中心十字線與 PCD 圓"""
+        """渲染中心線 (支援線性軸心線與圓形中心十字線)"""
         for t in tasks:
-            cx = self._proj_to_paper_x(t.center[0], bbox[0], scale, ox)
-            cy = self._proj_to_paper_y(t.center[1], bbox[1], scale, oy)
-            r = t.radius * scale
-            
-            if getattr(t, 'text', '') == "PCD_CIRCLE":
-                # 畫輔助虛線圓
-                msp.add_circle((cx, cy), r, dxfattribs={'layer': 'CENTER2', 'color': 8, 'linetype': 'CENTER2'})
-            else:
-                # 畫十字
-                msp.add_line((cx - r, cy), (cx + r, cy), dxfattribs={'layer': 'CENTER2', 'color': 3, 'linetype': 'CENTER2'})
-                msp.add_line((cx, cy - r), (cx, cy + r), dxfattribs={'layer': 'CENTER2', 'color': 3, 'linetype': 'CENTER2'})
+            # 1. 線性中心軸線 (例如旋轉軸中心線)
+            if t.start_proj and t.end_proj and (abs(t.start_proj[0] - t.end_proj[0]) > 0.1 or abs(t.start_proj[1] - t.end_proj[1]) > 0.1):
+                x1 = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
+                y1 = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy)
+                x2 = self._proj_to_paper_x(t.end_proj[0], bbox[0], scale, ox)
+                y2 = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy)
+                dx = x2 - x1
+                dy = y2 - y1
+                dist = (dx * dx + dy * dy) ** 0.5
+                if dist > 0.1:
+                    ext = 3.0
+                    ux = dx / dist
+                    uy = dy / dist
+                    p1 = (x1 - ux * ext, y1 - uy * ext)
+                    p2 = (x2 + ux * ext, y2 + uy * ext)
+                    msp.add_line(p1, p2, dxfattribs={'layer': 'CENTER', 'color': 1, 'linetype': 'CENTER2'})
+            # 2. 極座標中心十字線與 PCD 圓
+            elif t.center:
+                cx = self._proj_to_paper_x(t.center[0], bbox[0], scale, ox)
+                cy = self._proj_to_paper_y(t.center[1], bbox[1], scale, oy)
+                r = (t.radius if t.radius and t.radius > 0 else max(bbox[2] - bbox[0], bbox[3] - bbox[1]) / 2.0) * scale + 2.0
+                
+                if getattr(t, 'text', '') == "PCD_CIRCLE":
+                    msp.add_circle((cx, cy), r, dxfattribs={'layer': 'CENTER', 'color': 8, 'linetype': 'CENTER2'})
+                else:
+                    msp.add_line((cx - r, cy), (cx + r, cy), dxfattribs={'layer': 'CENTER', 'color': 1, 'linetype': 'CENTER2'})
+                    msp.add_line((cx, cy - r), (cx, cy + r), dxfattribs={'layer': 'CENTER', 'color': 1, 'linetype': 'CENTER2'})
 
     def _render_diameters_polar(self, msp, tasks, ox, oy, bbox, scale):
         """渲染傾斜拉出的直徑標註"""
         import math
         for t in tasks:
-            cx = self._proj_to_paper_x(t.center[0], bbox[0], scale, ox)
-            cy = self._proj_to_paper_y(t.center[1], bbox[1], scale, oy)
+            center_x = t.center[0] if t.center else 0.0
+            center_y = t.center[1] if t.center else 0.0
+            cx = self._proj_to_paper_x(center_x, bbox[0], scale, ox)
+            cy = self._proj_to_paper_y(center_y, bbox[1], scale, oy)
             r_paper = t.radius * scale
-            ang_rad = math.radians(t.angle)
+            ang_rad = math.radians(t.angle if t.angle else 45.0)
             
             # 從中心出發
             dx = r_paper * math.cos(ang_rad)
@@ -421,42 +442,42 @@ class LayoutEngine:
             p2 = (cx + dx, cy + dy)
             
             # 拉伸線
-            ext_len = 10.0
+            ext_len = 8.0
             p3 = (cx + (r_paper + ext_len) * math.cos(ang_rad), 
                   cy + (r_paper + ext_len) * math.sin(ang_rad))
             
-            msp.add_line(p1, p3, dxfattribs={'layer': 'DIM', 'color': 2})
+            msp.add_line(p2, p3, dxfattribs={'layer': 'DIM', 'color': 2})
             
             # 水平尾巴
-            tail_dir = 1 if math.cos(ang_rad) > 0 else -1
-            p4 = (p3[0] + tail_dir * 15, p3[1])
+            tail_dir = 1 if math.cos(ang_rad) >= 0 else -1
+            text_len = len(t.display_text) * 1.5
+            landing_len = max(8.0, text_len + 2.0)
+            p4 = (p3[0] + tail_dir * landing_len, p3[1])
             msp.add_line(p3, p4, dxfattribs={'layer': 'DIM', 'color': 2})
             
-            # 箭頭 (指向中心)
+            # 箭頭 (指向圓周 p2)
             arr = 1.5
-            arr_dx = -math.cos(ang_rad) * arr
-            arr_dy = -math.sin(ang_rad) * arr
-            sdx = -math.sin(ang_rad) * arr * 0.4
-            sdy = math.cos(ang_rad) * arr * 0.4
+            arr_dx = math.cos(ang_rad) * arr
+            arr_dy = math.sin(ang_rad) * arr
+            sdx = -math.sin(ang_rad) * arr * 0.35
+            sdy = math.cos(ang_rad) * arr * 0.35
             
-            arr_tip = p2
-            arr_base = (arr_tip[0] - arr_dx, arr_tip[1] - arr_dy)
-            msp.add_line(arr_tip, (arr_base[0] + sdx, arr_base[1] + sdy), dxfattribs={'layer': 'DIM', 'color': 2})
-            msp.add_line(arr_tip, (arr_base[0] - sdx, arr_base[1] - sdy), dxfattribs={'layer': 'DIM', 'color': 2})
+            msp.add_line(p2, (p2[0] + arr_dx + sdx, p2[1] + arr_dy + sdy), dxfattribs={'layer': 'DIM', 'color': 2})
+            msp.add_line(p2, (p2[0] + arr_dx - sdx, p2[1] + arr_dy - sdy), dxfattribs={'layer': 'DIM', 'color': 2})
             
             # 文字
-            tx = p3[0] + tail_dir * 1.5
-            ty = p3[1] + 1.0
-            if tail_dir < 0:
-                tx -= len(t.display_text) * 1.5
-            self._add_text(msp, tx, ty, t.display_text)
+            tx = p3[0] + (1.0 if tail_dir > 0 else (-landing_len + 1.0))
+            ty = p3[1] + 0.8
+            self._add_text(msp, tx, ty, t.display_text, height=1.8, layer='DIM', color=2)
 
     def _render_angular(self, msp, tasks, ox, oy, bbox, scale):
         """渲染角度標註"""
         import math
         for t in tasks:
-            cx = self._proj_to_paper_x(t.center[0], bbox[0], scale, ox)
-            cy = self._proj_to_paper_y(t.center[1], bbox[1], scale, oy)
+            center_x = t.center[0] if t.center else 0.0
+            center_y = t.center[1] if t.center else 0.0
+            cx = self._proj_to_paper_x(center_x, bbox[0], scale, ox)
+            cy = self._proj_to_paper_y(center_y, bbox[1], scale, oy)
             r_paper = t.radius * scale
             
             a1_rad = math.radians(t.angle)
@@ -470,7 +491,6 @@ class LayoutEngine:
             msp.add_line((cx, cy), h2, dxfattribs={'layer': 'CENTER2', 'color': 8, 'linetype': 'CENTER2'})
             
             try:
-                # 放在半徑的 60% 處
                 dim_r = r_paper * 0.6
                 base_ang = (a1_rad + a2_rad) / 2
                 base = (cx + dim_r * math.cos(base_ang), cy + dim_r * math.sin(base_ang))
@@ -484,7 +504,6 @@ class LayoutEngine:
                     override={'dimtxt': 2.0, 'dimasz': 1.5, 'dimclrt': 2}
                 )
                 
-                # 覆蓋文字
                 if t.display_text:
                     dim.dxf.text = t.display_text
                 dim.render()
@@ -494,57 +513,56 @@ class LayoutEngine:
     def _render_leaders(self, msp, tasks, ox, oy, bbox, scale):
         """渲染單箭頭引線與停機坪"""
         import math
-        overall_r_paper = max(bbox[2] - bbox[0], bbox[3] - bbox[1]) / 2.0 * scale
-        
-        for t in tasks:
-            # 起點 (圓周或特徵邊緣)
-            if t.center and t.radius:
+        for idx, t in enumerate(tasks):
+            # 1. 決定引線起點 (p_start)
+            if t.center and t.radius and t.radius > 0:
+                # 圓形極座標特徵 (由圓周出發)
                 cx = self._proj_to_paper_x(t.center[0], bbox[0], scale, ox)
                 cy = self._proj_to_paper_y(t.center[1], bbox[1], scale, oy)
                 r_paper = t.radius * scale
+                ang_deg = t.angle if t.angle else (45.0 + (idx % 4) * 30.0)
+                ang_rad = math.radians(ang_deg)
+                p_start = (cx + r_paper * math.cos(ang_rad), cy + r_paper * math.sin(ang_rad))
             else:
-                cx = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
-                cy = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy)
-                r_paper = 0
-                
-            ang_rad = math.radians(t.angle)
-            
-            # 從特徵邊緣出發
-            p1 = (cx + r_paper * math.cos(ang_rad), cy + r_paper * math.sin(ang_rad))
-            
-            # 拉伸線
-            # 強制讓引線拉伸到整個零件邊界之外，防止文字與葉片重疊
-            ext_len = max(15.0, (overall_r_paper - r_paper) + 12.0)
-            p2 = (cx + (r_paper + ext_len) * math.cos(ang_rad), 
-                  cy + (r_paper + ext_len) * math.sin(ang_rad))
-            
-            msp.add_line(p1, p2, dxfattribs={'layer': 'DIM', 'color': 2})
-            
-            # 水平停機坪 (Landing line)
-            tail_dir = 1 if math.cos(ang_rad) > 0 else -1
-            text_len = len(t.display_text) * 1.8 # 估算文字寬度
-            landing_len = max(10, text_len + 2)
-            p3 = (p2[0] + tail_dir * landing_len, p2[1])
-            msp.add_line(p2, p3, dxfattribs={'layer': 'DIM', 'color': 2})
-            
-            # 箭頭 (指向特徵)
-            arr = 2.0
-            arr_dx = math.cos(ang_rad) * arr
-            arr_dy = math.sin(ang_rad) * arr
-            sdx = -math.sin(ang_rad) * arr * 0.3
-            sdy = math.cos(ang_rad) * arr * 0.3
-            
-            arr_tip = p1
-            arr_base = (arr_tip[0] + arr_dx, arr_tip[1] + arr_dy)
-            msp.add_line(arr_tip, (arr_base[0] + sdx, arr_base[1] + sdy), dxfattribs={'layer': 'DIM', 'color': 2})
-            msp.add_line(arr_tip, (arr_base[0] - sdx, arr_base[1] - sdy), dxfattribs={'layer': 'DIM', 'color': 2})
-            
-            # 文字 (放在停機坪上方)
-            tx = p2[0] + tail_dir * 1.0
-            ty = p2[1] + 1.0
-            if tail_dir < 0:
-                tx -= text_len
-            self._add_text(msp, tx, ty, t.display_text, height=2.0, layer='DIM', color=2)
+                # 線性/輪廓特徵 (由精確輪廓邊緣頂點出發)
+                start_x = t.start_proj[0] if t.start_proj else 0.0
+                start_y = t.start_proj[1] if t.start_proj else 0.0
+                cx = self._proj_to_paper_x(start_x, bbox[0], scale, ox)
+                cy = self._proj_to_paper_y(start_y, bbox[1], scale, oy)
+                p_start = (cx, cy)
+                ang_deg = t.angle if t.angle else (45.0 if idx % 2 == 0 else 135.0)
+                ang_rad = math.radians(ang_deg)
+
+            # 2. 拉伸線 (向外延伸 10~22mm，動態階梯錯開避免重疊)
+            ext_len = 10.0 + (idx % 5) * 3.5
+            stagger_ang_deg = ang_deg + ((idx % 3) - 1) * 7.0
+            stagger_ang_rad = math.radians(stagger_ang_deg)
+            p_elbow = (p_start[0] + ext_len * math.cos(stagger_ang_rad), 
+                       p_start[1] + ext_len * math.sin(stagger_ang_rad))
+
+            # 3. 水平停機坪 (Landing line)
+            tail_dir = 1 if math.cos(stagger_ang_rad) >= 0 else -1
+            text_len = len(t.display_text) * 1.5
+            landing_len = max(8.0, text_len + 2.0)
+            p_end = (p_elbow[0] + tail_dir * landing_len, p_elbow[1])
+
+            msp.add_line(p_start, p_elbow, dxfattribs={'layer': 'DIM', 'color': 2})
+            msp.add_line(p_elbow, p_end, dxfattribs={'layer': 'DIM', 'color': 2})
+
+            # 4. 箭頭 (指向特徵起點 p_start)
+            arr = 1.5
+            arr_dx = math.cos(stagger_ang_rad) * arr
+            arr_dy = math.sin(stagger_ang_rad) * arr
+            sdx = -math.sin(stagger_ang_rad) * arr * 0.35
+            sdy = math.cos(stagger_ang_rad) * arr * 0.35
+
+            msp.add_line(p_start, (p_start[0] + arr_dx + sdx, p_start[1] + arr_dy + sdy), dxfattribs={'layer': 'DIM', 'color': 2})
+            msp.add_line(p_start, (p_start[0] + arr_dx - sdx, p_start[1] + arr_dy - sdy), dxfattribs={'layer': 'DIM', 'color': 2})
+
+            # 5. 文字 (停機坪上方)
+            tx = p_elbow[0] + (1.0 if tail_dir > 0 else (-landing_len + 1.0))
+            ty = p_elbow[1] + 0.8
+            self._add_text(msp, tx, ty, t.display_text, height=1.8, layer='DIM', color=2)
 
     def _render_notes(self, msp, tasks, ox, oy, bbox, scale):
         """渲染全域工藝註解"""
