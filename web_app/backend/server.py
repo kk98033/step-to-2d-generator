@@ -144,8 +144,122 @@ from auto_2d_drawing.feature_extractor import FeatureExtractor
 from auto_2d_drawing.feature_layer import build_feature_records
 from auto_2d_drawing.smart_annotation_engine import TemplateManager, SmartAnnotationEngine
 from auto_2d_drawing.view_projector import ViewProjector
+from auto_2d_drawing.tolerance.tolerance_decision_service import ToleranceDecisionService
+from auto_2d_drawing.tolerance.case_base import FeatureCaseBase, ToleranceCase
 
 template_manager = TemplateManager()
+case_base = FeatureCaseBase()
+tolerance_service = ToleranceDecisionService(case_base=case_base)
+
+
+@app.get("/api/tolerance/stats")
+def get_tolerance_stats():
+    """取得歷史特徵案例庫統計資料"""
+    try:
+        total_cases = len(case_base.cases)
+        categories = {}
+        for c in case_base.cases:
+            cat = c.part_type
+            categories[cat] = categories.get(cat, 0) + 1
+        return {
+            "status": "ok",
+            "total_cases": total_cases,
+            "categories": categories
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/tolerance/recommend")
+def recommend_tolerances(body: Dict[str, Any] = Body(...)):
+    """
+    智慧公差推薦 API：依據 3D 特徵關係圖 (FRG) 與歷史特徵案例庫 (CAD-RAG)，
+    為候選標註規則進行三層分流公差決策 (Tier 1~3)
+    """
+    model_id = body.get("model_id")
+    part_id = body.get("part_id")
+    candidate_rules = body.get("candidate_rules")
+    part_category = body.get("part_category")
+
+    if not model_id or not part_id:
+        raise HTTPException(status_code=400, detail="model_id and part_id are required")
+
+    output_dir = _safe_output_dir(model_id)
+    _safe_part_id(part_id)
+
+    stp_candidates = [
+        os.path.join(output_dir, "_parts", f"{part_id}.stp"),
+        os.path.join(output_dir, "_parts", f"{part_id}.step"),
+        os.path.join(output_dir, f"{part_id}.stp"),
+        os.path.join(output_dir, f"{part_id}.step"),
+        os.path.join(MODELS_DIR, f"{model_id}.stp"),
+        os.path.join(MODELS_DIR, f"{model_id.replace('_batch', '')}.stp"),
+    ]
+    stp_path = None
+    for p in stp_candidates:
+        if os.path.exists(p):
+            stp_path = p
+            break
+
+    if not stp_path:
+        raise HTTPException(status_code=404, detail=f"STEP file for {part_id} not found")
+
+    try:
+        shape = load_step(stp_path)
+        projector = ViewProjector()
+        view_data = projector.project_all_views(shape, view_names=['front', 'top', 'right', 'left'])
+        
+        if not candidate_rules:
+            engine = SmartAnnotationEngine()
+            candidate_rules = engine.get_candidate_rules(shape, view_data)
+
+        # 執行公差決策推薦
+        rec_result = tolerance_service.recommend_for_rules(
+            shape=shape,
+            candidate_rules=candidate_rules,
+            view_data=view_data,
+            part_type=part_category
+        )
+
+        return {
+            "status": "ok",
+            "model_id": model_id,
+            "part_id": part_id,
+            "part_type": rec_result.get("part_type"),
+            "total_rules": rec_result.get("total_rules"),
+            "high_confidence_count": rec_result.get("high_confidence_count"),
+            "recommendations": rec_result.get("recommendations"),
+            "feature_graph": rec_result.get("feature_graph")
+        }
+    except Exception as e:
+        print(f"Tolerance recommendation error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/tolerance/save-case")
+def save_tolerance_case(body: Dict[str, Any] = Body(...)):
+    """將審定公差或使用者確認後的標註儲存為歷史案例"""
+    try:
+        case_id = body.get("case_id", f"case_custom_{uuid.uuid4().hex[:6]}")
+        new_case = ToleranceCase(
+            case_id=case_id,
+            part_type=body.get("part_type", body.get("part_category", "SHAFT")),
+            feature_type=body.get("feature_type", "shaft_segment"),
+            inferred_role=body.get("inferred_role", "FUNCTIONAL_JOURNAL"),
+            nominal_dimensions=body.get("nominal_dimensions", {}),
+            neighbor_types=body.get("neighbor_types", []),
+            boundary_position=body.get("boundary_position", "INTERIOR"),
+            tolerance_config=body.get("tolerance_config", {}),
+            confidence=1.0,
+            evidence_source="ENGINEER_CONFIRMED",
+            description=body.get("description", "工程師前端審定確認之公差案例")
+        )
+        case_base.add_case(new_case)
+        return {"status": "ok", "case_id": case_id, "total_cases": len(case_base.cases)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/annotation/templates")

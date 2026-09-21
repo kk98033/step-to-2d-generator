@@ -3,7 +3,8 @@ import {
   FileText, File, Folder, FolderOpen, Loader2, CheckCircle, 
   ChevronRight, ChevronDown, AlertTriangle, BookOpen, ArrowLeft, 
   Home, ZoomIn, ZoomOut, CheckSquare, Square, 
-  Layers, Sparkles, Wand2, Download, Save, Trash2, RotateCcw
+  Layers, Sparkles, Wand2, Download, Save, Trash2, RotateCcw,
+  Cpu, Database, Info, HelpCircle
 } from 'lucide-react';
 import axios from 'axios';
 import { Canvas, useThree } from '@react-three/fiber';
@@ -679,6 +680,12 @@ function App() {
   const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isLoadingFeatures, setIsLoadingFeatures] = useState<boolean>(false);
 
+  // --- AI CAD-RAG Tolerance Decision State ---
+  const [aiRecommendations, setAiRecommendations] = useState<Record<string, any>>({});
+  const [isRecommendingTolerances, setIsRecommendingTolerances] = useState<boolean>(false);
+  const [toleranceStats, setToleranceStats] = useState<{ total_cases: number; categories: Record<string, number> } | null>(null);
+  const [recommendSummary, setRecommendSummary] = useState<{ total_rules: number; high_confidence_count: number } | null>(null);
+
   // --- Tree Diff State ---
   const [diffedTreeOld, setDiffedTreeOld] = useState<any>(null);
   const [diffedTreeNew, setDiffedTreeNew] = useState<any>(null);
@@ -694,6 +701,14 @@ function App() {
         }
       })
       .catch(err => console.error('Failed to load annotation templates:', err));
+
+    axios.get(`${API_BASE}/api/tolerance/stats`)
+      .then(res => {
+        if (res.data?.status === 'ok') {
+          setToleranceStats(res.data);
+        }
+      })
+      .catch(err => console.error('Failed to load tolerance stats:', err));
   }, []);
 
   useEffect(() => {
@@ -950,6 +965,91 @@ function App() {
     }));
   };
 
+  const handleAiRecommendTolerances = async () => {
+    const modelId = results?.model_id || results?.output_dir || jobId;
+    if (!modelId || !selectedPart) {
+      alert('請先從左側選擇零件！');
+      return;
+    }
+
+    setIsRecommendingTolerances(true);
+    try {
+      const res = await axios.post(`${API_BASE}/api/tolerance/recommend`, {
+        model_id: modelId,
+        part_id: selectedPart,
+        candidate_rules: candidateRules,
+        part_category: 'shaft'
+      });
+
+      if (res.data?.status === 'ok') {
+        const recs: Record<string, any> = res.data.recommendations || {};
+        setAiRecommendations(recs);
+        setRecommendSummary({
+          total_rules: res.data.total_rules || Object.keys(recs).length,
+          high_confidence_count: res.data.high_confidence_count || 0
+        });
+
+        // 自動將推薦公差注入到 ruleConfig 中
+        setRuleConfig(prev => {
+          const nextCfg = { ...prev };
+          Object.entries(recs).forEach(([rId, rec]: [string, any]) => {
+            const existing = nextCfg[rId] || {};
+            nextCfg[rId] = {
+              ...existing,
+              tolerance: rec.tolerance_str !== undefined ? rec.tolerance_str : (rec.fit_class || ''),
+              tolerance_config: rec.tolerance_config || { mode: rec.recommended_mode || 'NONE' }
+            };
+          });
+          return nextCfg;
+        });
+
+        // 高信心度的規則自動勾選
+        const highConfIds = Object.entries(recs)
+          .filter(([_, rec]: [string, any]) => (rec.confidence || 0) >= 0.80)
+          .map(([rId]) => rId);
+        
+        if (highConfIds.length > 0) {
+          setSelectedRuleIds(prev => {
+            const next = new Set(prev);
+            highConfIds.forEach(id => next.add(id));
+            return next;
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error('AI tolerance recommendation error:', err);
+      alert(`AI 智慧推薦公差失敗: ${err?.response?.data?.detail || err.message}`);
+    } finally {
+      setIsRecommendingTolerances(false);
+    }
+  };
+
+  const handleSaveAsHistoricalCase = async (ruleId: string) => {
+    const rec = aiRecommendations[ruleId];
+    const cfg = ruleConfig[ruleId] || {};
+    const rule = candidateRules.find(r => (r.id || r.rule_id) === ruleId);
+    if (!rule) return;
+
+    try {
+      const res = await axios.post(`${API_BASE}/api/tolerance/save-case`, {
+        part_type: 'SHAFT',
+        feature_type: rule.category || 'shaft_segment',
+        inferred_role: rec?.inferred_role || 'FUNCTIONAL_JOURNAL',
+        nominal_dimensions: { nominal: rule.nominal_value || 0 },
+        tolerance_config: cfg.tolerance_config || { mode: 'FIT', fit_class: cfg.tolerance },
+        neighbor_types: [],
+        boundary_position: 'INTERIOR',
+        description: `工程師於 UI 審定之 ${ruleId} 公差案例`
+      });
+      if (res.data?.status === 'ok') {
+        alert(`已成功將 ${ruleId} 公差案例存入歷史案例庫（總數: ${res.data.total_cases} 筆）！`);
+        setToleranceStats(prev => prev ? { ...prev, total_cases: res.data.total_cases } : null);
+      }
+    } catch (err: any) {
+      alert(`儲存案例失敗: ${err?.message}`);
+    }
+  };
+
   const handleApplyTemplate = (templateId: string) => {
     if (!templateId || candidateRules.length === 0) return;
     axios.post(`${API_BASE}/api/annotation/apply-template`, {
@@ -1018,6 +1118,7 @@ function App() {
         const views = cfg.views || cfg.target_views || r.target_views || r.views || [cfg.preferred_view || r.preferred_view || r.view || 'front'];
         const rawSides = cfg.sides || cfg.side || r.sides || r.side || ['BOTTOM'];
         const sides = Array.isArray(rawSides) ? rawSides : [rawSides];
+        const tolCfg = cfg.tolerance_config !== undefined ? cfg.tolerance_config : r.tolerance_config;
         return {
           ...r,
           enabled: selectedRuleIds.has(rId),
@@ -1026,6 +1127,7 @@ function App() {
           sides: sides,
           side: sides[0] || 'BOTTOM',
           preferred_view: cfg.preferred_view || r.preferred_view || r.view || 'front',
+          tolerance_config: tolCfg,
           tolerance: cfg.tolerance !== undefined ? cfg.tolerance : (r.tolerance || r.default_tolerance || ''),
           prefix: cfg.prefix !== undefined ? cfg.prefix : (r.prefix || r.default_prefix || ''),
           baseline: cfg.baseline || r.baseline || 'NONE'
@@ -2355,6 +2457,60 @@ function App() {
                   </span>
                 </div>
 
+                {/* CAD-RAG AI 智慧公差決策區塊 (CAD-RAG AI Tolerance Studio) */}
+                <div style={{ padding: '10px 12px', background: '#121212', borderBottom: '1px solid #262626', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Cpu size={14} color="#3b82f6" />
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#f5f5f5', letterSpacing: 0.5 }}>
+                        CAD-RAG 智慧公差推薦
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#1a2234', border: '1px solid #1e3a8a', padding: '2px 6px', borderRadius: 3 }}>
+                      <Database size={11} color="#60a5fa" />
+                      <span style={{ fontSize: 10, color: '#93c5fd', fontWeight: 600 }}>
+                        案例庫: {toleranceStats?.total_cases ?? 70} 筆
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <button
+                      onClick={handleAiRecommendTolerances}
+                      disabled={isRecommendingTolerances || candidateRules.length === 0}
+                      style={{
+                        flex: 1,
+                        background: isRecommendingTolerances ? '#1e3a8a' : '#1d4ed8',
+                        border: '1px solid #2563eb',
+                        borderRadius: 4,
+                        color: '#fff',
+                        fontSize: 11,
+                        padding: '6px 12px',
+                        fontWeight: 600,
+                        cursor: isRecommendingTolerances ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      {isRecommendingTolerances ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <Sparkles size={13} />
+                      )}
+                      <span>{isRecommendingTolerances ? '正在進行 CAD-RAG 檢索推論...' : '一鍵 AI 推薦公差 (Tier 1~3)'}</span>
+                    </button>
+                  </div>
+
+                  {recommendSummary && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 10, color: '#a3a3a3', background: '#18181b', padding: '4px 8px', borderRadius: 3, border: '1px solid #27272a' }}>
+                      <span>已完成 {recommendSummary.total_rules} 條規則推薦</span>
+                      <span style={{ color: '#34d399', fontWeight: 600 }}>{recommendSummary.high_confidence_count} 項高信心度匹配</span>
+                    </div>
+                  )}
+                </div>
+
                 {/* 樣板風格庫與一鍵套用區塊 (Template Preset Section) */}
                 <div style={{ padding: '10px 12px', background: '#141414', borderBottom: '1px solid #262626' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -2578,6 +2734,7 @@ function App() {
                       const isHovered = hoveredFeatureId === rId;
                       const cat = (rule.category || rule.type || '').toLowerCase();
                       const cfg = ruleConfig[rId] || {};
+                      const rec = aiRecommendations[rId];
                       const currentTol = cfg.tolerance !== undefined ? cfg.tolerance : (rule.tolerance || rule.default_tolerance || '');
                       const rawSides = cfg.sides || cfg.side || rule.sides || rule.side || ['BOTTOM'];
                       const currentSides: string[] = Array.isArray(rawSides) ? rawSides : [rawSides];
@@ -2612,28 +2769,95 @@ function App() {
                             gap: 6,
                           }}
                         >
-                          {/* Header Row: Checkbox + Rule ID + Category Badge */}
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1 }}>
+                          {/* Header Row: Checkbox + Rule ID + Category Badge + AI Tier Badge */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1, minWidth: 0 }}>
                               <input
                                 type="checkbox"
                                 checked={isSelected}
                                 onChange={() => toggleRule(rId)}
-                                style={{ cursor: 'pointer', accentColor: '#2563eb', width: 14, height: 14 }}
+                                style={{ cursor: 'pointer', accentColor: '#2563eb', width: 14, height: 14, flexShrink: 0 }}
                               />
-                              <span style={{ fontWeight: 600, color: isSelected ? '#f5f5f5' : '#737373', fontSize: 12 }}>
+                              <span style={{ fontWeight: 600, color: isSelected ? '#f5f5f5' : '#737373', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {rId}
                               </span>
                             </label>
-                            <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: badgeBg, color: badgeColor, fontWeight: 500 }}>
-                              {rule.category || rule.type || rule.dim_type}
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                              {rec && (
+                                <span
+                                  style={{
+                                    fontSize: 9,
+                                    padding: '2px 5px',
+                                    borderRadius: 3,
+                                    background: rec.tier_level === 'TIER_1_RAG_MATCH' ? '#064e3b' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#1e3a8a' : '#262626'),
+                                    color: rec.tier_level === 'TIER_1_RAG_MATCH' ? '#6ee7b7' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#93c5fd' : '#a3a3a3'),
+                                    border: `1px solid ${rec.tier_level === 'TIER_1_RAG_MATCH' ? '#047857' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#2563eb' : '#404040')}`,
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {rec.tier_level === 'TIER_1_RAG_MATCH' ? `RAG ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? `推論 ${(rec.confidence * 100).toFixed(0)}%` : '保底')}
+                                </span>
+                              )}
+                              <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: badgeBg, color: badgeColor, fontWeight: 500 }}>
+                                {rule.category || rule.type || rule.dim_type}
+                              </span>
+                            </div>
                           </div>
 
                           {/* Rule Name */}
                           <div style={{ fontWeight: 500, color: isSelected ? '#93c5fd' : '#a3a3a3', fontSize: 11, paddingLeft: 22 }}>
                             {rule.name}
                           </div>
+
+                          {/* AI Recommendation Reasoning Banner */}
+                          {rec && (
+                            <div style={{ marginLeft: 22, background: '#131b26', border: '1px solid #1e3a8a', borderRadius: 4, padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <Cpu size={11} color="#60a5fa" />
+                                  <span style={{ fontSize: 10, fontWeight: 700, color: '#93c5fd' }}>
+                                    {rec.inferred_role ? `[${rec.inferred_role}] ` : ''}推薦: {rec.formatted_display}
+                                  </span>
+                                </div>
+                                <span style={{ fontSize: 9, color: rec.confidence >= 0.85 ? '#34d399' : '#93c5fd', fontWeight: 600 }}>
+                                  {(rec.confidence * 100).toFixed(0)}% 信心度
+                                </span>
+                              </div>
+                              <div style={{ fontSize: 10, color: '#cbd5e1', lineHeight: 1.35 }}>
+                                {rec.reasoning_description}
+                              </div>
+                              {rec.evidence_sources && rec.evidence_sources.length > 0 && (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 2, paddingTop: 4, borderTop: '1px solid #1e293b' }}>
+                                  <span style={{ fontSize: 9, color: '#64748b' }}>
+                                    依據: {rec.evidence_sources.join(', ')}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSaveAsHistoricalCase(rId);
+                                    }}
+                                    title="將此審定公差存入歷史案例庫"
+                                    style={{
+                                      background: 'transparent',
+                                      border: '1px solid #334155',
+                                      borderRadius: 3,
+                                      color: '#94a3b8',
+                                      fontSize: 9,
+                                      padding: '1px 5px',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 3
+                                    }}
+                                  >
+                                    <Save size={9} />
+                                    <span>存為案例</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
 
                           {/* Annotation Customization Controls (Multi-View, Multi-Side, Tolerance) */}
                           {isSelected && (
@@ -2717,16 +2941,121 @@ function App() {
                                 </div>
                               </div>
 
-                              {/* Tolerance Setting */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span style={{ fontSize: 10, color: '#737373', width: 48 }}>公差設定:</span>
-                                <input
-                                  type="text"
-                                  value={currentTol}
-                                  onChange={(e) => updateRuleConfig(rId, { tolerance: e.target.value })}
-                                  placeholder="如 ±0.005 或 H13"
-                                  style={{ flex: 1, background: '#1f1f1f', border: '1px solid #333', borderRadius: 3, color: '#facc15', fontSize: 10, padding: '2px 6px' }}
-                                />
+                              {/* Tolerance Configuration (公差設定與配合代號選擇) */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{ fontSize: 10, color: '#737373', width: 48 }}>公差設定:</span>
+                                  {(() => {
+                                    const currentTolConfig = cfg.tolerance_config || rule.tolerance_config || { mode: 'NONE' };
+                                    const tolMode = currentTolConfig.mode || 'NONE';
+                                    const fitClass = currentTolConfig.fit_class || 'h6';
+                                    const selectValue = tolMode === 'FIT' ? fitClass : (tolMode === 'GROOVE' ? 'GROOVE' : (tolMode === 'CUSTOM_SYMMETRIC' ? 'CUSTOM_SYMMETRIC' : (tolMode === 'CUSTOM_LIMITS' ? 'CUSTOM_LIMITS' : 'NONE')));
+
+                                    return (
+                                      <select
+                                        value={selectValue}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          if (val === 'NONE') {
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'NONE' }, tolerance: '' });
+                                          } else if (val === 'GROOVE') {
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'GROOVE', upper_dev: 0.040, lower_dev: 0.000 }, tolerance: '(+0.040/0.000)' });
+                                          } else if (val === 'CUSTOM_SYMMETRIC') {
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'CUSTOM_SYMMETRIC', dev: currentTolConfig.dev || 0.05 }, tolerance: `±${currentTolConfig.dev || 0.05}` });
+                                          } else if (val === 'CUSTOM_LIMITS') {
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'CUSTOM_LIMITS', upper_dev: currentTolConfig.upper_dev || 0.02, lower_dev: currentTolConfig.lower_dev || -0.01 }, tolerance: `(+${currentTolConfig.upper_dev || 0.02}/${currentTolConfig.lower_dev || -0.01})` });
+                                          } else {
+                                            const isHole = cat.includes('hole') || val.startsWith('H') || val.startsWith('P') || val.startsWith('JS');
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'FIT', fit_class: val, is_hole: isHole }, tolerance: val });
+                                          }
+                                        }}
+                                        style={{
+                                          flex: 1,
+                                          background: '#1f1f1f',
+                                          border: '1px solid #333',
+                                          borderRadius: 3,
+                                          color: tolMode !== 'NONE' ? '#facc15' : '#a3a3a3',
+                                          fontSize: 10,
+                                          padding: '3px 6px',
+                                          cursor: 'pointer',
+                                          fontWeight: tolMode !== 'NONE' ? 600 : 400
+                                        }}
+                                      >
+                                        <option value="NONE">無公差 (未注 ISO 2768-m)</option>
+                                        {(cat.includes('groove') || rId.includes('groove')) && (
+                                          <option value="GROOVE">JIS 卡簧槽標準 (+0.040 / 0.000)</option>
+                                        )}
+                                        <optgroup label="ISO 286 配合公差">
+                                          <option value="h6">h6 — 軸承/精密滑動配合</option>
+                                          <option value="p6">p6 — 輪轂過盈壓配</option>
+                                          <option value="g6">g6 — 滑動間隙配合</option>
+                                          <option value="js6">js6 — 軸向對稱過渡配合</option>
+                                          <option value="h11">h11 — 自由外徑/卡簧槽</option>
+                                          <option value="H7">H7 — 基準孔精密配合</option>
+                                          <option value="H8">H8 — 基準孔一般配合</option>
+                                        </optgroup>
+                                        <optgroup label="自訂數值偏差">
+                                          <option value="CUSTOM_SYMMETRIC">自訂對稱偏差 (±)</option>
+                                          <option value="CUSTOM_LIMITS">自訂極限偏差 (+ / -)</option>
+                                        </optgroup>
+                                      </select>
+                                    );
+                                  })()}
+                                </div>
+
+                                {(() => {
+                                  const currentTolConfig = cfg.tolerance_config || rule.tolerance_config || { mode: 'NONE' };
+                                  if (currentTolConfig.mode === 'CUSTOM_SYMMETRIC') {
+                                    return (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 54 }}>
+                                        <span style={{ fontSize: 10, color: '#737373' }}>對稱偏差 ±:</span>
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={currentTolConfig.dev !== undefined ? currentTolConfig.dev : 0.05}
+                                          onChange={(e) => {
+                                            const val = parseFloat(e.target.value) || 0.0;
+                                            updateRuleConfig(rId, { tolerance_config: { ...currentTolConfig, mode: 'CUSTOM_SYMMETRIC', dev: val }, tolerance: `±${val}` });
+                                          }}
+                                          style={{ width: 60, background: '#1f1f1f', border: '1px solid #333', borderRadius: 3, color: '#facc15', fontSize: 10, padding: '2px 6px' }}
+                                        />
+                                        <span style={{ fontSize: 10, color: '#737373' }}>mm</span>
+                                      </div>
+                                    );
+                                  }
+                                  if (currentTolConfig.mode === 'CUSTOM_LIMITS') {
+                                    return (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 54 }}>
+                                        <span style={{ fontSize: 10, color: '#737373' }}>上:</span>
+                                        <input
+                                          type="number"
+                                          step="0.005"
+                                          value={currentTolConfig.upper_dev !== undefined ? currentTolConfig.upper_dev : 0.02}
+                                          onChange={(e) => {
+                                            const val = parseFloat(e.target.value) || 0.0;
+                                            const low = currentTolConfig.lower_dev !== undefined ? currentTolConfig.lower_dev : -0.01;
+                                            updateRuleConfig(rId, { tolerance_config: { ...currentTolConfig, mode: 'CUSTOM_LIMITS', upper_dev: val, lower_dev: low }, tolerance: `(+${val}/${low})` });
+                                          }}
+                                          style={{ width: 50, background: '#1f1f1f', border: '1px solid #333', borderRadius: 3, color: '#4ade80', fontSize: 10, padding: '2px 6px' }}
+                                        />
+                                        <span style={{ fontSize: 10, color: '#737373' }}>下:</span>
+                                        <input
+                                          type="number"
+                                          step="0.005"
+                                          value={currentTolConfig.lower_dev !== undefined ? currentTolConfig.lower_dev : -0.01}
+                                          onChange={(e) => {
+                                            const val = parseFloat(e.target.value) || 0.0;
+                                            const up = currentTolConfig.upper_dev !== undefined ? currentTolConfig.upper_dev : 0.02;
+                                            updateRuleConfig(rId, { tolerance_config: { ...currentTolConfig, mode: 'CUSTOM_LIMITS', upper_dev: up, lower_dev: val }, tolerance: `(+${up}/${val})` });
+                                          }}
+                                          style={{ width: 50, background: '#1f1f1f', border: '1px solid #333', borderRadius: 3, color: '#f87171', fontSize: 10, padding: '2px 6px' }}
+                                        />
+                                        <span style={{ fontSize: 10, color: '#737373' }}>mm</span>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
                               </div>
                             </div>
                           )}
