@@ -181,7 +181,15 @@ class ToleranceDecisionService:
                     mode = t_cfg.get("mode", "FIT")
                     fit_cls = t_cfg.get("fit_class")
 
-                    u_dev, l_dev = self._compute_exact_devs(nominal_val, mode, fit_cls, is_hole=t_cfg.get("is_hole", False), custom_cfg=t_cfg)
+                    # 防護：長度/段長尺寸絕不能套用軸孔配合代號 (如 h6)
+                    if not is_diameter and mode == "FIT":
+                        mode = "NONE"
+                        fit_cls = None
+                        u_dev, l_dev = 0.0, 0.0
+                        desc = f"歷史案例段長，採用未注公差 (ISO 2768-m)。"
+                    else:
+                        u_dev, l_dev = self._compute_exact_devs(nominal_val, mode, fit_cls, is_hole=t_cfg.get("is_hole", False), custom_cfg=t_cfg)
+                        desc = top_case.description
                     formatted = format_tolerance_dimension(nominal_val, is_diameter=is_diameter, tol_config={
                         "mode": mode, "fit_class": fit_cls, "upper_dev": u_dev, "lower_dev": l_dev
                     })
@@ -205,26 +213,46 @@ class ToleranceDecisionService:
                 # === Tier 2: 語意啟發式推論 (Similarity 0.65 ~ 0.85) ===
                 elif sim_score >= 0.60:
                     role = node.inferred_role
-                    if role == "BEARING_JOURNAL":
-                        fit_cls = "h6"
-                        mode = "FIT"
-                        u_dev, l_dev = lookup_iso_fit_deviation(nominal_val, fit_cls, is_hole=False)
-                        desc = f"特徵鄰接卡簧槽/定位軸肩，判定為軸承安裝段，推薦 h6 精密配合。"
-                    elif role == "PRESS_FIT_HUB":
-                        fit_cls = "p6"
-                        mode = "FIT"
-                        u_dev, l_dev = lookup_iso_fit_deviation(nominal_val, fit_cls, is_hole=False)
-                        desc = f"位於軸端，判定為葉輪/輪轂壓配段，推薦 p6 過盈配合。"
-                    elif role == "RETAINING_RING_GROOVE":
-                        fit_cls = "CUSTOM"
-                        mode = "GROOVE"
-                        u_dev, l_dev = 0.040, 0.000
-                        desc = f"標準卡簧槽，依據 JIS B2804 推薦 (+0.040/0.000mm)。"
+                    
+                    if not is_diameter:
+                        # 線性階梯段長 / 槽寬等長度尺寸，嚴禁套用 ISO 軸孔配合代號 (如 h6)
+                        if category in ("step",) or "len" in rule_id or "width" in rule_id:
+                            mode = "NONE"
+                            fit_cls = None
+                            u_dev, l_dev = 0.05, -0.05
+                            desc = f"段落定位階梯長度，採用未注公差 (ISO 2768-m) 或 ±0.05mm 線性工程公差。"
+                        elif category in ("overall",):
+                            mode = "CUSTOM_SYMMETRIC"
+                            fit_cls = None
+                            u_dev, l_dev = 0.10, -0.10
+                            desc = f"整體包絡總長度，推薦 ±0.10mm 線性工程公差。"
+                        else:
+                            mode = "NONE"
+                            fit_cls = None
+                            u_dev, l_dev = 0.0, 0.0
+                            desc = f"過渡/非配合線性特徵，採用未注公差 (ISO 2768-m)。"
                     else:
-                        fit_cls = None
-                        mode = "CUSTOM_SYMMETRIC"
-                        u_dev, l_dev = 0.05, -0.05
-                        desc = f"段落定位階梯，推薦 ±0.05mm 線性工程公差。"
+                        # 直徑尺寸才允許套用配合公差
+                        if role == "BEARING_JOURNAL":
+                            fit_cls = "h6"
+                            mode = "FIT"
+                            u_dev, l_dev = lookup_iso_fit_deviation(nominal_val, fit_cls, is_hole=False)
+                            desc = f"特徵鄰接卡簧槽/定位軸肩，判定為軸承安裝段，推薦 h6 精密配合。"
+                        elif role == "PRESS_FIT_HUB":
+                            fit_cls = "p6"
+                            mode = "FIT"
+                            u_dev, l_dev = lookup_iso_fit_deviation(nominal_val, fit_cls, is_hole=False)
+                            desc = f"位於軸端，判定為葉輪/輪轂壓配段，推薦 p6 過盈配合。"
+                        elif role == "RETAINING_RING_GROOVE":
+                            fit_cls = "H13"
+                            mode = "GROOVE"
+                            u_dev, l_dev = 0.040, 0.000
+                            desc = f"標準卡簧槽直徑，依據 JIS B2804 推薦 (+0.040/0.000mm) / H13。"
+                        else:
+                            fit_cls = None
+                            mode = "NONE"
+                            u_dev, l_dev = 0.0, 0.0
+                            desc = f"一般過渡外徑，採用 ISO 2768-m 未注公差。"
 
                     formatted = format_tolerance_dimension(nominal_val, is_diameter=is_diameter, tol_config={
                         "mode": mode, "fit_class": fit_cls, "upper_dev": u_dev, "lower_dev": l_dev
@@ -240,37 +268,45 @@ class ToleranceDecisionService:
                         upper_dev=u_dev,
                         lower_dev=l_dev,
                         formatted_display=formatted,
-                        confidence=0.80,
+                        confidence=0.85,
                         tier_level="TIER_2_RULE_INFERENCE",
                         evidence_sources=[f"ROLE_INFERENCE:{role}", top_case.case_id],
                         reasoning_description=desc
                     )
 
         # === Tier 3: 基礎保底 (General Fallback / ISO 2768-m) ===
-        if category in ("groove",) or "groove" in rule_id:
-            mode = "GROOVE"
-            fit_cls = "CUSTOM"
-            u_dev, l_dev = 0.040, 0.000
-            desc = "標準退刀/卡簧槽，推薦 JIS B2804 (+0.040/0.000mm)。"
-            conf = 0.90
-        elif category in ("overall",):
-            mode = "CUSTOM_SYMMETRIC"
-            fit_cls = None
-            u_dev, l_dev = 0.10, -0.10
-            desc = "整體包絡總長度，推薦 ±0.10mm 一般線性公差。"
-            conf = 0.95
-        elif category in ("step",):
-            mode = "CUSTOM_SYMMETRIC"
-            fit_cls = None
-            u_dev, l_dev = 0.05, -0.05
-            desc = "定位台階長度，推薦 ±0.05mm 線性公差。"
-            conf = 0.88
+        if not is_diameter:
+            if category in ("overall",):
+                mode = "CUSTOM_SYMMETRIC"
+                fit_cls = None
+                u_dev, l_dev = 0.10, -0.10
+                desc = "整體包絡總長度，推薦 ±0.10mm 一般線性公差。"
+                conf = 0.95
+            elif category in ("step",) or "len" in rule_id or "width" in rule_id:
+                mode = "NONE"
+                fit_cls = None
+                u_dev, l_dev = 0.05, -0.05
+                desc = "定位台階長度，推薦採用未注公差 (ISO 2768-m)。"
+                conf = 0.90
+            else:
+                mode = "NONE"
+                fit_cls = None
+                u_dev, l_dev = 0.0, 0.0
+                desc = "非配合線性特徵，採用 ISO 2768-m 未注公差。"
+                conf = 0.95
         else:
-            mode = "NONE"
-            fit_cls = None
-            u_dev, l_dev = 0.0, 0.0
-            desc = "一般非配合過渡特徵，採用 ISO 2768-m 未注公差。"
-            conf = 0.95
+            if category in ("groove",) or "groove" in rule_id:
+                mode = "GROOVE"
+                fit_cls = "H13"
+                u_dev, l_dev = 0.040, 0.000
+                desc = "標準退刀/卡簧槽直徑，推薦 JIS B2804 (+0.040/0.000mm) / H13。"
+                conf = 0.90
+            else:
+                mode = "NONE"
+                fit_cls = None
+                u_dev, l_dev = 0.0, 0.0
+                desc = "一般非配合過渡特徵，採用 ISO 2768-m 未注公差。"
+                conf = 0.95
 
         formatted = format_tolerance_dimension(nominal_val, is_diameter=is_diameter, tol_config={
             "mode": mode, "fit_class": fit_cls, "upper_dev": u_dev, "lower_dev": l_dev, "dev": u_dev
