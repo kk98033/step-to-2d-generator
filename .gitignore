@@ -37,3 +37,6 @@ web_app/backend/models/
 # === Internal project notes (do not push) ===
 auto_2d_drawing/任務進度.md
 auto_2d_drawing/業主圖面標準分析報告.md
+experimental_lab/
+research_vlm_tolerance_rag/
+

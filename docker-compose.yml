@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  cad-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: forcecon-cad-generator
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # 持久化 CAD 模型庫與產出的 2D 工程圖
+      - ./models:/app/models
+      - ./output:/app/output
+    environment:
+      - PYTHONUNBUFFERED=1

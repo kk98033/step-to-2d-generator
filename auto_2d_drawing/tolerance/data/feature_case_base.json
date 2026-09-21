@@ -1,0 +1,1650 @@
+[
+  {
+    "case_id": "SEED_SHAFT_BEARING_01",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "BEARING_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 3.0,
+      "length": 8.0
+    },
+    "neighbor_types": [
+      "retaining_ring_groove",
+      "locating_shoulder"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "FIT",
+      "fit_class": "h6",
+      "is_hole": false
+    },
+    "confidence": 0.95,
+    "evidence_source": "FORCECON_STANDARD_SEED",
+    "description": "微型馬達標準滾珠軸承安裝段，直徑 3.0mm，鄰接定位卡簧槽，採用 h6 (0/-0.006mm) 緊密滑動配合。"
+  },
+  {
+    "case_id": "SEED_SHAFT_BEARING_02",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "BEARING_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 2.5,
+      "length": 6.0
+    },
+    "neighbor_types": [
+      "retaining_ring_groove",
+      "locating_shoulder"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "FIT",
+      "fit_class": "h6",
+      "is_hole": false
+    },
+    "confidence": 0.94,
+    "evidence_source": "FORCECON_STANDARD_SEED",
+    "description": "微型風扇軸承安裝段，直徑 2.5mm，採用 h6 (0/-0.006mm) 精密配合。"
+  },
+  {
+    "case_id": "SEED_SHAFT_BEARING_03",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "BEARING_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 4.0,
+      "length": 10.0
+    },
+    "neighbor_types": [
+      "retaining_ring_groove",
+      "locating_shoulder"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "FIT",
+      "fit_class": "h6",
+      "is_hole": false
+    },
+    "confidence": 0.95,
+    "evidence_source": "FORCECON_STANDARD_SEED",
+    "description": "伺服馬達中型軸承位，直徑 4.0mm，採用 h6 (0/-0.008mm) 配合。"
+  },
+  {
+    "case_id": "SEED_SHAFT_BEARING_04",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "BEARING_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 5.0,
+      "length": 12.0
+    },
+    "neighbor_types": [
+      "locating_shoulder"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "FIT",
+      "fit_class": "h6",
+      "is_hole": false
+    },
+    "confidence": 0.95,
+    "evidence_source": "FORCECON_STANDARD_SEED",
+    "description": "散熱風扇驅動軸承位，直徑 5.0mm，採用 h6 (0/-0.008mm)。"
+  },
+  {
+    "case_id": "SEED_SHAFT_PRESS_FIT_01",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "PRESS_FIT_HUB",
+    "nominal_dimensions": {
+      "diameter": 2.0,
+      "length": 5.0
+    },
+    "neighbor_types": [
+      "shaft_end",
+      "pilot_chamfer"
+    ],
+    "boundary_position": "RIGHT_END",
+    "tolerance_config": {
+      "mode": "FIT",
+      "fit_class": "p6",
+      "is_hole": false
+    },
+    "confidence": 0.92,
+    "evidence_source": "FORCECON_STANDARD_SEED",
+    "description": "風扇塑膠葉輪輪轂過盈壓配段，位於軸端，採用 p6 (+0.012/+0.006mm) 防止高速打滑。"
+  },
+  {
+    "case_id": "SEED_SHAFT_PRESS_FIT_02",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "PRESS_FIT_HUB",
+    "nominal_dimensions": {
+      "diameter": 3.0,
+      "length": 6.5
+    },
+    "neighbor_types": [
+      "shaft_end",
+      "pilot_chamfer"
+    ],
+    "boundary_position": "LEFT_END",
+    "tolerance_config": {
+      "mode": "FIT",
+      "fit_class": "p6",
+      "is_hole": false
+    },
+    "confidence": 0.93,
+    "evidence_source": "FORCECON_STANDARD_SEED",
+    "description": "金屬轉子鐵芯過盈壓配段，採用 p6 (+0.012/+0.006mm) 緊固連接。"
+  },
+  {
+    "case_id": "SEED_SHAFT_SLIDING_01",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "SLIDING_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 3.0,
+      "length": 15.0
+    },
+    "neighbor_types": [
+      "locating_shoulder"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "FIT",
+      "fit_class": "g6",
+      "is_hole": false
+    },
+    "confidence": 0.9,
+    "evidence_source": "FORCECON_STANDARD_SEED",
+    "description": "含油襯套滑動摩擦段，直徑 3.0mm，採用 g6 (-0.002/-0.008mm) 保證油膜潤滑間隙。"
+  },
+  {
+    "case_id": "SEED_GROOVE_E_RING_01",
+    "part_type": "SHAFT",
+    "feature_type": "retaining_ring_groove",
+    "inferred_role": "RETAINING_RING_GROOVE",
+    "nominal_dimensions": {
+      "groove_diameter": 2.5,
+      "groove_width": 0.6
+    },
+    "neighbor_types": [
+      "shaft_segment",
+      "locating_shoulder"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "GROOVE",
+      "upper_dev": 0.04,
+      "lower_dev": 0.0
+    },
+    "confidence": 0.96,
+    "evidence_source": "FORCECON_STANDARD_SEED",
+    "description": "E型扣環定位槽 (JIS B2804)，寬度 0.6mm，槽底直徑 2.5mm，採用 (+0.040/0.000mm) 標準偏差。"
+  },
+  {
+    "case_id": "SEED_GROOVE_E_RING_02",
+    "part_type": "SHAFT",
+    "feature_type": "retaining_ring_groove",
+    "inferred_role": "RETAINING_RING_GROOVE",
+    "nominal_dimensions": {
+      "groove_diameter": 2.58,
+      "groove_width": 0.9
+    },
+    "neighbor_types": [
+      "shaft_segment",
+      "pilot_chamfer"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "GROOVE",
+      "upper_dev": 0.04,
+      "lower_dev": 0.0
+    },
+    "confidence": 0.96,
+    "evidence_source": "FORCECON_STANDARD_SEED",
+    "description": "C型扣環安裝槽，寬度 0.9mm，採用 (+0.040/0.000mm)。"
+  },
+  {
+    "case_id": "SEED_BORE_BEARING_01",
+    "part_type": "HOUSING",
+    "feature_type": "hole",
+    "inferred_role": "BEARING_BORE",
+    "nominal_dimensions": {
+      "diameter": 6.0,
+      "length": 6.0
+    },
+    "neighbor_types": [
+      "plane",
+      "chamfer"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "FIT",
+      "fit_class": "H7",
+      "is_hole": true
+    },
+    "confidence": 0.95,
+    "evidence_source": "FORCECON_STANDARD_SEED",
+    "description": "馬達基座軸承安裝孔，直徑 6.0mm，採用 H7 (+0.012/0.000mm) 精密過渡配合。"
+  },
+  {
+    "case_id": "SEED_BORE_BEARING_02",
+    "part_type": "HOUSING",
+    "feature_type": "hole",
+    "inferred_role": "BEARING_BORE",
+    "nominal_dimensions": {
+      "diameter": 8.0,
+      "length": 8.0
+    },
+    "neighbor_types": [
+      "plane"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "FIT",
+      "fit_class": "H7",
+      "is_hole": true
+    },
+    "confidence": 0.95,
+    "evidence_source": "FORCECON_STANDARD_SEED",
+    "description": "風扇中管軸承孔，直徑 8.0mm，採用 H7 (+0.015/0.000mm)。"
+  },
+  {
+    "case_id": "SEED_CHAMFER_PILOT_01",
+    "part_type": "SHAFT",
+    "feature_type": "pilot_chamfer",
+    "inferred_role": "PILOT_LEAD_IN",
+    "nominal_dimensions": {
+      "chamfer_height": 0.5,
+      "angle": 45.0
+    },
+    "neighbor_types": [
+      "shaft_segment",
+      "shaft_end"
+    ],
+    "boundary_position": "LEFT_END",
+    "tolerance_config": {
+      "mode": "NONE"
+    },
+    "confidence": 0.98,
+    "evidence_source": "FORCECON_STANDARD_SEED",
+    "description": "軸端組裝導引倒角 C0.5x45°，採用 ISO 2768-m 一般未注公差。"
+  },
+  {
+    "case_id": "SEED_CHAMFER_PILOT_02",
+    "part_type": "SHAFT",
+    "feature_type": "pilot_chamfer",
+    "inferred_role": "PILOT_LEAD_IN",
+    "nominal_dimensions": {
+      "chamfer_height": 0.75,
+      "angle": 35.0
+    },
+    "neighbor_types": [
+      "shaft_segment",
+      "shaft_end"
+    ],
+    "boundary_position": "LEFT_END",
+    "tolerance_config": {
+      "mode": "NONE"
+    },
+    "confidence": 0.98,
+    "evidence_source": "FORCECON_STANDARD_SEED",
+    "description": "軸端引導導錐 C0.75x35°，採用 ISO 2768-m 一般未注公差。"
+  },
+  {
+    "case_id": "SEED_SHAFT_OVERALL_01",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_overall",
+    "inferred_role": "OVERALL_LENGTH",
+    "nominal_dimensions": {
+      "length": 21.4
+    },
+    "neighbor_types": [
+      "shaft_end"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.1
+    },
+    "confidence": 0.92,
+    "evidence_source": "FORCECON_STANDARD_SEED",
+    "description": "小型馬達軸總長度 L21.40mm，採用 ±0.10mm 線性工程公差。"
+  },
+  {
+    "case_id": "SEED_STEP_SHOULDER_01",
+    "part_type": "SHAFT",
+    "feature_type": "locating_shoulder",
+    "inferred_role": "AXIAL_LOCATING_SHOULDER",
+    "nominal_dimensions": {
+      "step_height": 0.5,
+      "dia_from": 2.5,
+      "dia_to": 3.0
+    },
+    "neighbor_types": [
+      "shaft_segment",
+      "retaining_ring_groove"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.05
+    },
+    "confidence": 0.93,
+    "evidence_source": "FORCECON_STANDARD_SEED",
+    "description": "軸承定位軸肩台階，採用 ±0.05mm 線性公差控制軸向竄動。"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_366",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.2,
+      "length": 1.854
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.25
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.25)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_367",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.2,
+      "length": 1.854
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.25
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.25)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_365",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.2,
+      "length": 2.6
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.25
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.25)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_groove_155",
+    "part_type": "SHAFT",
+    "feature_type": "retaining_ring_groove",
+    "inferred_role": "RETAINING_RING_GROOVE",
+    "nominal_dimensions": {
+      "groove_diameter": 0.3,
+      "groove_width": 0.9
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 retaining_ring_groove 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_362",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 3.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_331",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 2.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_groove_156",
+    "part_type": "SHAFT",
+    "feature_type": "retaining_ring_groove",
+    "inferred_role": "RETAINING_RING_GROOVE",
+    "nominal_dimensions": {
+      "groove_diameter": 0.3,
+      "groove_width": 0.9
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 retaining_ring_groove 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_359",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 6.541
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_332",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 5.541
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_334",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 5.541
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_361",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 6.541
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_333",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 2.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_360",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 3.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_354",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 3.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_328",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 2.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_353",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 6.521
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_327",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 5.521
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_329",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 5.521
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_351",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 6.521
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_330",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 2.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_352",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 3.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_358",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 6.584
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_336",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 5.582
+    },
+    "neighbor_types": [
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_357",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 3.484
+    },
+    "neighbor_types": [
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_335",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 2.518
+    },
+    "neighbor_types": [
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_337",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 2.912
+    },
+    "neighbor_types": [
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_355",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 3.949
+    },
+    "neighbor_types": [
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_338",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 5.568
+    },
+    "neighbor_types": [
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_356",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 6.568
+    },
+    "neighbor_types": [
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_363",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.2,
+      "length": 1.095
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.25
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.25)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_364",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.2,
+      "length": 1.234
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.25
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.25)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_346",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 3.528
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_315",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 2.52
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_343",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 6.577
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_316",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 5.636
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_318",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 5.955
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_345",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 7.023
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_317",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 2.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_344",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 3.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_342",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 3.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_320",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 2.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_350",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 6.541
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_323",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 5.541
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_341",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 6.541
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_319",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 5.541
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_347",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 3.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_324",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 2.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_326",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 2.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_349",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 3.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_321",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 5.541
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_339",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 6.541
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_325",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 5.541
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_348",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 6.541
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_322",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 2.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  },
+  {
+    "case_id": "HIST_1fp3d6000h-r01_cyl_340",
+    "part_type": "SHAFT",
+    "feature_type": "shaft_segment",
+    "inferred_role": "GENERAL_FIT_JOURNAL",
+    "nominal_dimensions": {
+      "diameter": 0.3,
+      "length": 3.5
+    },
+    "neighbor_types": [
+      "pilot_chamfer",
+      "retaining_ring_groove",
+      "shaft_segment",
+      "transition_fillet"
+    ],
+    "boundary_position": "INTERIOR",
+    "tolerance_config": {
+      "mode": "CUSTOM_SYMMETRIC",
+      "dev": 0.3
+    },
+    "confidence": 0.9,
+    "evidence_source": "1FP3D6000H-R01.dxf",
+    "description": "歷史工程圖 1FP3D6000H-R01.dxf 審定之 shaft_segment 公差 (名義值: 0.30)"
+  }
+]
