@@ -141,6 +141,11 @@ class HistoricalDataIngestor:
             best_diff = 0.08  # 容差 0.08mm 內
 
             for dim in dxf_dims:
+                # 只允許具有獨立名義尺寸、已通過自動驗證的圖面實體進入特徵案例庫。
+                if not dim.is_feature_dimension or dim.validation_status != "AUTO_VALIDATED":
+                    continue
+                if not self._dimension_matches_feature_type(dim, node):
+                    continue
                 diff = abs(dim.nominal_value - target_val)
                 if diff < best_diff:
                     # 優先挑選具備非 NONE 公差之標註
@@ -150,6 +155,8 @@ class HistoricalDataIngestor:
 
             if best_match and best_match.tolerance_config.get("mode") != "NONE":
                 case_id = f"HIST_{step_base}_{node.id}"
+                match_quality = max(0.0, 1.0 - (best_diff / 0.08))
+                case_confidence = min(0.80, best_match.extraction_confidence * (0.75 + 0.25 * match_quality))
                 new_case = ToleranceCase(
                     case_id=case_id,
                     part_type=graph.part_type,
@@ -159,14 +166,44 @@ class HistoricalDataIngestor:
                     neighbor_types=node.neighbor_types,
                     boundary_position=node.boundary_position,
                     tolerance_config=best_match.tolerance_config,
-                    confidence=0.90,
+                    confidence=round(case_confidence, 3),
                     evidence_source=os.path.basename(dxf_path),
-                    description=f"歷史工程圖 {os.path.basename(dxf_path)} 審定之 {node.feature_type} 公差 (名義值: {best_match.nominal_value:.2f})"
+                    description=f"歷史工程圖 {os.path.basename(dxf_path)} 自動擷取之 {node.feature_type} 公差 (名義值: {best_match.nominal_value:.2f})",
+                    verification_status="AUTO_VALIDATED",
+                    source_metadata={
+                        "dxf_path": dxf_path,
+                        "entity_handle": best_match.entity_handle,
+                        "source_entity_type": best_match.source_entity_type,
+                        "dimension_category": best_match.dimension_category,
+                        "raw_text": best_match.raw_text,
+                        "layer": best_match.layer,
+                        "points": best_match.points,
+                        "parser_confidence": best_match.extraction_confidence,
+                        "validation_reasons": best_match.validation_reasons,
+                        "value_difference_mm": round(best_diff, 4),
+                    },
                 )
                 self.case_base.add_case(new_case)
                 new_cases_count += 1
 
         return new_cases_count
+
+    @staticmethod
+    def _dimension_matches_feature_type(dim: ExtractedDimension, node: FeatureNode) -> bool:
+        """避免只因數值相近，就把線性尺寸配到直徑或把圓角配到軸段。"""
+        category = dim.dimension_category
+        feature_type = node.feature_type
+        if feature_type in ("shaft_segment", "hole"):
+            return category == "DIAMETER"
+        if feature_type == "retaining_ring_groove":
+            return category in ("DIAMETER", "LINEAR")
+        if feature_type == "pilot_chamfer":
+            return category in ("CHAMFER", "LINEAR")
+        if feature_type == "transition_fillet":
+            return category == "RADIUS"
+        if feature_type == "locating_shoulder":
+            return category == "LINEAR"
+        return False
 
 
 if __name__ == "__main__":

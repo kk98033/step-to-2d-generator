@@ -6,6 +6,7 @@ import shutil
 from typing import Dict, Any, List, Optional
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, UploadFile, File, Body, HTTPException
+from fastapi.responses import Response, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -24,6 +25,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def add_no_cache_header(request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 # Serve output files statically
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -145,29 +154,513 @@ from auto_2d_drawing.feature_layer import build_feature_records
 from auto_2d_drawing.smart_annotation_engine import TemplateManager, SmartAnnotationEngine
 from auto_2d_drawing.view_projector import ViewProjector
 from auto_2d_drawing.tolerance.tolerance_decision_service import ToleranceDecisionService
+from auto_2d_drawing.tolerance.iso_tolerance_table import lookup_iso_fit_deviation
 from auto_2d_drawing.tolerance.case_base import FeatureCaseBase, ToleranceCase
 
 template_manager = TemplateManager()
 case_base = FeatureCaseBase()
 tolerance_service = ToleranceDecisionService(case_base=case_base)
 
+from auto_2d_drawing.tolerance.dxf_tolerance_extractor import DxfToleranceExtractor
+import ezdxf
+from ezdxf.addons.drawing import RenderContext, Frontend
+from ezdxf.addons.drawing.svg import SVGBackend
+from ezdxf.addons.drawing.layout import Page
+
+dxf_extractor = DxfToleranceExtractor()
+
+DWG_INDEX_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "auto_2d_drawing", "tolerance", "data", "dwg_file_index.json"
+)
+SVG_CACHE_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "auto_2d_drawing", "tolerance", "data", "svg_cache"
+)
+PDF_CACHE_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "auto_2d_drawing", "tolerance", "data", "pdf_cache"
+)
+os.makedirs(SVG_CACHE_DIR, exist_ok=True)
+os.makedirs(PDF_CACHE_DIR, exist_ok=True)
+
+dwg_index = {}
+if os.path.exists(DWG_INDEX_PATH):
+    try:
+        with open(DWG_INDEX_PATH, "r", encoding="utf-8") as f:
+            dwg_index = json.load(f)
+    except Exception as e:
+        print(f"Failed to load dwg_file_index: {e}")
+
+def lookup_drawing_paths(name: str):
+    clean = os.path.splitext(name)[0].upper()
+    if clean in dwg_index:
+        return dwg_index[clean]
+    for k, v in dwg_index.items():
+        if clean == k or clean in k or k in clean:
+            return v
+    return None
+
+def _add_tolerance_highlight(doc, msp, entity_handle: Optional[str]):
+    if not entity_handle:
+        return
+    entity = doc.entitydb.get(entity_handle)
+    if entity is None:
+        return
+    point = getattr(entity.dxf, "text_midpoint", None) or getattr(entity.dxf, "insert", None)
+    if point is None:
+        point = getattr(entity.dxf, "defpoint", None)
+    if point is None:
+        return
+    try:
+        from ezdxf import bbox as ezdxf_bbox
+        ext = ezdxf_bbox.extents(msp)
+        size = ext.size
+        marker_size = max(float(size.x), float(size.y), 1.0) * 0.018
+    except Exception:
+        marker_size = 5.0
+    msp.add_circle((point.x, point.y), marker_size, dxfattribs={"color": 1, "lineweight": 70})
+    marker = msp.add_mtext(
+        f"TOL [{entity_handle}]",
+        dxfattribs={"char_height": marker_size * 0.55, "color": 1},
+    )
+    marker.set_location((point.x + marker_size, point.y + marker_size))
+
+
+def render_dxf_to_svg_cached(
+    dxf_path: str,
+    model_name: str,
+    highlight_handle: Optional[str] = None,
+) -> Optional[str]:
+    if not dxf_path or not os.path.exists(dxf_path):
+        return None
+    cache_file = os.path.join(SVG_CACHE_DIR, f"{model_name}.svg")
+    if not highlight_handle and os.path.exists(cache_file):
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception:
+            pass
+    try:
+        doc = ezdxf.readfile(dxf_path)
+        msp = doc.modelspace()
+        _add_tolerance_highlight(doc, msp, highlight_handle)
+        ctx = RenderContext(doc)
+        backend = SVGBackend()
+        frontend = Frontend(ctx, backend)
+        frontend.draw_layout(msp)
+        page = Page.from_dxf_layout(msp)
+        svg_str = backend.get_string(page)
+        if not highlight_handle:
+            with open(cache_file, "w", encoding="utf-8") as f:
+                f.write(svg_str)
+        return svg_str
+    except Exception as e:
+        print(f"Error rendering DXF {dxf_path} to SVG: {e}")
+        return None
+
+
+def render_dxf_to_pdf_cached(dxf_path: str, model_name: str) -> Optional[str]:
+    if not dxf_path or not os.path.exists(dxf_path):
+        return None
+    cache_file = os.path.join(PDF_CACHE_DIR, f"{model_name}.pdf")
+    if os.path.exists(cache_file):
+        return cache_file
+    try:
+        # Matplotlib's DXF renderer can hang indefinitely on some large company
+        # drawings.  Reuse the already-tested SVG renderer and convert the
+        # vector output with svglib/reportlab instead.
+        svg_file = os.path.join(SVG_CACHE_DIR, f"{model_name}.svg")
+        if not os.path.exists(svg_file):
+            if not render_dxf_to_svg_cached(dxf_path, model_name):
+                return None
+        from svglib.svglib import svg2rlg
+        from reportlab.graphics import renderPDF
+        drawing = svg2rlg(svg_file)
+        if drawing is None:
+            return None
+        renderPDF.drawToFile(drawing, cache_file)
+        return cache_file if os.path.exists(cache_file) else None
+    except Exception as e:
+        print(f"Error rendering PDF {dxf_path}: {e}")
+        return None
+
 
 @app.get("/api/tolerance/stats")
 def get_tolerance_stats():
     """取得歷史特徵案例庫統計資料"""
     try:
+        from collections import Counter
         total_cases = len(case_base.cases)
-        categories = {}
+        roles = Counter()
+        series_cnt = Counter()
+        drawings = set()
+        verification = Counter()
+
         for c in case_base.cases:
-            cat = c.part_type
-            categories[cat] = categories.get(cat, 0) + 1
+            roles[c.inferred_role] += 1
+            verification[c.effective_verification_status()] += 1
+            src = c.evidence_source or "UNKNOWN"
+            drawings.add(src)
+            cid = c.case_id or ""
+            parts = cid.split("_")
+            if len(parts) >= 2:
+                series_cnt[parts[1]] += 1
+
         return {
             "status": "ok",
             "total_cases": total_cases,
-            "categories": categories
+            "total_drawings": len(drawings),
+            "roles": dict(roles.most_common()),
+            "verification": dict(verification.most_common()),
+            "retrieval_eligible_cases": sum(1 for c in case_base.cases if c.is_retrieval_eligible()),
+            "top_series": dict(series_cnt.most_common(20))
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/tolerance/cases")
+def list_tolerance_cases(
+    category: Optional[str] = None,
+    search: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 36
+):
+    """
+    取得歷史特徵案例庫詳細案例清單，支援分頁、分類篩選與關鍵字搜尋
+    """
+    try:
+        case_list = []
+        for c in case_base.cases:
+            if category and category.upper() != "ALL":
+                cat_u = category.upper()
+                r_u = c.inferred_role.upper()
+                f_u = c.feature_type.upper()
+                p_u = c.part_type.upper()
+
+                if cat_u == "BEARING_FIT":
+                    if not any(k in r_u for k in ("BEARING", "CYLINDER", "PIN", "JOURNAL")):
+                        continue
+                elif cat_u == "GROOVE_CHAMFER":
+                    if not any(k in r_u for k in ("GROOVE", "PILOT", "FILLET", "ROUND", "CHAMFER")):
+                        continue
+                elif cat_u == "OVERALL_LENGTH":
+                    if not any(k in r_u for k in ("OVERALL", "SHOULDER", "LENGTH")):
+                        continue
+                elif cat_u == "PRESS_FIT":
+                    if not any(k in r_u for k in ("PRESS", "HUB", "BORE")):
+                        continue
+                elif cat_u == "GENERAL_LINEAR":
+                    if "GENERAL" not in r_u and "LINEAR" not in r_u:
+                        continue
+                else:
+                    if cat_u not in (p_u, r_u, f_u):
+                        continue
+
+            d = c.to_dict()
+            d["verification_status"] = c.effective_verification_status()
+            d["retrieval_eligible"] = c.is_retrieval_eligible()
+
+            t_cfg = c.tolerance_config or {}
+            mode = t_cfg.get("mode", "FIT")
+            fit_cls = t_cfg.get("fit_class")
+            u_dev = t_cfg.get("upper_dev", 0.0)
+            l_dev = t_cfg.get("lower_dev", 0.0)
+            dev = t_cfg.get("dev", 0.05)
+            nom_dims = c.nominal_dimensions or {}
+            dia = nom_dims.get("diameter", nom_dims.get("groove_diameter", 0.0))
+            length = nom_dims.get("length", nom_dims.get("groove_width", 0.0))
+
+            if mode == "FIT" and fit_cls:
+                if u_dev == 0.0 and l_dev == 0.0:
+                    u_dev, l_dev = lookup_iso_fit_deviation(dia if dia > 0 else 3.0, fit_cls, is_hole=t_cfg.get("is_hole", False))
+                fmt_tol = f"{fit_cls} ({u_dev:+.3f} / {l_dev:+.3f} mm)"
+            elif mode == "GROOVE":
+                fmt_tol = f"(+{u_dev:.3f} / {l_dev:.3f} mm)"
+            elif mode == "CUSTOM_SYMMETRIC":
+                fmt_tol = f"±{dev:.2f} mm"
+            elif mode == "CUSTOM_LIMITS":
+                fmt_tol = f"(+{u_dev:.3f} / {l_dev:.3f} mm)"
+            else:
+                fmt_tol = "未注公差 (ISO 2768-m)"
+
+            d["formatted_tolerance"] = fmt_tol
+
+            src = c.evidence_source or "UNKNOWN"
+            model_name = src
+            if model_name.endswith(".dxf") or model_name.endswith(".stp") or model_name.endswith(".step"):
+                model_name = os.path.splitext(model_name)[0]
+            d["model_name"] = model_name
+
+            dim_summary_parts = []
+            if dia > 0:
+                dim_summary_parts.append(f"Φ{dia:.2f} mm")
+            if length > 0:
+                dim_summary_parts.append(f"長度 {length:.2f} mm")
+            for k_dim, v_dim in nom_dims.items():
+                if k_dim not in ("diameter", "groove_diameter", "length", "groove_width", "radius"):
+                    dim_summary_parts.append(f"{k_dim}: {v_dim}")
+            d["dim_summary"] = " × ".join(dim_summary_parts) if dim_summary_parts else "一般幾何"
+
+            prev_url = None
+            if os.path.exists(OUTPUT_DIR):
+                m_clean = model_name.lower().replace("-", "").replace("_", "")
+                for out_name in os.listdir(OUTPUT_DIR):
+                    o_clean = out_name.lower().replace("-", "").replace("_", "")
+                    if (m_clean in o_clean or o_clean in m_clean) and len(m_clean) > 3:
+                        out_folder = os.path.join(OUTPUT_DIR, out_name)
+                        if os.path.isdir(out_folder):
+                            # Try png first
+                            for p_f in os.listdir(out_folder):
+                                if p_f.lower().endswith(".png") and not p_f.startswith("."):
+                                    prev_url = f"/api/files/{out_name}/{p_f}"
+                                    break
+                            # Then try svg
+                            if not prev_url:
+                                for p_f in os.listdir(out_folder):
+                                    if p_f.lower().endswith(".svg") and not p_f.startswith("."):
+                                        prev_url = f"/api/files/{out_name}/{p_f}"
+                                        break
+                            if prev_url:
+                                break
+
+            paths_info = lookup_drawing_paths(model_name)
+            has_dwg = bool(paths_info and paths_info.get("dwg"))
+            has_dxf = bool(paths_info and paths_info.get("dxf"))
+            d["has_dwg"] = has_dwg
+            d["has_dxf"] = has_dxf
+            if not prev_url and has_dxf:
+                prev_url = f"/api/tolerance/drawing-svg/{model_name}"
+            d["preview_image_url"] = prev_url
+            d["svg_url"] = f"/api/tolerance/drawing-svg/{model_name}" if has_dxf else prev_url
+            d["pdf_url"] = f"/api/tolerance/drawing-pdf/{model_name}" if has_dxf else None
+            d["details_url"] = f"/api/tolerance/drawing-details/{model_name}"
+
+            if search:
+                s_lower = search.lower().strip()
+                text_blob = f"{c.case_id} {model_name} {c.part_type} {c.feature_type} {c.inferred_role} {fmt_tol} {d['dim_summary']} {c.description} {c.evidence_source}".lower()
+                if s_lower not in text_blob:
+                    continue
+
+            case_list.append(d)
+
+        total_filtered = len(case_list)
+        import math
+        if page_size > 0:
+            total_pages = math.ceil(total_filtered / page_size) if total_filtered > 0 else 1
+            curr_page = max(1, min(page, total_pages))
+            start_idx = (curr_page - 1) * page_size
+            end_idx = start_idx + page_size
+            paged_cases = case_list[start_idx:end_idx]
+        else:
+            total_pages = 1
+            curr_page = 1
+            paged_cases = case_list
+
+        return {
+            "status": "ok",
+            "total_count": total_filtered,
+            "all_cases_count": len(case_base.cases),
+            "page": curr_page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "cases": paged_cases
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/tolerance/drawing-svg/{model_name}")
+def get_drawing_svg(model_name: str, highlight: Optional[str] = None):
+    """
+    動態生成或讀取 DXF 轉出的高解析向量 SVG 圖面
+    """
+    clean_name = os.path.splitext(model_name)[0]
+    paths = lookup_drawing_paths(clean_name)
+    dxf_path = paths.get("dxf") if paths else None
+
+    if not dxf_path or not os.path.exists(dxf_path):
+        candidate = os.path.join(r"D:\School\力致\力致_ref\temp_dxf_cache_ref", f"{clean_name}.dxf")
+        if os.path.exists(candidate):
+            dxf_path = candidate
+
+    if not dxf_path or not os.path.exists(dxf_path):
+        raise HTTPException(status_code=404, detail=f"DXF file for {model_name} not found")
+
+    svg_str = render_dxf_to_svg_cached(dxf_path, clean_name, highlight_handle=highlight)
+    if not svg_str:
+        raise HTTPException(status_code=500, detail="Failed to render DXF to SVG")
+
+    return Response(content=svg_str, media_type="image/svg+xml")
+
+
+@app.get("/api/tolerance/drawing-pdf/{model_name}")
+def get_drawing_pdf(model_name: str):
+    """將來源 DXF 轉成可縮放的 PDF，供 Inspector 點擊縮圖後檢視。"""
+    clean_name = os.path.splitext(model_name)[0]
+    paths = lookup_drawing_paths(clean_name) or {}
+    dxf_path = paths.get("dxf")
+    if not dxf_path or not os.path.exists(dxf_path):
+        candidate = os.path.join(r"D:\School\力致\力致_ref\temp_dxf_cache_ref", f"{clean_name}.dxf")
+        if os.path.exists(candidate):
+            dxf_path = candidate
+    if not dxf_path or not os.path.exists(dxf_path):
+        raise HTTPException(status_code=404, detail=f"DXF file for {model_name} not found")
+    pdf_path = render_dxf_to_pdf_cached(dxf_path, clean_name)
+    if not pdf_path:
+        raise HTTPException(status_code=500, detail="Failed to render DXF to PDF")
+    # Do not pass ``filename=`` here: Starlette treats it as an attachment and
+    # browsers download the file instead of rendering it inside the iframe.
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{clean_name}.pdf"'},
+    )
+
+
+@app.get("/api/tolerance/drawing-details/{model_name}")
+def get_drawing_details(model_name: str):
+    """
+    取得該 DWG/DXF 圖紙的完整資訊，包含所有讀取到的尺寸標註與公差細節
+    """
+    clean_name = os.path.splitext(model_name)[0]
+    paths = lookup_drawing_paths(clean_name) or {}
+    dwg_p = paths.get("dwg")
+    dxf_p = paths.get("dxf")
+
+    if not dxf_p or not os.path.exists(dxf_p):
+        candidate = os.path.join(r"D:\School\力致\力致_ref\temp_dxf_cache_ref", f"{clean_name}.dxf")
+        if os.path.exists(candidate):
+            dxf_p = candidate
+
+    extracted_dims = []
+    tolerances_only = []
+    if dxf_p and os.path.exists(dxf_p):
+        dims = dxf_extractor.extract_from_file(dxf_p, include_rejected=True)
+        for d in dims:
+            t_cfg = d.tolerance_config or {}
+            mode = t_cfg.get("mode", "FIT")
+            fit_cls = t_cfg.get("fit_class", "")
+            u_dev = t_cfg.get("upper_dev", 0.0)
+            l_dev = t_cfg.get("lower_dev", 0.0)
+            dev = t_cfg.get("dev", 0.05)
+            nom = d.nominal_value
+
+            if mode == "FIT" and fit_cls:
+                fmt = f"{fit_cls} ({u_dev:+.3f} / {l_dev:+.3f} mm)"
+            elif mode == "GROOVE":
+                fmt = f"(+{u_dev:.3f} / {l_dev:.3f} mm)"
+            elif mode == "CUSTOM_SYMMETRIC":
+                fmt = f"±{dev:.2f} mm"
+            elif mode == "CUSTOM_LIMITS":
+                fmt = f"(+{u_dev:.3f} / {l_dev:.3f} mm)"
+            else:
+                fmt = "一般未注 (ISO 2768-m)"
+
+            item = {
+                "dim_type": d.dim_type,
+                "nominal_value": nom,
+                "raw_text": d.raw_text,
+                "prefix": d.prefix or "",
+                "tolerance_mode": mode,
+                "formatted_tolerance": fmt,
+                "layer": d.layer,
+                "points": d.points
+                ,"entity_handle": d.entity_handle
+                ,"source_entity_type": d.source_entity_type
+                ,"dimension_category": d.dimension_category
+                ,"validation_status": d.validation_status
+                ,"extraction_confidence": d.extraction_confidence
+                ,"is_feature_dimension": d.is_feature_dimension
+                ,"validation_reasons": d.validation_reasons
+            }
+            extracted_dims.append(item)
+            if mode != "NONE" and d.is_feature_dimension and d.validation_status in ("AUTO_VALIDATED", "REVIEW_REQUIRED"):
+                tolerances_only.append(item)
+
+    return {
+        "status": "ok",
+        "model_name": clean_name,
+        "dwg_path": dwg_p,
+        "dxf_path": dxf_p,
+        "has_dwg": bool(dwg_p and os.path.exists(dwg_p)),
+        "has_dxf": bool(dxf_p and os.path.exists(dxf_p)),
+        "svg_url": f"/api/tolerance/drawing-svg/{clean_name}" if dxf_p else None,
+        "pdf_url": f"/api/tolerance/drawing-pdf/{clean_name}" if dxf_p else None,
+        "total_dimensions_count": len(extracted_dims),
+        "total_tolerances_count": len(tolerances_only),
+        "tolerances": tolerances_only,
+        "drawing_defaults": [d for d in extracted_dims if d["validation_status"] == "DRAWING_DEFAULT"],
+        "rejected_items": [d for d in extracted_dims if d["validation_status"] == "REJECTED"],
+        "all_dimensions": extracted_dims
+    }
+
+
+@app.post("/api/tolerance/open-local")
+def open_local_drawing(body: Dict[str, Any] = Body(...)):
+    """
+    在 Windows 本機以預設 CAD 軟體 (AutoCAD / DWG TrueView 等) 開啟 DWG 或 DXF
+    """
+    model_name = body.get("model_name", "")
+    fmt = body.get("format", "dwg").lower()
+    clean_name = os.path.splitext(model_name)[0]
+    paths = lookup_drawing_paths(clean_name) or {}
+
+    target_path = None
+    if fmt == "dwg" and paths.get("dwg") and os.path.exists(paths["dwg"]):
+        target_path = paths["dwg"]
+    elif paths.get("dxf") and os.path.exists(paths["dxf"]):
+        target_path = paths["dxf"]
+    elif paths.get("dwg") and os.path.exists(paths["dwg"]):
+        target_path = paths["dwg"]
+
+    if not target_path or not os.path.exists(target_path):
+        candidate_dxf = os.path.join(r"D:\School\力致\力致_ref\temp_dxf_cache_ref", f"{clean_name}.dxf")
+        if os.path.exists(candidate_dxf):
+            target_path = candidate_dxf
+
+    if not target_path or not os.path.exists(target_path):
+        raise HTTPException(status_code=404, detail=f"找不到 {model_name} 的本地圖面檔案 ({fmt})")
+
+    try:
+        os.startfile(target_path)
+        return {
+            "status": "ok",
+            "message": f"已在 Windows 本機啟動預設程式開啟圖檔: {os.path.basename(target_path)}",
+            "opened_file": target_path
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"本機開啟失敗: {str(e)}")
+
+
+@app.get("/api/tolerance/download/{model_name}")
+def download_drawing_file(model_name: str, format: str = "dwg"):
+    """
+    下載原始 DWG 或 DXF 檔案
+    """
+    clean_name = os.path.splitext(model_name)[0]
+    paths = lookup_drawing_paths(clean_name) or {}
+    fmt = format.lower()
+
+    target_path = None
+    if fmt == "dwg" and paths.get("dwg") and os.path.exists(paths["dwg"]):
+        target_path = paths["dwg"]
+    elif paths.get("dxf") and os.path.exists(paths["dxf"]):
+        target_path = paths["dxf"]
+    elif paths.get("dwg") and os.path.exists(paths["dwg"]):
+        target_path = paths["dwg"]
+    else:
+        candidate_dxf = os.path.join(r"D:\School\力致\力致_ref\temp_dxf_cache_ref", f"{clean_name}.dxf")
+        if os.path.exists(candidate_dxf):
+            target_path = candidate_dxf
+
+    if not target_path or not os.path.exists(target_path):
+        raise HTTPException(status_code=404, detail=f"找不到 {model_name} 的圖檔 ({fmt})")
+
+    filename = os.path.basename(target_path)
+    return FileResponse(target_path, filename=filename)
 
 
 @app.post("/api/tolerance/recommend")
@@ -180,6 +673,11 @@ def recommend_tolerances(body: Dict[str, Any] = Body(...)):
     part_id = body.get("part_id")
     candidate_rules = body.get("candidate_rules")
     part_category = body.get("part_category")
+    product_family = (
+        body.get("product_family")
+        or FeatureCaseBase.infer_product_family(part_id)
+        or FeatureCaseBase.infer_product_family(model_id)
+    )
 
     if not model_id or not part_id:
         raise HTTPException(status_code=400, detail="model_id and part_id are required")
@@ -218,14 +716,33 @@ def recommend_tolerances(body: Dict[str, Any] = Body(...)):
             shape=shape,
             candidate_rules=candidate_rules,
             view_data=view_data,
-            part_type=part_category
+            part_type=part_category,
+            product_family=product_family,
         )
+
+        # Attach traceable drawing links only when the referenced source DXF
+        # really exists.  Seed/rule-only cases remain visible but non-clickable.
+        for recommendation in (rec_result.get("recommendations") or {}).values():
+            for evidence in recommendation.get("evidence_cases") or []:
+                source_model = os.path.splitext(os.path.basename(str(
+                    evidence.get("source_model") or evidence.get("drawing") or ""
+                )))[0]
+                paths = lookup_drawing_paths(source_model) if source_model else None
+                has_dxf = bool(paths and paths.get("dxf") and os.path.exists(paths["dxf"]))
+                evidence["source_model"] = source_model
+                evidence["has_source_drawing"] = has_dxf
+                evidence["drawing_urls"] = ({
+                    "pdf": f"/api/tolerance/drawing-pdf/{source_model}",
+                    "svg": f"/api/tolerance/drawing-svg/{source_model}",
+                    "details": f"/api/tolerance/drawing-details/{source_model}",
+                } if has_dxf else None)
 
         return {
             "status": "ok",
             "model_id": model_id,
             "part_id": part_id,
             "part_type": rec_result.get("part_type"),
+            "product_family": rec_result.get("product_family"),
             "total_rules": rec_result.get("total_rules"),
             "high_confidence_count": rec_result.get("high_confidence_count"),
             "recommendations": rec_result.get("recommendations"),
@@ -254,7 +771,9 @@ def save_tolerance_case(body: Dict[str, Any] = Body(...)):
             tolerance_config=body.get("tolerance_config", {}),
             confidence=1.0,
             evidence_source="ENGINEER_CONFIRMED",
-            description=body.get("description", "工程師前端審定確認之公差案例")
+            description=body.get("description", "工程師前端審定確認之公差案例"),
+            verification_status="ENGINEER_VERIFIED",
+            source_metadata=body.get("source_metadata", {}),
         )
         case_base.add_case(new_case)
         return {"status": "ok", "case_id": case_id, "total_cases": len(case_base.cases)}
@@ -998,6 +1517,20 @@ async def list_processed_fan_20260625():
     return {"processed_tree": tree if tree["children"] else None, "manifest": manifest}
 
 # === 前端網頁路由 ===
+@app.get("/tolerance-inspector.html", include_in_schema=False)
+def tolerance_inspector_page():
+    """Serve the source-controlled inspector even before a frontend rebuild."""
+    public_page = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "frontend",
+        "public",
+        "tolerance-inspector.html",
+    )
+    if not os.path.exists(public_page):
+        raise HTTPException(status_code=404, detail="Tolerance inspector is not installed")
+    return FileResponse(public_page, media_type="text/html")
+
+
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
 if os.path.exists(FRONTEND_DIR):
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

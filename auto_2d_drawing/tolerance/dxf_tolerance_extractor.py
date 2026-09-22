@@ -15,7 +15,7 @@
 import os
 import re
 from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 import ezdxf
 
 
@@ -30,6 +30,13 @@ class ExtractedDimension:
     points: Dict[str, List[float]]     # {"defpoint": [x, y], "text_pos": [x, y]}
     layer: str                         # 圖層名稱
     drawing_file: str                  # 來源圖檔檔名
+    entity_handle: str = ""            # DXF entity handle，用於回查與畫面高亮
+    source_entity_type: str = ""       # DIMENSION / MTEXT / TEXT
+    dimension_category: str = "UNKNOWN"
+    validation_status: str = "REVIEW_REQUIRED"
+    extraction_confidence: float = 0.0
+    is_feature_dimension: bool = False
+    validation_reasons: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -48,6 +55,14 @@ class DxfToleranceExtractor:
     # 雙向上下偏差正則: +0.040/-0.000 或 (+0.040/0.000)
     DUAL_TOL_PATTERN = re.compile(r'[\(]?([+-][0-9.]+)\s*[\/|\^]\s*([+-]?[0-9.]+)[\)]?')
 
+    TITLE_BLOCK_LAYER_TOKENS = (
+        "圖框", "图框", "title", "border", "frame", "format", "sheet",
+    )
+    NON_DIMENSION_TEXT_TOKENS = (
+        "kg", "rpm", "watt", "tdp", "rohs", "cpu", "vga", "fan",
+        "weight", "重量", "轉速", "转速", "熱阻", "热阻", "瓦數", "瓦数",
+    )
+
     @staticmethod
     def _strip_autocad_formatting(text: str) -> str:
         """移除 AutoCAD MTEXT 格式標籤 (如 {\\f...;}, \\P, \\C2; 等)"""
@@ -56,7 +71,7 @@ class DxfToleranceExtractor:
         cleaned = cleaned.replace('{', '').replace('}', '').strip()
         return cleaned
 
-    def extract_from_file(self, dxf_path: str) -> List[ExtractedDimension]:
+    def extract_from_file(self, dxf_path: str, include_rejected: bool = False) -> List[ExtractedDimension]:
         """從 DXF 檔案提取所有尺寸與公差"""
         if not os.path.exists(dxf_path):
             return []
@@ -74,11 +89,11 @@ class DxfToleranceExtractor:
             e_type = entity.dxftype()
             if e_type in ('DIMENSION', 'ARC_DIMENSION', 'RADIAL_DIMENSION', 'DIAMETER_DIMENSION'):
                 dim_item = self._parse_dimension_entity(entity, file_name)
-                if dim_item:
+                if dim_item and (include_rejected or dim_item.validation_status != "REJECTED"):
                     extracted_list.append(dim_item)
             elif e_type in ('MTEXT', 'TEXT'):
                 dim_item = self._parse_text_entity(entity, file_name)
-                if dim_item:
+                if dim_item and (include_rejected or dim_item.validation_status != "REJECTED"):
                     extracted_list.append(dim_item)
 
         return extracted_list
@@ -88,7 +103,12 @@ class DxfToleranceExtractor:
     # =========================================================================
     def _parse_dimension_entity(self, entity, file_name: str) -> Optional[ExtractedDimension]:
         raw_text = getattr(entity.dxf, 'text', '')
-        meas_val = float(getattr(entity.dxf, 'actual_measurement', 0.0))
+        # ``actual_measurement`` is not a reliable DXF attribute in ezdxf.
+        # Associative dimensions must be measured from their definition points.
+        try:
+            meas_val = float(entity.get_measurement())
+        except (AttributeError, TypeError, ValueError):
+            meas_val = float(getattr(entity.dxf, 'actual_measurement', 0.0) or 0.0)
         layer = getattr(entity.dxf, 'layer', '0')
 
         # 取得錨定座標點
@@ -117,6 +137,28 @@ class DxfToleranceExtractor:
 
         # 解析文字中的名義值、前綴與公差
         prefix, nominal, tol_cfg = self._decode_tolerance_string(raw_text, fallback_val=meas_val)
+        native_tol = self._read_dimension_style_tolerance(entity)
+        if tol_cfg.get("mode") == "NONE" and native_tol:
+            tol_cfg = native_tol
+
+        reasons = ["DXF DIMENSION 實體提供實測值與定義點"]
+        if native_tol:
+            reasons.append("Tolerance deviations were read from DIMSTYLE/XDATA overrides.")
+        status = "AUTO_VALIDATED" if meas_val > 0.0 else "REVIEW_REQUIRED"
+        confidence = 0.95 if meas_val > 0.0 else 0.55
+        if tol_cfg.get("mode") == "NONE":
+            status = "NO_TOLERANCE"
+            confidence = min(confidence, 0.80)
+        if dim_type == "ANGULAR":
+            category = "ANGULAR"
+        elif dim_type == "DIAMETER" or prefix == "Φ":
+            category = "DIAMETER"
+        elif dim_type == "RADIAL" or prefix == "R":
+            category = "RADIUS"
+        elif prefix == "C":
+            category = "CHAMFER"
+        else:
+            category = "LINEAR"
 
         return ExtractedDimension(
             dim_type=dim_type,
@@ -126,8 +168,33 @@ class DxfToleranceExtractor:
             tolerance_config=tol_cfg,
             points=points,
             layer=layer,
-            drawing_file=file_name
+            drawing_file=file_name,
+            entity_handle=str(getattr(entity.dxf, 'handle', '') or ''),
+            source_entity_type=entity.dxftype(),
+            dimension_category=category,
+            validation_status=status,
+            extraction_confidence=confidence,
+            is_feature_dimension=True,
+            validation_reasons=reasons,
         )
+
+    @staticmethod
+    def _read_dimension_style_tolerance(entity) -> Optional[Dict[str, Any]]:
+        """Read native AutoCAD DIMTOL/DIMTP/DIMTM tolerance overrides."""
+        try:
+            override = entity.override()
+            if not bool(override.get("dimtol", 0)):
+                return None
+            upper = abs(float(override.get("dimtp", 0.0) or 0.0))
+            lower_mag = abs(float(override.get("dimtm", upper) or upper))
+            return {
+                "mode": "CUSTOM_LIMITS",
+                "upper_dev": upper,
+                "lower_dev": -lower_mag,
+                "source": "DXF_DIMSTYLE",
+            }
+        except (AttributeError, TypeError, ValueError):
+            return None
 
     # =========================================================================
     # 解析 TEXT / MTEXT 實體 (若包含獨立標註或公差)
@@ -151,6 +218,46 @@ class DxfToleranceExtractor:
         prefix, nominal, tol_cfg = self._decode_tolerance_string(text_str, fallback_val=0.0)
         if nominal <= 0.0 and tol_cfg.get("mode") == "NONE":
             return None
+        # MTEXT control codes (for example ``\C256``) can resemble chamfer
+        # notation.  Plain notes without an actual tolerance or dimensional
+        # prefix are outside this extractor's scope.
+        if tol_cfg.get("mode") == "NONE" and not prefix:
+            return None
+
+        clean_text = self._strip_autocad_formatting(text_str)
+        clean_lower = clean_text.lower()
+        layer = str(getattr(entity.dxf, 'layer', '0') or '0')
+        layer_lower = layer.lower()
+        reasons: List[str] = []
+
+        contains_non_dimensional_context = any(token in clean_lower for token in self.NON_DIMENSION_TEXT_TOKENS)
+        is_long_note = len(clean_text) > 160 or clean_text.count('\\P') >= 2 or text_str.count('\\P') >= 2
+        if contains_non_dimensional_context or is_long_note:
+            reasons.append("文字包含重量、轉速、功率或長篇 Notes，不可當作特徵尺寸")
+            status = "REJECTED"
+            confidence = 0.05
+            is_feature = False
+            category = "NON_DIMENSION_NOTE"
+        else:
+            nominal_without_tol = self._extract_nominal_outside_tolerance(text_str)
+            only_tolerance_token = nominal_without_tol is None
+            in_title_block = any(token in layer_lower for token in self.TITLE_BLOCK_LAYER_TOKENS)
+
+            if only_tolerance_token:
+                # %%P0.25 這類字串是圖面一般公差值，不是「0.25 ±0.25」特徵尺寸。
+                nominal = 0.0
+                status = "DRAWING_DEFAULT"
+                confidence = 0.90 if in_title_block else 0.70
+                is_feature = False
+                category = "GENERAL_TOLERANCE_NOTE"
+                reasons.append("只含公差值、沒有名義尺寸，归類為圖面一般公差")
+            else:
+                nominal = nominal_without_tol
+                category = self._classify_text_dimension(prefix, clean_text)
+                status = "AUTO_VALIDATED" if tol_cfg.get("mode") != "NONE" else "REVIEW_REQUIRED"
+                confidence = 0.82 if tol_cfg.get("mode") != "NONE" else 0.55
+                is_feature = True
+                reasons.append("文字同時具有獨立名義尺寸與公差語法")
 
         return ExtractedDimension(
             dim_type="NOTE_DIM",
@@ -159,9 +266,46 @@ class DxfToleranceExtractor:
             prefix=prefix,
             tolerance_config=tol_cfg,
             points=points,
-            layer=getattr(entity.dxf, 'layer', '0'),
-            drawing_file=file_name
+            layer=layer,
+            drawing_file=file_name,
+            entity_handle=str(getattr(entity.dxf, 'handle', '') or ''),
+            source_entity_type=entity.dxftype(),
+            dimension_category=category,
+            validation_status=status,
+            extraction_confidence=confidence,
+            is_feature_dimension=is_feature,
+            validation_reasons=reasons,
         )
+
+    def _extract_nominal_outside_tolerance(self, text: str) -> Optional[float]:
+        """只從公差語法之外取出名義尺寸，避免將 %%P0.25 的 0.25 當成名義值。"""
+        candidate = self._strip_autocad_formatting(text).replace("<>", " ")
+        candidate = self.STACK_TOL_PATTERN.sub(" ", candidate)
+        candidate = self.DUAL_TOL_PATTERN.sub(" ", candidate)
+        candidate = self.SYM_TOL_PATTERN.sub(" ", candidate)
+        candidate = self.FIT_PATTERN.sub(" ", candidate)
+        candidate = re.sub(r'(?i)(mm|deg|°)', ' ', candidate)
+        candidate = candidate.replace("Φ", " ").replace("Ø", " ")
+        candidate = re.sub(r'(?<![A-Za-z])[RCT]=?', ' ', candidate)
+        matches = re.findall(r'(?<![A-Za-z%])([0-9]+(?:\.[0-9]+)?)(?![A-Za-z%])', candidate)
+        if not matches:
+            return None
+        try:
+            return float(matches[0])
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _classify_text_dimension(prefix: str, clean_text: str) -> str:
+        if prefix == "Φ":
+            return "DIAMETER"
+        if prefix == "R":
+            return "RADIUS"
+        if prefix == "C":
+            return "CHAMFER"
+        if "°" in clean_text or "deg" in clean_text.lower():
+            return "ANGULAR"
+        return "LINEAR"
 
     # =========================================================================
     # 公差字串解碼器 (Tolerance String Decoder)

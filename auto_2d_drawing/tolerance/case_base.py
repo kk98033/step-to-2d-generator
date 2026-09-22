@@ -12,6 +12,7 @@
 import os
 import json
 import math
+import re
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 
@@ -32,9 +33,25 @@ class ToleranceCase:
     confidence: float                      # 歷史審定信心度 (0.0 ~ 1.0)
     evidence_source: str                   # "FORCECON_STANDARD_SEED", "DWG_1FQ6V5000H", "ENGINEER_CONFIRMED"
     description: str                       # 推薦與設計理由說明
+    verification_status: str = "UNVERIFIED"  # ENGINEER_VERIFIED / AUTO_VALIDATED / SEED_REFERENCE / UNVERIFIED
+    source_metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+    def effective_verification_status(self) -> str:
+        if self.verification_status and self.verification_status != "UNVERIFIED":
+            return self.verification_status
+        if self.case_id.startswith("SEED_") or self.evidence_source == "FORCECON_STANDARD_SEED":
+            return "SEED_REFERENCE"
+        if self.evidence_source == "ENGINEER_CONFIRMED":
+            return "ENGINEER_VERIFIED"
+        return "UNVERIFIED"
+
+    def is_retrieval_eligible(self) -> bool:
+        return self.effective_verification_status() in {
+            "ENGINEER_VERIFIED"
+        }
 
 
 class FeatureCaseBase:
@@ -42,6 +59,22 @@ class FeatureCaseBase:
     特徵案例庫與 CAD-RAG 檢索引擎
     """
     DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), "data", "feature_case_base.json")
+    FEATURE_TYPE_ALIASES = {
+        "cylinder": "shaft_segment",
+        "shaft": "shaft_segment",
+        "shaft_segment": "shaft_segment",
+        "hole": "hole",
+        "fillet": "transition_fillet",
+        "transition_fillet": "transition_fillet",
+        "chamfer": "pilot_chamfer",
+        "pilot_chamfer": "pilot_chamfer",
+        "groove": "retaining_ring_groove",
+        "retaining_ring_groove": "retaining_ring_groove",
+        "locating_shoulder": "locating_shoulder",
+        "overall_dimension": "overall_dimension",
+        "shaft_overall": "overall_dimension",
+        "linear_feature": "linear_feature",
+    }
 
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or self.DEFAULT_DB_PATH
@@ -49,20 +82,23 @@ class FeatureCaseBase:
         self._load_or_initialize_db()
 
     def _load_or_initialize_db(self):
-        """載入既有案例庫或初始化標準種子案例"""
+        """載入公司案例庫；合成種子案例不進入執行期知識庫。"""
         if os.path.exists(self.db_path):
             try:
                 with open(self.db_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    self.cases = [ToleranceCase(**item) for item in data]
+                    loaded_cases = [ToleranceCase(**item) for item in data]
+                    self.cases = [
+                        case for case in loaded_cases
+                        if case.effective_verification_status() != "SEED_REFERENCE"
+                    ]
                     return
             except Exception as e:
                 # print(f"Failed to load case base from {self.db_path}: {e}")
                 pass
 
-        # 初始化 28 筆力致標準種子案例庫
-        self.cases = self._generate_seed_cases()
-        self.save_db()
+        # 公司歷史資料不存在時保持空庫，不建立合成案例。
+        self.cases = []
 
     def save_db(self):
         """持久化儲存案例庫至 JSON 檔案"""
@@ -80,71 +116,133 @@ class FeatureCaseBase:
     # =========================================================================
     # CAD-RAG 特徵相似度檢索引擎 (Multi-Dimensional Feature Matcher)
     # =========================================================================
+    @classmethod
+    def canonical_feature_type(cls, feature_type: str) -> str:
+        key = (feature_type or "").strip().lower()
+        return cls.FEATURE_TYPE_ALIASES.get(key, key)
+
+    @staticmethod
+    def infer_product_family(source_name: str) -> str:
+        """Extract the FORCECON product-system code, e.g. 1FQ6H... -> FQ6H."""
+        name = os.path.basename(str(source_name or "")).upper()
+        match = re.search(r'(?<![A-Z0-9])[0-3]([A-Z0-9]{4})', name)
+        return match.group(1) if match else ""
+
+    def search_similar_cases_detailed(
+        self,
+        query_node: FeatureNode,
+        part_type: str = "SHAFT",
+        top_k: int = 3,
+        include_unverified: bool = False,
+        product_family: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """回傳可追溯的 Top-K 檢索結果，包含每個相似度分項。"""
+        if not self.cases:
+            return []
+
+        q_nom = query_node.nominal or {}
+        q_dia = float(q_nom.get("diameter", q_nom.get("groove_diameter", q_nom.get("radius", 0.0) * 2)) or 0.0)
+        q_len = float(q_nom.get("length", q_nom.get("groove_width", q_nom.get("chamfer_height", 0.0))) or 0.0)
+        q_neighbors = set(query_node.neighbor_types or [])
+        q_feature = self.canonical_feature_type(query_node.feature_type)
+        query_part = (part_type or "GENERAL").upper()
+        query_family = (product_family or "").upper()
+        scored_cases: List[Dict[str, Any]] = []
+
+        for case in self.cases:
+            verification_status = case.effective_verification_status()
+            if verification_status == "SEED_REFERENCE":
+                continue
+            if not include_unverified and not case.is_retrieval_eligible():
+                continue
+
+            case_feature = self.canonical_feature_type(case.feature_type)
+            if case_feature != q_feature:
+                continue
+
+            c_nom = case.nominal_dimensions or {}
+            c_dia = float(c_nom.get("diameter", c_nom.get("groove_diameter", c_nom.get("radius", 0.0) * 2)) or 0.0)
+            c_len = float(c_nom.get("length", c_nom.get("groove_width", c_nom.get("chamfer_height", 0.0))) or 0.0)
+            c_neighbors = set(case.neighbor_types or [])
+            case_part = (case.part_type or "GENERAL").upper()
+            case_family = self.infer_product_family(
+                (case.source_metadata or {}).get("drawing_file") or case.evidence_source
+            )
+
+            part_score = 1.0 if case_part == query_part else (0.6 if case_part in {"GENERAL", "MECHANICAL_PART"} else 0.3)
+            if not query_family:
+                family_score = 0.5
+            elif case_family == query_family:
+                family_score = 1.0
+            elif not case_family and case.effective_verification_status() == "SEED_REFERENCE":
+                family_score = 0.75
+            elif not case_family:
+                family_score = 0.3
+            else:
+                family_score = 0.1
+            feature_score = 1.0
+            if query_node.inferred_role and case.inferred_role:
+                role_score = 1.0 if query_node.inferred_role == case.inferred_role else 0.35
+            else:
+                role_score = 0.5
+
+            if q_neighbors and c_neighbors:
+                topology_score = len(q_neighbors & c_neighbors) / max(1, len(q_neighbors | c_neighbors))
+            elif not q_neighbors and not c_neighbors:
+                topology_score = 0.5
+            else:
+                topology_score = 0.2
+
+            diameter_score = math.exp(-0.35 * abs(q_dia - c_dia)) if q_dia > 0 and c_dia > 0 else 0.5
+            if q_len > 0 and c_len > 0:
+                relative_length_error = abs(q_len - c_len) / max(q_len, c_len, 0.001)
+                length_score = max(0.0, 1.0 - relative_length_error)
+            else:
+                length_score = 0.5
+
+            breakdown = {
+                "part_type": round(part_score, 3),
+                "product_family": round(family_score, 3),
+                "feature_type": round(feature_score, 3),
+                "functional_role": round(role_score, 3),
+                "topology": round(topology_score, 3),
+                "diameter": round(diameter_score, 3),
+                "length": round(length_score, 3),
+            }
+            total_score = (
+                0.10 * part_score
+                + 0.20 * family_score
+                + 0.20 * feature_score
+                + 0.15 * role_score
+                + 0.10 * topology_score
+                + 0.15 * diameter_score
+                + 0.10 * length_score
+            )
+            scored_cases.append({
+                "case": case,
+                "similarity": round(total_score, 3),
+                "score_breakdown": breakdown,
+                "verification_status": verification_status,
+                "product_family": case_family,
+                "same_product_family": bool(query_family and case_family == query_family),
+            })
+
+        if query_family:
+            scored_cases.sort(
+                key=lambda item: (item["same_product_family"], item["similarity"]),
+                reverse=True,
+            )
+        else:
+            scored_cases.sort(key=lambda item: item["similarity"], reverse=True)
+        return scored_cases[:top_k]
+
     def search_similar_cases(self, query_node: FeatureNode, part_type: str = "SHAFT", top_k: int = 3) -> List[Tuple[ToleranceCase, float]]:
         """
         以 FeatureNode 為查詢上下文，檢索 Top-K 最相似之歷史公差案例。
         回傳: [(ToleranceCase, similarity_score)]
         """
-        if not self.cases:
-            return []
-
-        q_nom = query_node.nominal
-        q_dia = q_nom.get("diameter", q_nom.get("groove_diameter", q_nom.get("radius", 0.0) * 2))
-        q_len = q_nom.get("length", q_nom.get("groove_width", 0.0))
-        q_neighbors = set(query_node.neighbor_types)
-
-        scored_cases = []
-
-        for case in self.cases:
-            score = 0.0
-            c_nom = case.nominal_dimensions
-            c_dia = c_nom.get("diameter", c_nom.get("groove_diameter", c_nom.get("radius", 0.0) * 2))
-            c_len = c_nom.get("length", c_nom.get("groove_width", 0.0))
-            c_neighbors = set(case.neighbor_types)
-
-            # 1. 零件類型匹配度 (權重 0.15)
-            part_score = 1.0 if case.part_type.upper() == part_type.upper() else 0.4
-
-            # 2. 特徵類型匹配度 (權重 0.25)
-            feat_score = 1.0 if case.feature_type == query_node.feature_type else 0.0
-            if feat_score == 0.0:
-                continue
-
-            # 3. 語意機能角色匹配度 (權重 0.25)
-            if query_node.inferred_role and case.inferred_role:
-                role_score = 1.0 if query_node.inferred_role == case.inferred_role else 0.5
-            else:
-                role_score = 0.7
-
-            # 4. 鄰接拓撲上下文 Jaccard 相似度 (權重 0.20)
-            if q_neighbors and c_neighbors:
-                intersection = len(q_neighbors.intersection(c_neighbors))
-                union = len(q_neighbors.union(c_neighbors))
-                topo_score = intersection / max(1, union)
-            else:
-                topo_score = 0.6
-
-            # 5. 幾何尺寸接近度 (權重 0.15)
-            if q_dia > 0 and c_dia > 0:
-                dia_diff = abs(q_dia - c_dia)
-                dia_score = math.exp(-0.35 * dia_diff)
-            else:
-                dia_score = 0.8
-
-            # 綜合加權相似度評分 (0.0 ~ 1.0)
-            total_score = (
-                0.15 * part_score +
-                0.25 * feat_score +
-                0.25 * role_score +
-                0.20 * topo_score +
-                0.15 * dia_score
-            )
-
-            scored_cases.append((case, round(total_score, 3)))
-
-        # 依相似度由高至低排序
-        scored_cases.sort(key=lambda x: x[1], reverse=True)
-        return scored_cases[:top_k]
+        detailed = self.search_similar_cases_detailed(query_node, part_type=part_type, top_k=top_k)
+        return [(item["case"], item["similarity"]) for item in detailed]
 
     # =========================================================================
     # 預置 28 筆力致標準種子案例庫 (Seed Knowledge Base)

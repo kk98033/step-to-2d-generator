@@ -4,7 +4,7 @@ import {
   ChevronRight, ChevronDown, AlertTriangle, BookOpen, ArrowLeft, 
   Home, ZoomIn, ZoomOut, CheckSquare, Square, 
   Layers, Sparkles, Wand2, Download, Save, Trash2, RotateCcw,
-  Cpu, Database, Info, HelpCircle
+  Cpu, Database, ExternalLink, X
 } from 'lucide-react';
 import axios from 'axios';
 import { Canvas, useThree } from '@react-three/fiber';
@@ -658,8 +658,10 @@ function App() {
     target_views?: string[];
     tolerance?: string;
     side?: string;
+    sides?: string[];
     baseline?: string;
     prefix?: string;
+    tolerance_config?: Record<string, any>;
   }>>({});
   const [ruleFilter, setRuleFilter] = useState<string>('ALL');
   const [ruleSearch, setRuleSearch] = useState<string>('');
@@ -684,7 +686,14 @@ function App() {
   const [aiRecommendations, setAiRecommendations] = useState<Record<string, any>>({});
   const [isRecommendingTolerances, setIsRecommendingTolerances] = useState<boolean>(false);
   const [toleranceStats, setToleranceStats] = useState<{ total_cases: number; categories: Record<string, number> } | null>(null);
-  const [recommendSummary, setRecommendSummary] = useState<{ total_rules: number; high_confidence_count: number } | null>(null);
+  const [recommendSummary, setRecommendSummary] = useState<{ total_rules: number; high_confidence_count: number; product_family?: string; part_type?: string } | null>(null);
+  const [evidenceViewer, setEvidenceViewer] = useState<{
+    caseId: string;
+    modelName: string;
+    pdfUrl: string;
+    svgUrl: string;
+    mode: 'pdf' | 'svg';
+  } | null>(null);
 
   // --- Tree Diff State ---
   const [diffedTreeOld, setDiffedTreeOld] = useState<any>(null);
@@ -953,8 +962,10 @@ function App() {
     target_views: string[];
     tolerance: string;
     side: string;
+    sides: string[];
     baseline: string;
     prefix: string;
+    tolerance_config: Record<string, any>;
   }>) => {
     setRuleConfig(prev => ({
       ...prev,
@@ -978,7 +989,6 @@ function App() {
         model_id: modelId,
         part_id: selectedPart,
         candidate_rules: candidateRules,
-        part_category: 'shaft'
       });
 
       if (res.data?.status === 'ok') {
@@ -986,7 +996,9 @@ function App() {
         setAiRecommendations(recs);
         setRecommendSummary({
           total_rules: res.data.total_rules || Object.keys(recs).length,
-          high_confidence_count: res.data.high_confidence_count || 0
+          high_confidence_count: res.data.high_confidence_count || 0,
+          product_family: res.data.product_family || '',
+          part_type: res.data.part_type || '',
         });
 
         // 自動將推薦公差注入到 ruleConfig 中
@@ -1005,7 +1017,9 @@ function App() {
 
         // 高信心度的規則自動勾選
         const highConfIds = Object.entries(recs)
-          .filter(([_, rec]: [string, any]) => (rec.confidence || 0) >= 0.80)
+              .filter(([_, rec]: [string, any]) => (
+                rec.tier_level === 'TIER_1_RAG_MATCH' && (rec.confidence || 0) >= 0.85
+              ))
           .map(([rId]) => rId);
         
         if (highConfIds.length > 0) {
@@ -2499,13 +2513,13 @@ function App() {
                       ) : (
                         <Sparkles size={13} />
                       )}
-                      <span>{isRecommendingTolerances ? '正在進行 CAD-RAG 檢索推論...' : '一鍵 AI 推薦公差 (Tier 1~3)'}</span>
+                      <span>{isRecommendingTolerances ? '正在進行 CAD-RAG 檢索推論...' : '一鍵智慧推薦公差（CAD-RAG／規則）'}</span>
                     </button>
                   </div>
 
                   {recommendSummary && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 10, color: '#a3a3a3', background: '#18181b', padding: '4px 8px', borderRadius: 3, border: '1px solid #27272a' }}>
-                      <span>已完成 {recommendSummary.total_rules} 條規則推薦</span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 10, color: '#a3a3a3', background: '#18181b', padding: '4px 8px', borderRadius: 3, border: '1px solid #27272a' }}>
+                      <span>已完成 {recommendSummary.total_rules} 條規則推薦 · 產品族 {recommendSummary.product_family || '未識別'} · 零件 {recommendSummary.part_type || 'GENERAL'}</span>
                       <span style={{ color: '#34d399', fontWeight: 600 }}>{recommendSummary.high_confidence_count} 項高信心度匹配</span>
                     </div>
                   )}
@@ -2735,8 +2749,7 @@ function App() {
                       const cat = (rule.category || rule.type || '').toLowerCase();
                       const cfg = ruleConfig[rId] || {};
                       const rec = aiRecommendations[rId];
-                      const currentTol = cfg.tolerance !== undefined ? cfg.tolerance : (rule.tolerance || rule.default_tolerance || '');
-                      const rawSides = cfg.sides || cfg.side || rule.sides || rule.side || ['BOTTOM'];
+                       const rawSides = cfg.sides || cfg.side || rule.sides || rule.side || ['BOTTOM'];
                       const currentSides: string[] = Array.isArray(rawSides) ? rawSides : [rawSides];
                       const currentViews = cfg.views || rule.target_views || rule.views || ['front', 'top', 'right'];
 
@@ -2816,16 +2829,73 @@ function App() {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                   <Cpu size={11} color="#60a5fa" />
                                   <span style={{ fontSize: 10, fontWeight: 700, color: '#93c5fd' }}>
-                                    {rec.inferred_role ? `[${rec.inferred_role}] ` : ''}推薦: {rec.formatted_display}
+                                    {rec.inferred_role ? `[${rec.inferred_role}] ` : ''}
+                                    尺寸 {Number(rec.nominal_value || 0).toFixed(2)} · 公差：{rec.recommended_mode === 'NONE' ? '沿用圖面一般公差' : rec.formatted_display}
                                   </span>
                                 </div>
-                                <span style={{ fontSize: 9, color: rec.confidence >= 0.85 ? '#34d399' : '#93c5fd', fontWeight: 600 }}>
-                                  {(rec.confidence * 100).toFixed(0)}% 信心度
-                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                                  <span style={{ fontSize: 9, color: rec.confidence >= 0.85 ? '#34d399' : '#93c5fd', fontWeight: 600 }}>
+                                    {(rec.confidence * 100).toFixed(0)}% 信心度
+                                  </span>
+                                  <span style={{ fontSize: 9, color: '#cbd5e1', border: '1px solid #334155', borderRadius: 3, padding: '1px 5px', background: '#171717' }}>
+                                    查找 {rec.retrieval_trace?.retrieved_case_count || 0}／同產品族 {rec.retrieval_trace?.same_family_candidate_count || 0}／語意相容 {rec.retrieval_trace?.compatible_case_count || 0}／待驗證 {rec.retrieval_trace?.unverified_candidate_count || 0}
+                                  </span>
+                                </div>
                               </div>
                               <div style={{ fontSize: 10, color: '#cbd5e1', lineHeight: 1.35 }}>
                                 {rec.reasoning_description}
                               </div>
+                              {rec.evidence_cases && rec.evidence_cases.length > 0 && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 3 }}>
+                                  <div style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700 }}>查找案例與相似原因</div>
+                                  {rec.evidence_cases.slice(0, 6).map((evidence: any, index: number) => {
+                                    const breakdown = evidence.score_breakdown || {};
+                                    const percent = Math.round((evidence.similarity || 0) * 100);
+                                    const reasons = [
+                                      `產品族 ${Math.round((breakdown.product_family || 0) * 100)}%`,
+                                      `特徵 ${Math.round((breakdown.feature_type || 0) * 100)}%`,
+                                      `直徑 ${Math.round((breakdown.diameter || 0) * 100)}%`,
+                                      `長度 ${Math.round((breakdown.length || 0) * 100)}%`,
+                                      `功能角色 ${Math.round((breakdown.functional_role || 0) * 100)}%`,
+                                      `鄰接關係 ${Math.round((breakdown.topology || 0) * 100)}%`,
+                                    ];
+                                    return (
+                                      <button
+                                        key={`${evidence.case_id}-${index}`}
+                                        type="button"
+                                        disabled={!evidence.has_source_drawing}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          if (!evidence.drawing_urls) return;
+                                          setEvidenceViewer({
+                                            caseId: evidence.case_id,
+                                            modelName: evidence.source_model || evidence.drawing,
+                                            pdfUrl: evidence.drawing_urls.pdf,
+                                            svgUrl: evidence.drawing_urls.svg,
+                                            mode: 'pdf',
+                                          });
+                                        }}
+                                        title={evidence.has_source_drawing ? '開啟此案例的原始 PDF／圖面' : '此案例沒有可追溯的原始圖面'}
+                                        style={{ width: '100%', textAlign: 'left', background: '#171717', border: `1px solid ${evidence.used_for_decision ? '#047857' : '#334155'}`, borderRadius: 3, padding: '5px 6px', cursor: evidence.has_source_drawing ? 'pointer' : 'not-allowed', opacity: evidence.has_source_drawing ? 1 : 0.72 }}
+                                      >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: '#dbeafe', fontSize: 9, fontWeight: 600 }}>
+                                          <span>{evidence.case_id} · {evidence.drawing || '未知圖面'} · {evidence.same_product_family ? '同產品族' : (evidence.product_family ? `跨產品族 ${evidence.product_family}` : '通用標準')}</span>
+                                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: evidence.used_for_decision ? '#6ee7b7' : '#94a3b8' }}>
+                                            {evidence.used_for_decision ? '已採用' : (!evidence.decision_eligible ? '待驗證' : (evidence.dimension_compatible ? '候選' : '語意不符'))} · {percent}%
+                                            {evidence.has_source_drawing && <ExternalLink size={9} />}
+                                          </span>
+                                        </div>
+                                        <div style={{ color: '#94a3b8', fontSize: 9, marginTop: 2 }}>
+                                          {reasons.join(' · ')} · {evidence.verification_status || 'UNVERIFIED'}
+                                        </div>
+                                        <div style={{ color: evidence.has_source_drawing ? '#60a5fa' : '#64748b', fontSize: 9, marginTop: 3 }}>
+                                          {evidence.has_source_drawing ? '點擊查看原始 PDF／向量圖' : '無原始圖面（種子或規則案例）'}
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
                               {rec.evidence_sources && rec.evidence_sources.length > 0 && (
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 2, paddingTop: 4, borderTop: '1px solid #1e293b' }}>
                                   <span style={{ fontSize: 9, color: '#64748b' }}>
@@ -3340,7 +3410,67 @@ function App() {
 
       </div>
 
-      {/* 🌟 儲存自訂樣板 Modal (Save Template Preset Modal) */}
+      {evidenceViewer && (
+        <div
+          onClick={() => setEvidenceViewer(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: 20 }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{ width: 'min(1180px, 96vw)', height: 'min(820px, 92vh)', background: '#171717', border: '1px solid #404040', borderRadius: 6, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 50px rgba(0,0,0,0.8)' }}
+          >
+            <div style={{ height: 48, flexShrink: 0, background: '#262626', borderBottom: '1px solid #404040', padding: '0 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: '#f5f5f5', fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  參考案例：{evidenceViewer.caseId}
+                </div>
+                <div style={{ color: '#a3a3a3', fontSize: 10 }}>{evidenceViewer.modelName}</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => setEvidenceViewer(current => current ? { ...current, mode: 'pdf' } : current)}
+                  style={{ background: evidenceViewer.mode === 'pdf' ? '#2563eb' : '#171717', border: '1px solid #404040', borderRadius: 3, color: '#f5f5f5', padding: '5px 9px', fontSize: 10, cursor: 'pointer' }}
+                >
+                  PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEvidenceViewer(current => current ? { ...current, mode: 'svg' } : current)}
+                  style={{ background: evidenceViewer.mode === 'svg' ? '#2563eb' : '#171717', border: '1px solid #404040', borderRadius: 3, color: '#f5f5f5', padding: '5px 9px', fontSize: 10, cursor: 'pointer' }}
+                >
+                  向量圖
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.open(evidenceViewer.mode === 'pdf' ? evidenceViewer.pdfUrl : evidenceViewer.svgUrl, '_blank', 'noopener,noreferrer')}
+                  title="在新分頁開啟"
+                  style={{ background: '#171717', border: '1px solid #404040', borderRadius: 3, color: '#cbd5e1', width: 28, height: 27, display: 'grid', placeItems: 'center', cursor: 'pointer' }}
+                >
+                  <ExternalLink size={13} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEvidenceViewer(null)}
+                  title="關閉"
+                  style={{ background: '#171717', border: '1px solid #404040', borderRadius: 3, color: '#cbd5e1', width: 28, height: 27, display: 'grid', placeItems: 'center', cursor: 'pointer' }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+            <div style={{ flex: 1, minHeight: 0, background: '#0f0f0f' }}>
+              {evidenceViewer.mode === 'pdf' ? (
+                <iframe title={`PDF ${evidenceViewer.caseId}`} src={evidenceViewer.pdfUrl} style={{ width: '100%', height: '100%', border: 0, background: '#fff' }} />
+              ) : (
+                <img src={evidenceViewer.svgUrl} alt={`圖面 ${evidenceViewer.modelName}`} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#fff' }} />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 儲存自訂樣板 Modal (Save Template Preset Modal) */}
       {saveTemplateModalOpen && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ width: 440, background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: 24, boxShadow: '0 20px 50px rgba(0,0,0,0.8)' }}>
@@ -3390,7 +3520,7 @@ function App() {
               <button
                 onClick={handleSaveNewTemplate}
                 disabled={!newTemplateName.trim()}
-                style={{ padding: '8px 18px', background: newTemplateName.trim() ? 'linear-gradient(135deg, #0284c7, #2563eb)' : '#334155', border: 'none', borderRadius: 6, color: '#fff', fontSize: 13, cursor: newTemplateName.trim() ? 'pointer' : 'not-allowed', fontWeight: 700 }}
+                style={{ padding: '8px 18px', background: newTemplateName.trim() ? '#2563eb' : '#334155', border: 'none', borderRadius: 6, color: '#fff', fontSize: 13, cursor: newTemplateName.trim() ? 'pointer' : 'not-allowed', fontWeight: 700 }}
               >
                 確認儲存樣板
               </button>

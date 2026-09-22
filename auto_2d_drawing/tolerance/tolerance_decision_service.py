@@ -44,12 +44,19 @@ class ToleranceRecommendation:
     confidence: float = 0.0             # 0.0 ~ 1.0
     tier_level: str = "TIER_1"          # TIER_1_RAG_MATCH, TIER_2_RULE_INFERENCE, TIER_3_GENERAL_FALLBACK
     evidence_sources: List[str] = None  # 參考依據清單
+    evidence_cases: List[Dict[str, Any]] = None
+    retrieval_trace: Dict[str, Any] = None
     reasoning_description: str = ""     # 推薦理由
+    is_hole: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         if d.get("evidence_sources") is None:
             d["evidence_sources"] = []
+        if d.get("evidence_cases") is None:
+            d["evidence_cases"] = []
+        if d.get("retrieval_trace") is None:
+            d["retrieval_trace"] = {}
         
         # 產生供前端直接使用的 tolerance_config 與 tolerance_str
         mode = self.recommended_mode
@@ -60,6 +67,7 @@ class ToleranceRecommendation:
             tol_cfg["fit_class"] = self.fit_class or "h6"
             tol_cfg["upper_dev"] = self.upper_dev
             tol_cfg["lower_dev"] = self.lower_dev
+            tol_cfg["is_hole"] = self.is_hole
             tol_str = self.fit_class or "h6"
         elif mode == "GROOVE":
             tol_cfg["upper_dev"] = self.upper_dev
@@ -93,7 +101,8 @@ class ToleranceDecisionService:
         shape,
         candidate_rules: List[Dict[str, Any]],
         view_data: Optional[Dict[str, Any]] = None,
-        part_type: Optional[str] = None
+        part_type: Optional[str] = None,
+        product_family: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         為所有候選標註規則進行智慧公差推薦分析
@@ -115,7 +124,9 @@ class ToleranceDecisionService:
             matched_node = self._match_rule_to_node(rule, graph)
 
             # 執行三層推薦決策 (Tier 1~3)
-            rec = self._evaluate_recommendation(rule_id, cat, is_dia, nom_val, matched_node, graph.part_type)
+            rec = self._evaluate_recommendation(
+                rule_id, cat, is_dia, nom_val, matched_node, graph.part_type, product_family
+            )
             recommendations[rule_id] = rec.to_dict()
 
             if rec.confidence >= 0.85:
@@ -123,6 +134,7 @@ class ToleranceDecisionService:
 
         return {
             "part_type": graph.part_type,
+            "product_family": product_family or "",
             "total_rules": len(candidate_rules),
             "high_confidence_count": high_conf_count,
             "recommendations": recommendations,
@@ -151,7 +163,7 @@ class ToleranceDecisionService:
             elif r_cat == "chamfer" and node.feature_type == "pilot_chamfer":
                 if abs(n_len - r_val) < 0.2:
                     return node
-            elif r_cat == "step" and node.feature_type in ("locating_shoulder", "shaft_segment"):
+            elif r_cat == "step" and node.feature_type == "locating_shoulder":
                 if abs(n_len - r_val) < 0.15:
                     return node
 
@@ -167,19 +179,82 @@ class ToleranceDecisionService:
         is_diameter: bool,
         nominal_val: float,
         node: Optional[FeatureNode],
-        part_type: str
+        part_type: str,
+        product_family: Optional[str] = None,
     ) -> ToleranceRecommendation:
-        # 若有節點，優先執行 CAD-RAG 檢索
+        eligible_case_count = sum(1 for case in self.case_base.cases if case.is_retrieval_eligible())
+        evidence_cases: List[Dict[str, Any]] = []
+        retrieval_trace: Dict[str, Any] = {
+            "query_feature_type": node.feature_type if node else category,
+            "query_dimension_kind": "DIAMETER" if is_diameter else "LINEAR",
+            "product_family": product_family or "",
+            "eligible_case_count": eligible_case_count,
+            "retrieved_case_count": 0,
+            "compatible_case_count": 0,
+            "unverified_candidate_count": 0,
+            "same_family_candidate_count": 0,
+            "searched_case_ids": [],
+            "decision_source": "GENERAL_FALLBACK",
+        }
+
+        # 若有節點，優先執行 CAD-RAG 檢索。案例還必須與尺寸語意相容，
+        # 避免使用軸徑配合案例推論階梯長度或其他線性尺寸。
         if node:
-            rag_matches = self.case_base.search_similar_cases(node, part_type=part_type, top_k=2)
+            raw_matches = self.case_base.search_similar_cases_detailed(
+                node, part_type=part_type, top_k=3, product_family=product_family
+            )
+            audit_matches = self.case_base.search_similar_cases_detailed(
+                node,
+                part_type=part_type,
+                top_k=24,
+                include_unverified=True,
+                product_family=product_family,
+            )
+            review_matches = [
+                match for match in audit_matches
+                if match["verification_status"] == "UNVERIFIED"
+            ][:3]
+            display_matches = list(raw_matches)
+            displayed_ids = {match["case"].case_id for match in display_matches}
+            display_matches.extend(
+                match for match in review_matches
+                if match["case"].case_id not in displayed_ids
+            )
+            rag_matches = [
+                match for match in raw_matches
+                if self._case_is_dimension_compatible(match["case"], category, is_diameter)
+            ]
+            for match in display_matches:
+                item = self._serialize_evidence_match(match)
+                item["dimension_compatible"] = self._case_is_dimension_compatible(
+                    match["case"], category, is_diameter
+                )
+                item["decision_eligible"] = match["case"].is_retrieval_eligible()
+                item["used_for_decision"] = False
+                evidence_cases.append(item)
+            retrieval_trace.update({
+                "retrieved_case_count": len(display_matches),
+                "compatible_case_count": len(rag_matches),
+                "unverified_candidate_count": len(review_matches),
+                "same_family_candidate_count": sum(
+                    1 for match in display_matches if match.get("same_product_family")
+                ),
+                "searched_case_ids": [match["case"].case_id for match in display_matches],
+            })
             if rag_matches:
-                top_case, sim_score = rag_matches[0]
+                top_match = rag_matches[0]
+                top_case = top_match["case"]
+                sim_score = top_match["similarity"]
+                for item in evidence_cases:
+                    if item["case_id"] == top_case.case_id:
+                        item["used_for_decision"] = True
 
                 # === Tier 1: 高信心度歷史案例匹配 (Similarity >= 0.85) ===
                 if sim_score >= 0.85:
                     t_cfg = top_case.tolerance_config
                     mode = t_cfg.get("mode", "FIT")
                     fit_cls = t_cfg.get("fit_class")
+                    is_hole = bool(t_cfg.get("is_hole", node.feature_type == "hole"))
 
                     # 防護：長度/段長尺寸絕不能套用軸孔配合代號 (如 h6)
                     if not is_diameter and mode == "FIT":
@@ -188,10 +263,15 @@ class ToleranceDecisionService:
                         u_dev, l_dev = 0.0, 0.0
                         desc = f"歷史案例段長，採用未注公差 (ISO 2768-m)。"
                     else:
-                        u_dev, l_dev = self._compute_exact_devs(nominal_val, mode, fit_cls, is_hole=t_cfg.get("is_hole", False), custom_cfg=t_cfg)
+                        u_dev, l_dev = self._compute_exact_devs(nominal_val, mode, fit_cls, is_hole=is_hole, custom_cfg=t_cfg)
                         desc = top_case.description
                     formatted = format_tolerance_dimension(nominal_val, is_diameter=is_diameter, tol_config={
-                        "mode": mode, "fit_class": fit_cls, "upper_dev": u_dev, "lower_dev": l_dev
+                        "mode": mode,
+                        "fit_class": fit_cls,
+                        "upper_dev": u_dev,
+                        "lower_dev": l_dev,
+                        "dev": abs(u_dev),
+                        "is_hole": is_hole,
                     })
 
                     return ToleranceRecommendation(
@@ -207,7 +287,10 @@ class ToleranceDecisionService:
                         confidence=round(top_case.confidence * sim_score, 2),
                         tier_level="TIER_1_RAG_MATCH",
                         evidence_sources=[top_case.case_id, top_case.evidence_source],
-                        reasoning_description=top_case.description
+                        evidence_cases=evidence_cases,
+                        retrieval_trace={**retrieval_trace, "decision_source": "HISTORICAL_CASE"},
+                        reasoning_description=desc,
+                        is_hole=is_hole,
                     )
 
                 # === Tier 2: 語意啟發式推論 (Similarity 0.65 ~ 0.85) ===
@@ -255,7 +338,12 @@ class ToleranceDecisionService:
                             desc = f"一般過渡外徑，採用 ISO 2768-m 未注公差。"
 
                     formatted = format_tolerance_dimension(nominal_val, is_diameter=is_diameter, tol_config={
-                        "mode": mode, "fit_class": fit_cls, "upper_dev": u_dev, "lower_dev": l_dev
+                        "mode": mode,
+                        "fit_class": fit_cls,
+                        "upper_dev": u_dev,
+                        "lower_dev": l_dev,
+                        "dev": abs(u_dev),
+                        "is_hole": node.feature_type == "hole",
                     })
 
                     return ToleranceRecommendation(
@@ -268,10 +356,13 @@ class ToleranceDecisionService:
                         upper_dev=u_dev,
                         lower_dev=l_dev,
                         formatted_display=formatted,
-                        confidence=0.85,
+                        confidence=round(min(0.80, sim_score), 2),
                         tier_level="TIER_2_RULE_INFERENCE",
                         evidence_sources=[f"ROLE_INFERENCE:{role}", top_case.case_id],
-                        reasoning_description=desc
+                        evidence_cases=evidence_cases,
+                        retrieval_trace={**retrieval_trace, "decision_source": "RULE_WITH_CASE_CONTEXT"},
+                        reasoning_description=desc,
+                        is_hole=node.feature_type == "hole",
                     )
 
         # === Tier 3: 基礎保底 (General Fallback / ISO 2768-m) ===
@@ -280,33 +371,33 @@ class ToleranceDecisionService:
                 mode = "CUSTOM_SYMMETRIC"
                 fit_cls = None
                 u_dev, l_dev = 0.10, -0.10
-                desc = "整體包絡總長度，推薦 ±0.10mm 一般線性公差。"
-                conf = 0.95
+                desc = "未找到可採用的同類歷史案例；暫以專案規則建議 ±0.10mm，需工程師確認。"
+                conf = 0.45
             elif category in ("step",) or "len" in rule_id or "width" in rule_id:
                 mode = "NONE"
                 fit_cls = None
-                u_dev, l_dev = 0.05, -0.05
-                desc = "定位台階長度，推薦採用未注公差 (ISO 2768-m)。"
-                conf = 0.90
+                u_dev, l_dev = 0.0, 0.0
+                desc = "未找到尺寸語意相容的歷史案例；保留圖面一般公差，需工程師確認。"
+                conf = 0.35
             else:
                 mode = "NONE"
                 fit_cls = None
                 u_dev, l_dev = 0.0, 0.0
-                desc = "非配合線性特徵，採用 ISO 2768-m 未注公差。"
-                conf = 0.95
+                desc = "未找到尺寸語意相容的歷史案例；保留圖面一般公差，需工程師確認。"
+                conf = 0.35
         else:
             if category in ("groove",) or "groove" in rule_id:
                 mode = "GROOVE"
                 fit_cls = "H13"
                 u_dev, l_dev = 0.040, 0.000
                 desc = "標準退刀/卡簧槽直徑，推薦 JIS B2804 (+0.040/0.000mm) / H13。"
-                conf = 0.90
+                conf = 0.70
             else:
                 mode = "NONE"
                 fit_cls = None
                 u_dev, l_dev = 0.0, 0.0
                 desc = "一般非配合過渡特徵，採用 ISO 2768-m 未注公差。"
-                conf = 0.95
+                conf = 0.50
 
         formatted = format_tolerance_dimension(nominal_val, is_diameter=is_diameter, tol_config={
             "mode": mode, "fit_class": fit_cls, "upper_dev": u_dev, "lower_dev": l_dev, "dev": u_dev
@@ -324,9 +415,58 @@ class ToleranceDecisionService:
             formatted_display=formatted,
             confidence=conf,
             tier_level="TIER_3_GENERAL_FALLBACK",
-            evidence_sources=["ISO_2768_M_STANDARD"],
-            reasoning_description=desc
+            evidence_sources=["PROJECT_RULE_FALLBACK"],
+            evidence_cases=evidence_cases,
+            retrieval_trace=retrieval_trace,
+            reasoning_description=desc,
         )
+
+    @staticmethod
+    def _case_is_dimension_compatible(
+        case: ToleranceCase,
+        category: str,
+        is_diameter: bool,
+    ) -> bool:
+        """Reject cases whose tolerance semantics differ from the candidate rule."""
+        config = case.tolerance_config or {}
+        mode = config.get("mode", "NONE")
+        if is_diameter:
+            if category == "groove":
+                return mode in {"GROOVE", "CUSTOM_LIMITS", "CUSTOM_SYMMETRIC"}
+            return mode in {"FIT", "CUSTOM_LIMITS", "CUSTOM_SYMMETRIC"}
+        return mode in {"CUSTOM_LIMITS", "CUSTOM_SYMMETRIC"}
+
+    @staticmethod
+    def _serialize_evidence_match(match: Dict[str, Any]) -> Dict[str, Any]:
+        case = match["case"]
+        metadata = case.source_metadata or {}
+        source_model = (
+            metadata.get("drawing_file")
+            or metadata.get("model_name")
+            or case.evidence_source
+        )
+        return {
+            "case_id": case.case_id,
+            "drawing": case.evidence_source,
+            "source_model": os.path.splitext(os.path.basename(str(source_model)))[0],
+            "part_type": case.part_type,
+            "feature_type": case.feature_type,
+            "inferred_role": case.inferred_role,
+            "nominal_dimensions": case.nominal_dimensions,
+            "tolerance_config": case.tolerance_config,
+            "similarity": match["similarity"],
+            "score_breakdown": match["score_breakdown"],
+            "verification_status": match["verification_status"],
+            "product_family": match.get("product_family", ""),
+            "same_product_family": match.get("same_product_family", False),
+            "description": case.description,
+            "source_entity": {
+                "handle": metadata.get("entity_handle"),
+                "raw_text": metadata.get("raw_text"),
+                "layer": metadata.get("layer"),
+                "points": metadata.get("points"),
+            },
+        }
 
     # =========================================================================
     # 精確偏差查表計算器 (Exact Deviation Computer)
