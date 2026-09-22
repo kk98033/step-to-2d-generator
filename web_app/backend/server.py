@@ -302,10 +302,14 @@ def get_tolerance_stats():
             verification[c.effective_verification_status()] += 1
             src = c.evidence_source or "UNKNOWN"
             drawings.add(src)
-            cid = c.case_id or ""
-            parts = cid.split("_")
-            if len(parts) >= 2:
-                series_cnt[parts[1]] += 1
+            family = (
+                (c.source_metadata or {}).get("product_family")
+                or FeatureCaseBase.infer_product_family(
+                    (c.source_metadata or {}).get("drawing_file") or c.evidence_source
+                )
+            )
+            if family:
+                series_cnt[family] += 1
 
         return {
             "status": "ok",

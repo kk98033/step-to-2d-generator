@@ -212,7 +212,7 @@ class ToleranceDecisionService:
             )
             review_matches = [
                 match for match in audit_matches
-                if match["verification_status"] == "UNVERIFIED"
+                if not match["case"].is_retrieval_eligible()
             ][:3]
             display_matches = list(raw_matches)
             displayed_ids = {match["case"].case_id for match in display_matches}
