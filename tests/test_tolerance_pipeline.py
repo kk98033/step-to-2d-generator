@@ -49,6 +49,25 @@ class DxfToleranceExtractorTests(unittest.TestCase):
 
 
 class CaseRetrievalTests(unittest.TestCase):
+    def test_only_verified_or_strictly_auto_verified_cases_are_eligible(self):
+        base_kwargs = dict(
+            case_id="status-check",
+            part_type="SHAFT",
+            feature_type="shaft_segment",
+            inferred_role="SHAFT_DIAMETER",
+            nominal_dimensions={"diameter": 10.0},
+            neighbor_types=[],
+            boundary_position="INTERIOR",
+            tolerance_config={"mode": "CUSTOM_SYMMETRIC", "dev": 0.02},
+            confidence=0.9,
+            evidence_source="company.dxf",
+            description="status check",
+        )
+        for status in ("ENGINEER_VERIFIED", "AUTO_VERIFIED"):
+            self.assertTrue(ToleranceCase(**base_kwargs, verification_status=status).is_retrieval_eligible())
+        for status in ("AUTO_EXTRACTED", "UNVERIFIED", "SEED_REFERENCE"):
+            self.assertFalse(ToleranceCase(**base_kwargs, verification_status=status).is_retrieval_eligible())
+
     def test_retrieval_normalizes_feature_type_and_excludes_unverified(self):
         base = FeatureCaseBase.__new__(FeatureCaseBase)
         base.cases = [

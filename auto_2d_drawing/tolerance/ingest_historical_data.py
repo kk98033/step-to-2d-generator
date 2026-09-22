@@ -1,216 +1,498 @@
-"""
-歷史圖檔資料集批次萃取與入庫管線 (Historical CAD Data Ingestion Pipeline)
-=============================================================================
-功能:
-1. 遞迴掃描指定之歷史資料夾 (如 D:\\School\\力致\\力致_ref 與 new_data)。
-2. 自動配對同名或相關聯之 3D STEP 模型與 2D DXF 工程圖。
-3. 結合 3D 空間特徵關係圖 (FRG) 與 2D DXF 尺寸公差抽取器，進行 3D-2D 特徵級關聯配對。
-4. 將配對成功且具備有效工程公差之歷史特徵自動萃取寫入案例庫 (feature_case_base.json)。
-=============================================================================
+"""Rebuild the historical tolerance case base from company CAD evidence.
+
+The v2 pipeline deliberately separates two facts which the old importer mixed:
+
+* ``AUTO_EXTRACTED`` means the tolerance came from a real DXF dimension entity,
+  but its 3D feature identity is not proven.
+* ``AUTO_VERIFIED`` means an exact-name STEP/DXF pair contains one and only one
+  geometrically compatible 3D feature with the same nominal value.
+
+No seed or generated cases are created by this module.
 """
 
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import logging
 import os
 import sys
-import json
-import math
-from typing import List, Dict, Any, Tuple, Optional
+from collections import Counter, defaultdict
+from concurrent.futures import ProcessPoolExecutor
+from datetime import datetime, timezone
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-# Ensure workspace root is in sys.path
 _current_dir = os.path.dirname(os.path.abspath(__file__))
 _ws_root = os.path.abspath(os.path.join(_current_dir, "..", ".."))
 if _ws_root not in sys.path:
     sys.path.insert(0, _ws_root)
 
-from OCC.Core.STEPControl import STEPControl_Reader
 from OCC.Core.IFSelect import IFSelect_RetDone
+from OCC.Core.STEPControl import STEPControl_Reader
 
-from auto_2d_drawing.tolerance.feature_graph import FeatureGraphExtractor, FeatureRelationGraph, FeatureNode
-from auto_2d_drawing.tolerance.dxf_tolerance_extractor import DxfToleranceExtractor, ExtractedDimension
 from auto_2d_drawing.tolerance.case_base import FeatureCaseBase, ToleranceCase
+from auto_2d_drawing.tolerance.dxf_tolerance_extractor import (
+    DxfToleranceExtractor,
+    ExtractedDimension,
+)
+from auto_2d_drawing.tolerance.feature_graph import FeatureGraphExtractor, FeatureNode
+
+
+DEFAULT_SOURCE_DIRS = (
+    r"D:\School\力致\力致_ref",
+    r"D:\School\力致\new_data",
+)
+DEFAULT_REPORT_PATH = os.path.join(_current_dir, "data", "feature_case_base_rebuild_report.json")
+
+
+def _extract_dxf_worker(dxf_path: str) -> Tuple[str, List[Dict[str, Any]]]:
+    """Process-safe DXF reader used only for the independent 2D extraction."""
+    logging.getLogger("ezdxf").setLevel(logging.ERROR)
+    extractor = DxfToleranceExtractor()
+    dimensions = extractor.extract_from_file(
+        dxf_path,
+        include_rejected=True,
+        native_dimensions_only=True,
+    )
+    return dxf_path, [item.to_dict() for item in dimensions]
 
 
 class HistoricalDataIngestor:
-    """
-    歷史 STEP-DXF 資料集批次萃取入庫引擎
-    """
+    """Create a clean, provenance-first company tolerance database."""
+
     def __init__(self, case_base: Optional[FeatureCaseBase] = None):
         self.case_base = case_base or FeatureCaseBase()
         self.frg_extractor = FeatureGraphExtractor()
         self.dxf_extractor = DxfToleranceExtractor()
 
-    def scan_and_ingest_directories(self, search_dirs: List[str], max_models: int = 50) -> Dict[str, Any]:
-        """
-        掃描多個歷史資料夾並執行批次配對入庫
-        """
+    @staticmethod
+    def _normalise_stem(filename: str) -> str:
+        stem = os.path.splitext(os.path.basename(filename))[0].lower().strip()
+        return stem.replace("new_", "").replace("old_", "")
+
+    def discover_sources(self, search_dirs: Sequence[str]) -> Dict[str, Any]:
         step_map: Dict[str, str] = {}
         dxf_map: Dict[str, str] = {}
+        duplicate_steps = 0
+        duplicate_dxfs = 0
 
-        print(">>> 正在搜尋歷史 STEP 與 DXF 檔案...")
-        for s_dir in search_dirs:
-            if not os.path.exists(s_dir):
-                print(f"Warning: Directory not found: {s_dir}")
+        for source_dir in search_dirs:
+            if not os.path.isdir(source_dir):
                 continue
+            for root, _dirs, files in os.walk(source_dir):
+                for filename in files:
+                    extension = os.path.splitext(filename)[1].lower()
+                    if extension not in {".stp", ".step", ".dxf"}:
+                        continue
+                    key = self._normalise_stem(filename)
+                    full_path = os.path.abspath(os.path.join(root, filename))
+                    if extension in {".stp", ".step"}:
+                        if key in step_map:
+                            duplicate_steps += 1
+                        else:
+                            step_map[key] = full_path
+                    else:
+                        if key in dxf_map:
+                            duplicate_dxfs += 1
+                        else:
+                            dxf_map[key] = full_path
 
-            for root, dirs, files in os.walk(s_dir):
-                for f in files:
-                    ext = os.path.splitext(f)[1].lower()
-                    base = os.path.splitext(f)[0].lower()
-                    # 去除前綴如 "new_", "old_" 以便最大化配對
-                    clean_base = base.replace("new_", "").replace("old_", "").strip()
-                    full_p = os.path.join(root, f)
-
-                    if ext in ('.stp', '.step'):
-                        if clean_base not in step_map:
-                            step_map[clean_base] = full_p
-                    elif ext in ('.dxf',):
-                        if clean_base not in dxf_map:
-                            dxf_map[clean_base] = full_p
-
-        print(f">>> 發現 3D STEP 檔案: {len(step_map)} 個 | 2D DXF 檔案: {len(dxf_map)} 個")
-
-        # 找出同名或配對成功之檔案
-        matched_pairs: List[Tuple[str, str, str]] = []
-        for base_key, step_p in step_map.items():
-            if base_key in dxf_map:
-                matched_pairs.append((base_key, step_p, dxf_map[base_key]))
-
-        print(f">>> 精確同名配對成功: {len(matched_pairs)} 組模型圖檔")
-
-        # 若同名配對較少，追加部分 3D STEP 獨立特徵萃取
-        processed_count = 0
-        total_ingested_cases = 0
-        error_count = 0
-
-        for base_key, step_p, dxf_p in matched_pairs[:max_models]:
-            try:
-                print(f"[{processed_count + 1}/{min(len(matched_pairs), max_models)}] 正在處理: {os.path.basename(step_p)} <-> {os.path.basename(dxf_p)}")
-                ingested = self._process_pair(step_p, dxf_p)
-                total_ingested_cases += ingested
-                processed_count += 1
-            except Exception as e:
-                print(f"  Error processing pair {base_key}: {e}")
-                error_count += 1
-
-        self.case_base.save_db()
-        print(f"\n============================================================")
-        print(f"  歷史資料萃取入庫完成!")
-        print(f"  處理配對組數: {processed_count} 組 | 新增歷史特徵案例: {total_ingested_cases} 筆")
-        print(f"  案例庫現有總案例數: {len(self.case_base.cases)} 筆")
-        print(f"============================================================")
-
+        pair_keys = sorted(set(step_map) & set(dxf_map))
         return {
-            "processed_pairs": processed_count,
-            "new_cases": total_ingested_cases,
-            "total_cases_in_db": len(self.case_base.cases),
-            "errors": error_count
+            "step_map": step_map,
+            "dxf_map": dxf_map,
+            "pair_keys": pair_keys,
+            "duplicate_steps": duplicate_steps,
+            "duplicate_dxfs": duplicate_dxfs,
         }
 
-    # =========================================================================
-    # 處理單一 STEP-DXF 配對組
-    # =========================================================================
-    def _process_pair(self, step_path: str, dxf_path: str) -> int:
-        reader = STEPControl_Reader()
-        status = reader.ReadFile(step_path)
-        if status != IFSelect_RetDone:
-            return 0
-        reader.TransferRoots()
-        shape = reader.OneShape()
+    @staticmethod
+    def _tolerance_is_plausible(dim: ExtractedDimension) -> bool:
+        config = dim.tolerance_config or {}
+        mode = config.get("mode", "NONE")
+        if mode == "NONE" or not (0.0 < dim.nominal_value < 100000.0):
+            return False
+        if dim.source_entity_type not in {
+            "DIMENSION",
+            "ARC_DIMENSION",
+            "RADIAL_DIMENSION",
+            "DIAMETER_DIMENSION",
+        }:
+            return False
+        if not dim.is_feature_dimension or dim.validation_status != "AUTO_VALIDATED":
+            return False
 
-        # 1. 提取 3D FRG
-        graph = self.frg_extractor.build_graph(shape)
-        if not graph.nodes:
-            return 0
-
-        # 2. 提取 2D DXF 尺寸與公差
-        dxf_dims = self.dxf_extractor.extract_from_file(dxf_path)
-        if not dxf_dims:
-            return 0
-
-        # 3. 執行 3D-2D 幾何與數值配對 (Value & Context Matcher)
-        new_cases_count = 0
-        step_base = os.path.splitext(os.path.basename(step_path))[0]
-
-        for node in graph.nodes:
-            nom = node.nominal
-            target_val = nom.get("diameter", nom.get("groove_diameter", nom.get("length", 0.0)))
-            if target_val <= 0.01:
-                continue
-
-            # 在 2D DXF 中尋找名義尺寸接近之標註
-            best_match: Optional[ExtractedDimension] = None
-            best_diff = 0.08  # 容差 0.08mm 內
-
-            for dim in dxf_dims:
-                # 只允許具有獨立名義尺寸、已通過自動驗證的圖面實體進入特徵案例庫。
-                if not dim.is_feature_dimension or dim.validation_status != "AUTO_VALIDATED":
-                    continue
-                if not self._dimension_matches_feature_type(dim, node):
-                    continue
-                diff = abs(dim.nominal_value - target_val)
-                if diff < best_diff:
-                    # 優先挑選具備非 NONE 公差之標註
-                    if best_match is None or (best_match.tolerance_config.get("mode") == "NONE" and dim.tolerance_config.get("mode") != "NONE"):
-                        best_match = dim
-                        best_diff = diff
-
-            if best_match and best_match.tolerance_config.get("mode") != "NONE":
-                case_id = f"HIST_{step_base}_{node.id}"
-                match_quality = max(0.0, 1.0 - (best_diff / 0.08))
-                case_confidence = min(0.80, best_match.extraction_confidence * (0.75 + 0.25 * match_quality))
-                new_case = ToleranceCase(
-                    case_id=case_id,
-                    part_type=graph.part_type,
-                    feature_type=node.feature_type,
-                    inferred_role=node.inferred_role or "GENERAL_FEATURE",
-                    nominal_dimensions=node.nominal,
-                    neighbor_types=node.neighbor_types,
-                    boundary_position=node.boundary_position,
-                    tolerance_config=best_match.tolerance_config,
-                    confidence=round(case_confidence, 3),
-                    evidence_source=os.path.basename(dxf_path),
-                    description=f"歷史工程圖 {os.path.basename(dxf_path)} 自動擷取之 {node.feature_type} 公差 (名義值: {best_match.nominal_value:.2f})",
-                    verification_status="AUTO_VALIDATED",
-                    source_metadata={
-                        "dxf_path": dxf_path,
-                        "entity_handle": best_match.entity_handle,
-                        "source_entity_type": best_match.source_entity_type,
-                        "dimension_category": best_match.dimension_category,
-                        "raw_text": best_match.raw_text,
-                        "layer": best_match.layer,
-                        "points": best_match.points,
-                        "parser_confidence": best_match.extraction_confidence,
-                        "validation_reasons": best_match.validation_reasons,
-                        "value_difference_mm": round(best_diff, 4),
-                    },
-                )
-                self.case_base.add_case(new_case)
-                new_cases_count += 1
-
-        return new_cases_count
+        if mode == "FIT":
+            return bool(config.get("fit_class"))
+        if mode == "CUSTOM_SYMMETRIC":
+            deviation = abs(float(config.get("dev", 0.0) or 0.0))
+            return 0.0 < deviation <= max(5.0, dim.nominal_value * 0.5)
+        if mode in {"CUSTOM_LIMITS", "GROOVE"}:
+            upper = abs(float(config.get("upper_dev", 0.0) or 0.0))
+            lower = abs(float(config.get("lower_dev", 0.0) or 0.0))
+            return max(upper, lower) > 0.0 and max(upper, lower) <= max(5.0, dim.nominal_value * 0.5)
+        return False
 
     @staticmethod
-    def _dimension_matches_feature_type(dim: ExtractedDimension, node: FeatureNode) -> bool:
-        """避免只因數值相近，就把線性尺寸配到直徑或把圓角配到軸段。"""
+    def _evidence_key(dxf_path: str, dim: ExtractedDimension) -> Tuple[str, str]:
+        return os.path.normcase(os.path.abspath(dxf_path)), str(dim.entity_handle or "")
+
+    @staticmethod
+    def _case_id(prefix: str, dxf_path: str, suffix: str) -> str:
+        digest = hashlib.sha1(os.path.normcase(os.path.abspath(dxf_path)).encode("utf-8")).hexdigest()[:8]
+        stem = os.path.splitext(os.path.basename(dxf_path))[0]
+        safe_suffix = str(suffix or "NOHANDLE").replace(" ", "_")
+        return f"{prefix}_{stem}_{digest}_{safe_suffix}"
+
+    @staticmethod
+    def _raw_feature_identity(dim: ExtractedDimension) -> Tuple[str, str, Dict[str, float], str]:
         category = dim.dimension_category
-        feature_type = node.feature_type
-        if feature_type in ("shaft_segment", "hole"):
-            return category == "DIAMETER"
-        if feature_type == "retaining_ring_groove":
-            return category in ("DIAMETER", "LINEAR")
-        if feature_type == "pilot_chamfer":
-            return category in ("CHAMFER", "LINEAR")
-        if feature_type == "transition_fillet":
-            return category == "RADIUS"
-        if feature_type == "locating_shoulder":
-            return category == "LINEAR"
-        return False
+        config = dim.tolerance_config or {}
+        if category == "DIAMETER":
+            fit_class = str(config.get("fit_class", ""))
+            if config.get("mode") == "FIT" and fit_class:
+                if fit_class.isupper():
+                    return "hole", "HOLE_FIT_DIAMETER", {"diameter": dim.nominal_value}, "AUTO_VERIFIED"
+                return "shaft_segment", "SHAFT_FIT_DIAMETER", {"diameter": dim.nominal_value}, "AUTO_VERIFIED"
+            return "diameter_feature", "UNRESOLVED_DIAMETER", {"diameter": dim.nominal_value}, "AUTO_EXTRACTED"
+        if category == "RADIUS":
+            return "radius_feature", "RADIUS_DIMENSION", {"radius": dim.nominal_value}, "AUTO_EXTRACTED"
+        if category == "CHAMFER":
+            return "pilot_chamfer", "CHAMFER_DIMENSION", {"chamfer_height": dim.nominal_value}, "AUTO_EXTRACTED"
+        if category == "ANGULAR":
+            return "angular_feature", "ANGULAR_DIMENSION", {"angle": dim.nominal_value}, "AUTO_EXTRACTED"
+        return "linear_feature", "UNRESOLVED_LINEAR", {"length": dim.nominal_value}, "AUTO_EXTRACTED"
+
+    def _make_raw_case(self, dxf_path: str, dim: ExtractedDimension) -> ToleranceCase:
+        feature_type, role, nominal, status = self._raw_feature_identity(dim)
+        family = FeatureCaseBase.infer_product_family(os.path.basename(dxf_path))
+        checks = [
+            "native_dxf_dimension_entity",
+            "explicit_tolerance_present",
+            "nominal_and_deviation_range_valid",
+        ]
+        if status == "AUTO_VERIFIED":
+            checks.append("iso_fit_letter_identifies_shaft_or_hole")
+        return ToleranceCase(
+            case_id=self._case_id("DXF2", dxf_path, dim.entity_handle),
+            part_type="GENERAL",
+            feature_type=feature_type,
+            inferred_role=role,
+            nominal_dimensions=nominal,
+            neighbor_types=[],
+            boundary_position="UNKNOWN",
+            tolerance_config=dim.tolerance_config,
+            confidence=0.92 if status == "AUTO_VERIFIED" else 0.78,
+            evidence_source=os.path.basename(dxf_path),
+            description=(
+                f"Company drawing {os.path.basename(dxf_path)} entity {dim.entity_handle}: "
+                f"{dim.dimension_category} {dim.nominal_value:g} with explicit tolerance."
+            ),
+            verification_status=status,
+            source_metadata={
+                "schema_version": 2,
+                "drawing_file": os.path.basename(dxf_path),
+                "dxf_path": os.path.abspath(dxf_path),
+                "product_family": family,
+                "entity_handle": dim.entity_handle,
+                "source_entity_type": dim.source_entity_type,
+                "dimension_category": dim.dimension_category,
+                "raw_text": dim.raw_text,
+                "layer": dim.layer,
+                "points": dim.points,
+                "parser_confidence": dim.extraction_confidence,
+                "verification_method": "DXF_NATIVE_ENTITY",
+                "verification_checks": checks,
+                "feature_identity_verified": status == "AUTO_VERIFIED",
+                "functional_role_verified": False,
+            },
+        )
+
+    @staticmethod
+    def _node_targets(node: FeatureNode) -> Iterable[Tuple[str, float, Tuple[str, ...]]]:
+        nominal = node.nominal or {}
+        if node.feature_type in {"shaft_segment", "hole"}:
+            yield "diameter", float(nominal.get("diameter", 0.0) or 0.0), ("DIAMETER",)
+        elif node.feature_type == "retaining_ring_groove":
+            yield "groove_diameter", float(nominal.get("groove_diameter", 0.0) or 0.0), ("DIAMETER",)
+            yield "groove_width", float(nominal.get("groove_width", 0.0) or 0.0), ("LINEAR",)
+        elif node.feature_type == "pilot_chamfer":
+            yield "chamfer_height", float(nominal.get("chamfer_height", 0.0) or 0.0), ("CHAMFER", "LINEAR")
+        elif node.feature_type == "transition_fillet":
+            yield "radius", float(nominal.get("radius", 0.0) or 0.0), ("RADIUS",)
+        elif node.feature_type == "locating_shoulder":
+            yield "step_height", float(nominal.get("step_height", 0.0) or 0.0), ("LINEAR",)
+
+    @staticmethod
+    def _match_threshold(value: float) -> float:
+        return max(0.005, min(0.02, abs(value) * 0.0005))
+
+    @staticmethod
+    def _tolerance_signature(config: Dict[str, Any]) -> str:
+        return json.dumps(config or {}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+    def _load_feature_graph(self, step_path: str):
+        reader = STEPControl_Reader()
+        if reader.ReadFile(step_path) != IFSelect_RetDone:
+            return None
+        reader.TransferRoots()
+        return self.frg_extractor.build_graph(reader.OneShape())
+
+    def _verify_pair(
+        self,
+        step_path: str,
+        dxf_path: str,
+        dimensions: Sequence[ExtractedDimension],
+    ) -> Tuple[List[Tuple[ToleranceCase, List[Tuple[str, str]]]], Dict[str, int]]:
+        graph = self._load_feature_graph(step_path)
+        if graph is None or not graph.nodes:
+            return [], {"pair_load_failures": 1}
+
+        unique_matches: List[Tuple[ExtractedDimension, FeatureNode, str, float, float]] = []
+        ambiguous = 0
+        no_match = 0
+        for dim in dimensions:
+            candidates: List[Tuple[FeatureNode, str, float, float]] = []
+            for node in graph.nodes:
+                for field_name, target, categories in self._node_targets(node):
+                    if target <= 0.0 or dim.dimension_category not in categories:
+                        continue
+                    difference = abs(dim.nominal_value - target)
+                    threshold = self._match_threshold(target)
+                    if difference <= threshold:
+                        candidates.append((node, field_name, difference, threshold))
+            candidate_keys = {(item[0].id, item[1]) for item in candidates}
+            if len(candidate_keys) == 1:
+                node, field_name, difference, threshold = min(candidates, key=lambda item: item[2])
+                unique_matches.append((dim, node, field_name, difference, threshold))
+            elif candidate_keys:
+                ambiguous += 1
+            else:
+                no_match += 1
+
+        grouped: Dict[Tuple[str, str], List[Tuple[ExtractedDimension, FeatureNode, float, float]]] = defaultdict(list)
+        for dim, node, field_name, difference, threshold in unique_matches:
+            grouped[(node.id, field_name)].append((dim, node, difference, threshold))
+
+        verified: List[Tuple[ToleranceCase, List[Tuple[str, str]]]] = []
+        conflicts = 0
+        for (_node_id, field_name), matches in grouped.items():
+            signatures = {self._tolerance_signature(item[0].tolerance_config) for item in matches}
+            if len(signatures) != 1:
+                conflicts += len(matches)
+                continue
+
+            matches.sort(key=lambda item: item[2])
+            primary_dim, node, difference, threshold = matches[0]
+            evidence_keys = [self._evidence_key(dxf_path, item[0]) for item in matches]
+            supporting_handles = sorted({item[0].entity_handle for item in matches if item[0].entity_handle})
+            confidence = max(0.90, min(0.97, 0.97 - (difference / max(threshold, 1e-9)) * 0.07))
+            case = ToleranceCase(
+                case_id=self._case_id("HIST2", dxf_path, f"{node.id}_{field_name}"),
+                part_type=graph.part_type,
+                feature_type=node.feature_type,
+                inferred_role=f"{node.feature_type.upper()}_{field_name.upper()}",
+                nominal_dimensions=node.nominal,
+                neighbor_types=node.neighbor_types,
+                boundary_position=node.boundary_position,
+                tolerance_config=primary_dim.tolerance_config,
+                confidence=round(confidence, 3),
+                evidence_source=os.path.basename(dxf_path),
+                description=(
+                    f"Exact-name STEP/DXF evidence: {node.feature_type} {field_name} "
+                    f"{primary_dim.nominal_value:g} in {os.path.basename(dxf_path)}."
+                ),
+                verification_status="AUTO_VERIFIED",
+                source_metadata={
+                    "schema_version": 2,
+                    "drawing_file": os.path.basename(dxf_path),
+                    "dxf_path": os.path.abspath(dxf_path),
+                    "step_path": os.path.abspath(step_path),
+                    "product_family": FeatureCaseBase.infer_product_family(os.path.basename(dxf_path)),
+                    "entity_handle": primary_dim.entity_handle,
+                    "supporting_entity_handles": supporting_handles,
+                    "source_entity_type": primary_dim.source_entity_type,
+                    "dimension_category": primary_dim.dimension_category,
+                    "raw_text": primary_dim.raw_text,
+                    "layer": primary_dim.layer,
+                    "points": primary_dim.points,
+                    "matched_feature_id": node.id,
+                    "matched_nominal_field": field_name,
+                    "matched_feature_center_axial": node.center_axial,
+                    "value_difference_mm": round(difference, 6),
+                    "match_threshold_mm": round(threshold, 6),
+                    "verification_method": "EXACT_FILENAME_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+                    "verification_checks": [
+                        "exact_step_dxf_filename",
+                        "native_dxf_dimension_entity",
+                        "explicit_tolerance_present",
+                        "dimension_type_matches_feature_type",
+                        "nominal_value_matches_step_geometry",
+                        "unique_step_feature_candidate",
+                        "consistent_duplicate_dimension_tolerances",
+                    ],
+                    "feature_identity_verified": True,
+                    "functional_role_verified": False,
+                },
+            )
+            verified.append((case, evidence_keys))
+
+        return verified, {
+            "unique_dimension_matches": len(unique_matches),
+            "ambiguous_dimension_matches": ambiguous,
+            "unmatched_dimensions": no_match,
+            "conflicting_tolerance_matches": conflicts,
+        }
+
+    @staticmethod
+    def _atomic_write_json(path: str, payload: Any) -> None:
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        temp_path = f"{path}.tmp"
+        with open(temp_path, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        with open(temp_path, "r", encoding="utf-8") as handle:
+            json.load(handle)
+        os.replace(temp_path, path)
+
+    def rebuild_database(
+        self,
+        search_dirs: Sequence[str],
+        output_path: Optional[str] = None,
+        report_path: Optional[str] = None,
+        max_pairs: Optional[int] = None,
+        max_dxf_files: Optional[int] = None,
+        workers: int = 4,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        discovery = self.discover_sources(search_dirs)
+        dxf_map: Dict[str, str] = discovery["dxf_map"]
+        step_map: Dict[str, str] = discovery["step_map"]
+        pair_keys: List[str] = discovery["pair_keys"]
+        if max_pairs is not None:
+            pair_keys = pair_keys[:max_pairs]
+
+        dimensions_by_path: Dict[str, List[ExtractedDimension]] = {}
+        raw_cases: Dict[Tuple[str, str], ToleranceCase] = {}
+        extraction_statuses: Counter[str] = Counter()
+        parse_errors = 0
+        dxf_paths = sorted(dxf_map.values())
+        if max_dxf_files is not None:
+            dxf_paths = dxf_paths[:max_dxf_files]
+        with ProcessPoolExecutor(max_workers=max(1, workers)) as executor:
+            extracted_results = executor.map(_extract_dxf_worker, dxf_paths, chunksize=4)
+            for index, (dxf_path, extracted_dicts) in enumerate(extracted_results, start=1):
+                try:
+                    extracted = [ExtractedDimension(**item) for item in extracted_dicts]
+                    dimensions_by_path[os.path.normcase(os.path.abspath(dxf_path))] = extracted
+                    extraction_statuses.update(item.validation_status for item in extracted)
+                    for dim in extracted:
+                        if self._tolerance_is_plausible(dim):
+                            raw_cases[self._evidence_key(dxf_path, dim)] = self._make_raw_case(dxf_path, dim)
+                except Exception:
+                    parse_errors += 1
+                if index % 200 == 0:
+                    print(f"Parsed {index}/{len(dxf_paths)} DXF drawings...", flush=True)
+
+        linked_cases: List[ToleranceCase] = []
+        consumed_evidence: set[Tuple[str, str]] = set()
+        pair_stats: Counter[str] = Counter()
+        pair_errors: List[Dict[str, str]] = []
+        for index, key in enumerate(pair_keys, start=1):
+            step_path = step_map[key]
+            dxf_path = dxf_map[key]
+            dimensions = [
+                item
+                for item in dimensions_by_path.get(os.path.normcase(os.path.abspath(dxf_path)), [])
+                if self._tolerance_is_plausible(item)
+            ]
+            try:
+                verified, stats = self._verify_pair(step_path, dxf_path, dimensions)
+                pair_stats.update(stats)
+                for case, evidence_keys in verified:
+                    linked_cases.append(case)
+                    consumed_evidence.update(evidence_keys)
+            except Exception as exc:
+                pair_errors.append({"pair": key, "error": str(exc)})
+            print(f"Verified STEP/DXF pair {index}/{len(pair_keys)}: {key}", flush=True)
+
+        final_cases = [case for key, case in raw_cases.items() if key not in consumed_evidence]
+        final_cases.extend(linked_cases)
+        final_cases.sort(key=lambda case: (case.evidence_source.upper(), case.case_id))
+
+        verification_counts = Counter(case.effective_verification_status() for case in final_cases)
+        feature_counts = Counter(case.feature_type for case in final_cases)
+        report: Dict[str, Any] = {
+            "schema_version": 2,
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "source_directories": [os.path.abspath(path) for path in search_dirs],
+            "output_path": os.path.abspath(output_path or self.case_base.db_path),
+            "dry_run": dry_run,
+            "discovery": {
+                "unique_step_files": len(step_map),
+                "unique_dxf_files": len(dxf_map),
+                "processed_dxf_files": len(dxf_paths),
+                "exact_name_pairs": len(discovery["pair_keys"]),
+                "processed_pairs": len(pair_keys),
+                "duplicate_step_names": discovery["duplicate_steps"],
+                "duplicate_dxf_names": discovery["duplicate_dxfs"],
+            },
+            "extraction": {
+                "all_candidate_statuses": dict(extraction_statuses),
+                "parse_errors": parse_errors,
+                "native_tolerance_entities": len(raw_cases),
+                "consumed_by_feature_links": len(consumed_evidence),
+            },
+            "verification": {
+                "counts": dict(verification_counts),
+                "pair_match_stats": dict(pair_stats),
+                "pair_errors": pair_errors,
+            },
+            "database": {
+                "total_cases": len(final_cases),
+                "feature_counts": dict(feature_counts),
+                "seed_cases": 0,
+            },
+        }
+
+        if not dry_run:
+            target_path = output_path or self.case_base.db_path
+            self._atomic_write_json(target_path, [case.to_dict() for case in final_cases])
+            self.case_base.db_path = target_path
+            self.case_base.cases = final_cases
+            self._atomic_write_json(report_path or DEFAULT_REPORT_PATH, report)
+        return report
+
+    def scan_and_ingest_directories(self, search_dirs: List[str], max_models: int = 50) -> Dict[str, Any]:
+        """Backward-compatible entry point; it now performs a clean v2 rebuild."""
+        return self.rebuild_database(search_dirs, max_pairs=max_models)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Rebuild the company tolerance evidence database")
+    parser.add_argument("--source", action="append", dest="sources", help="Source directory; repeat as needed")
+    parser.add_argument("--output", default=FeatureCaseBase.DEFAULT_DB_PATH)
+    parser.add_argument("--report", default=DEFAULT_REPORT_PATH)
+    parser.add_argument("--max-pairs", type=int, default=None)
+    parser.add_argument("--max-dxf-files", type=int, default=None)
+    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+
+    ingestor = HistoricalDataIngestor()
+    report = ingestor.rebuild_database(
+        args.sources or list(DEFAULT_SOURCE_DIRS),
+        output_path=args.output,
+        report_path=args.report,
+        max_pairs=args.max_pairs,
+        max_dxf_files=args.max_dxf_files,
+        workers=args.workers,
+        dry_run=args.dry_run,
+    )
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0
 
 
 if __name__ == "__main__":
-    search_paths = [
-        r"D:\School\力致\力致_ref",
-        r"D:\School\力致\new_data",
-        r"d:\School\力致\app\step-to-2d-generator\models"
-    ]
-    ingestor = HistoricalDataIngestor()
-    ingestor.scan_and_ingest_directories(search_paths, max_models=30)
+    raise SystemExit(main())

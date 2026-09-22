@@ -14,9 +14,16 @@
 
 import os
 import re
+import logging
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, asdict, field
 import ezdxf
+
+
+# Many legacy company drawings reference deleted DIMSTYLE line types. ezdxf
+# correctly falls back, but emits one warning per dimension which can turn a
+# full-corpus audit into megabytes of noise and materially slow the rebuild.
+logging.getLogger("ezdxf").setLevel(logging.ERROR)
 
 
 @dataclass
@@ -71,7 +78,12 @@ class DxfToleranceExtractor:
         cleaned = cleaned.replace('{', '').replace('}', '').strip()
         return cleaned
 
-    def extract_from_file(self, dxf_path: str, include_rejected: bool = False) -> List[ExtractedDimension]:
+    def extract_from_file(
+        self,
+        dxf_path: str,
+        include_rejected: bool = False,
+        native_dimensions_only: bool = False,
+    ) -> List[ExtractedDimension]:
         """從 DXF 檔案提取所有尺寸與公差"""
         if not os.path.exists(dxf_path):
             return []
@@ -91,7 +103,7 @@ class DxfToleranceExtractor:
                 dim_item = self._parse_dimension_entity(entity, file_name)
                 if dim_item and (include_rejected or dim_item.validation_status != "REJECTED"):
                     extracted_list.append(dim_item)
-            elif e_type in ('MTEXT', 'TEXT'):
+            elif not native_dimensions_only and e_type in ('MTEXT', 'TEXT'):
                 dim_item = self._parse_text_entity(entity, file_name)
                 if dim_item and (include_rejected or dim_item.validation_status != "REJECTED"):
                     extracted_list.append(dim_item)
@@ -187,6 +199,10 @@ class DxfToleranceExtractor:
                 return None
             upper = abs(float(override.get("dimtp", 0.0) or 0.0))
             lower_mag = abs(float(override.get("dimtm", upper) or upper))
+            if upper < 1e-7:
+                upper = 0.0
+            if lower_mag < 1e-7:
+                lower_mag = 0.0
             return {
                 "mode": "CUSTOM_LIMITS",
                 "upper_dev": upper,

@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "generated_at_utc": "2026-09-22T12:11:55.237094+00:00",
+  "source_directories": [
+    "D:\\School\\力致\\力致_ref",
+    "D:\\School\\力致\\new_data"
+  ],
+  "output_path": "D:\\School\\力致\\app\\step-to-2d-generator\\auto_2d_drawing\\tolerance\\data\\feature_case_base.json",
+  "dry_run": false,
+  "discovery": {
+    "unique_step_files": 223,
+    "unique_dxf_files": 1744,
+    "processed_dxf_files": 1744,
+    "exact_name_pairs": 10,
+    "processed_pairs": 10,
+    "duplicate_step_names": 36,
+    "duplicate_dxf_names": 0
+  },
+  "extraction": {
+    "all_candidate_statuses": {
+      "AUTO_VALIDATED": 25126,
+      "NO_TOLERANCE": 11251,
+      "REVIEW_REQUIRED": 75
+    },
+    "parse_errors": 0,
+    "native_tolerance_entities": 25119,
+    "consumed_by_feature_links": 6
+  },
+  "verification": {
+    "counts": {
+      "AUTO_EXTRACTED": 25113,
+      "AUTO_VERIFIED": 6
+    },
+    "pair_match_stats": {
+      "unique_dimension_matches": 6,
+      "ambiguous_dimension_matches": 21,
+      "unmatched_dimensions": 219,
+      "conflicting_tolerance_matches": 0
+    },
+    "pair_errors": []
+  },
+  "database": {
+    "total_cases": 25119,
+    "feature_counts": {
+      "linear_feature": 23983,
+      "angular_feature": 553,
+      "diameter_feature": 566,
+      "shaft_segment": 3,
+      "pilot_chamfer": 3,
+      "radius_feature": 11
+    },
+    "seed_cases": 0
+  }
+}

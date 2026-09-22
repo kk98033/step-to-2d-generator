@@ -33,7 +33,7 @@ class ToleranceCase:
     confidence: float                      # 歷史審定信心度 (0.0 ~ 1.0)
     evidence_source: str                   # "FORCECON_STANDARD_SEED", "DWG_1FQ6V5000H", "ENGINEER_CONFIRMED"
     description: str                       # 推薦與設計理由說明
-    verification_status: str = "UNVERIFIED"  # ENGINEER_VERIFIED / AUTO_VALIDATED / SEED_REFERENCE / UNVERIFIED
+    verification_status: str = "UNVERIFIED"  # ENGINEER_VERIFIED / AUTO_VERIFIED / AUTO_EXTRACTED / UNVERIFIED
     source_metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -50,7 +50,8 @@ class ToleranceCase:
 
     def is_retrieval_eligible(self) -> bool:
         return self.effective_verification_status() in {
-            "ENGINEER_VERIFIED"
+            "ENGINEER_VERIFIED",
+            "AUTO_VERIFIED",
         }
 
 
