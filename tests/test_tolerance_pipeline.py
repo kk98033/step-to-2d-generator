@@ -3,7 +3,8 @@ import unittest
 import ezdxf
 
 from auto_2d_drawing.tolerance.case_base import FeatureCaseBase, ToleranceCase
-from auto_2d_drawing.tolerance.dxf_tolerance_extractor import DxfToleranceExtractor
+from auto_2d_drawing.tolerance.dxf_tolerance_extractor import DxfToleranceExtractor, ExtractedDimension
+from auto_2d_drawing.tolerance.feature_inference_2d import FeatureInference2DEngine
 from auto_2d_drawing.tolerance.feature_graph import FeatureNode
 from auto_2d_drawing.tolerance.feature_graph import candidate_feature_types_for_dimension
 from auto_2d_drawing.tolerance.ingest_historical_data import HistoricalDataIngestor
@@ -48,6 +49,65 @@ class DxfToleranceExtractorTests(unittest.TestCase):
         self.assertAlmostEqual(item.tolerance_config["upper_dev"], 0.2)
         self.assertAlmostEqual(item.tolerance_config["lower_dev"], -0.1)
         self.assertEqual(item.validation_status, "AUTO_VALIDATED")
+        self.assertEqual(item.points["defpoint2"], [0.0, 0.0])
+        self.assertEqual(item.points["defpoint3"], [10.0, 0.0])
+
+
+class FeatureInference2DTests(unittest.TestCase):
+    @staticmethod
+    def _dimension(category, nominal, raw_text="", tolerance=None, points=None):
+        return ExtractedDimension(
+            dim_type=category,
+            nominal_value=nominal,
+            raw_text=raw_text,
+            prefix="",
+            tolerance_config=tolerance or {"mode": "CUSTOM_SYMMETRIC", "dev": 0.01},
+            points=points or {"defpoint2": [0.0, 0.0], "defpoint3": [nominal, 0.0]},
+            layer="DIM",
+            drawing_file="sample.dxf",
+            dimension_category=category,
+        )
+
+    def test_radius_is_fillet_candidate_until_tangency_is_proven(self):
+        result = FeatureInference2DEngine().infer(self._dimension("RADIUS", 0.5, "R0.5"))
+
+        self.assertEqual(result["status"], "REVIEW_CANDIDATE")
+        self.assertIsNone(result["feature_type"])
+        self.assertEqual(result["candidates"][0]["feature_type"], "transition_fillet")
+        self.assertFalse(result["feature_identity_verified"])
+        self.assertFalse(result["retrieval_eligible"])
+
+    def test_fit_letter_case_distinguishes_hole_and_shaft(self):
+        hole = self._dimension("DIAMETER", 10.0, "Ø10 H7", {"mode": "FIT", "fit_class": "H7"})
+        shaft = self._dimension("DIAMETER", 10.0, "Ø10 h6", {"mode": "FIT", "fit_class": "h6"})
+
+        self.assertEqual(FeatureInference2DEngine().infer(hole)["feature_type"], "hole")
+        self.assertEqual(FeatureInference2DEngine().infer(shaft)["feature_type"], "shaft_segment")
+
+    def test_concentric_closed_contour_does_not_guess_hole_or_shaft(self):
+        doc = ezdxf.new()
+        msp = doc.modelspace()
+        msp.add_circle((0, 0), 5)
+        msp.add_circle((0, 0), 10)
+        dimension = self._dimension(
+            "DIAMETER",
+            10.0,
+            points={"defpoint": [5.0, 0.0], "defpoint4": [-5.0, 0.0]},
+        )
+
+        result = FeatureInference2DEngine(msp).infer(dimension)
+
+        self.assertEqual(result["status"], "REVIEW_CANDIDATE")
+        self.assertIsNone(result["feature_type"])
+        scores = {item["feature_type"]: item["confidence"] for item in result["candidates"]}
+        self.assertEqual(scores["hole"], scores["shaft_segment"])
+        self.assertTrue(result["geometry_context"]["matching_circles"][0]["has_larger_concentric_circle"])
+
+    def test_plain_linear_dimension_remains_unresolved(self):
+        result = FeatureInference2DEngine().infer(self._dimension("LINEAR", 10.0))
+
+        self.assertEqual(result["status"], "UNRESOLVED")
+        self.assertIsNone(result["feature_type"])
 
 
 class CaseRetrievalTests(unittest.TestCase):

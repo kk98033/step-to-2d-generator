@@ -162,6 +162,7 @@ case_base = FeatureCaseBase()
 tolerance_service = ToleranceDecisionService(case_base=case_base)
 
 from auto_2d_drawing.tolerance.dxf_tolerance_extractor import DxfToleranceExtractor
+from auto_2d_drawing.tolerance.feature_inference_2d import FeatureInference2DEngine
 import ezdxf
 from ezdxf.addons.drawing import RenderContext, Frontend
 from ezdxf.addons.drawing.svg import SVGBackend
@@ -372,6 +373,7 @@ def list_tolerance_cases(
             d["retrieval_eligible"] = c.is_retrieval_eligible()
             d["feature_identity_verified"] = bool((c.source_metadata or {}).get("feature_identity_verified"))
             d["candidate_feature_types"] = list((c.source_metadata or {}).get("candidate_feature_types") or [])
+            d["feature_inference_2d"] = dict((c.source_metadata or {}).get("feature_inference_2d") or {})
 
             t_cfg = c.tolerance_config or {}
             mode = t_cfg.get("mode", "FIT")
@@ -550,8 +552,19 @@ def get_drawing_details(model_name: str):
     extracted_dims = []
     tolerances_only = []
     if dxf_p and os.path.exists(dxf_p):
-        dims = dxf_extractor.extract_from_file(dxf_p, include_rejected=True)
+        try:
+            doc = ezdxf.readfile(dxf_p)
+            modelspace = doc.modelspace()
+            dims = dxf_extractor.extract_from_modelspace(
+                modelspace,
+                os.path.basename(dxf_p),
+                include_rejected=True,
+            )
+            inference_engine = FeatureInference2DEngine(modelspace)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=f"DXF parse failed: {exc}")
         for d in dims:
+            inference = inference_engine.infer(d) if d.is_feature_dimension else {}
             t_cfg = d.tolerance_config or {}
             mode = t_cfg.get("mode", "FIT")
             fit_cls = t_cfg.get("fit_class", "")
@@ -587,6 +600,7 @@ def get_drawing_details(model_name: str):
                 ,"extraction_confidence": d.extraction_confidence
                 ,"is_feature_dimension": d.is_feature_dimension
                 ,"validation_reasons": d.validation_reasons
+                ,"feature_inference_2d": inference
             }
             extracted_dims.append(item)
             if mode != "NONE" and d.is_feature_dimension and d.validation_status in ("AUTO_VALIDATED", "REVIEW_REQUIRED"):
