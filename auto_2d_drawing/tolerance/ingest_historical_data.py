@@ -17,6 +17,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import sys
 from collections import Counter, defaultdict
 from concurrent.futures import ProcessPoolExecutor
@@ -88,11 +89,53 @@ class HistoricalDataIngestor:
         stem = os.path.splitext(os.path.basename(filename))[0].lower().strip()
         return stem.replace("new_", "").replace("old_", "")
 
+    @classmethod
+    def _revision_identity(cls, filename: str) -> Tuple[str, Optional[int], str]:
+        """Return (part identity, revision, normalized full stem)."""
+        stem = cls._normalise_stem(filename)
+        match = re.match(r"^(.*?)(?:[-_]?r)(\d+)$", stem, re.IGNORECASE)
+        if not match:
+            return stem, None, stem
+        identity = match.group(1).rstrip("-_")
+        return identity, int(match.group(2)), stem
+
+    @staticmethod
+    def _select_latest_revisions(candidates: Sequence[Dict[str, Any]]) -> Tuple[Dict[str, str], Dict[str, int]]:
+        grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for candidate in candidates:
+            grouped[candidate["identity"]].append(candidate)
+
+        selected: Dict[str, str] = {}
+        superseded = 0
+        multi_revision_groups = 0
+        duplicate_selected_revision = 0
+        for items in grouped.values():
+            revisions = sorted({item["revision"] for item in items if item["revision"] is not None})
+            if revisions:
+                if len(revisions) > 1:
+                    multi_revision_groups += 1
+                latest_revision = revisions[-1]
+                finalists = [item for item in items if item["revision"] == latest_revision]
+            else:
+                finalists = items
+            finalists.sort(key=lambda item: (item["mtime"], item["path"].lower()))
+            winner = finalists[-1]
+            selected[winner["full_stem"]] = winner["path"]
+            superseded += len(items) - 1
+            duplicate_selected_revision += max(0, len(finalists) - 1)
+        return selected, {
+            "discovered_files": len(candidates),
+            "selected_latest_files": len(selected),
+            "superseded_or_duplicate_files": superseded,
+            "multi_revision_groups": multi_revision_groups,
+            "duplicate_latest_revision_files": duplicate_selected_revision,
+        }
+
     def discover_sources(self, search_dirs: Sequence[str]) -> Dict[str, Any]:
-        step_map: Dict[str, str] = {}
-        dxf_map: Dict[str, str] = {}
-        duplicate_steps = 0
-        duplicate_dxfs = 0
+        step_candidates: List[Dict[str, Any]] = []
+        dxf_candidates: List[Dict[str, Any]] = []
+        step_name_counts: Counter[str] = Counter()
+        dxf_name_counts: Counter[str] = Counter()
 
         for source_dir in search_dirs:
             if not os.path.isdir(source_dir):
@@ -102,26 +145,36 @@ class HistoricalDataIngestor:
                     extension = os.path.splitext(filename)[1].lower()
                     if extension not in {".stp", ".step", ".dxf"}:
                         continue
-                    key = self._normalise_stem(filename)
                     full_path = os.path.abspath(os.path.join(root, filename))
+                    identity, revision, full_stem = self._revision_identity(filename)
+                    candidate = {
+                        "identity": identity,
+                        "revision": revision,
+                        "full_stem": full_stem,
+                        "path": full_path,
+                        "mtime": os.path.getmtime(full_path),
+                    }
                     if extension in {".stp", ".step"}:
-                        if key in step_map:
-                            duplicate_steps += 1
-                        else:
-                            step_map[key] = full_path
+                        step_candidates.append(candidate)
+                        step_name_counts[full_stem] += 1
                     else:
-                        if key in dxf_map:
-                            duplicate_dxfs += 1
-                        else:
-                            dxf_map[key] = full_path
+                        dxf_candidates.append(candidate)
+                        dxf_name_counts[full_stem] += 1
+
+        step_map, step_revision_stats = self._select_latest_revisions(step_candidates)
+        dxf_map, dxf_revision_stats = self._select_latest_revisions(dxf_candidates)
 
         pair_keys = sorted(set(step_map) & set(dxf_map))
         return {
             "step_map": step_map,
             "dxf_map": dxf_map,
             "pair_keys": pair_keys,
-            "duplicate_steps": duplicate_steps,
-            "duplicate_dxfs": duplicate_dxfs,
+            "duplicate_steps": sum(max(0, count - 1) for count in step_name_counts.values()),
+            "duplicate_dxfs": sum(max(0, count - 1) for count in dxf_name_counts.values()),
+            "revision_selection": {
+                "step": step_revision_stats,
+                "dxf": dxf_revision_stats,
+            },
         }
 
     @staticmethod
@@ -154,6 +207,43 @@ class HistoricalDataIngestor:
     @staticmethod
     def _evidence_key(dxf_path: str, dim: ExtractedDimension) -> Tuple[str, str]:
         return os.path.normcase(os.path.abspath(dxf_path)), str(dim.entity_handle or "")
+
+    @classmethod
+    def _dimension_geometry_signature(cls, dim: ExtractedDimension) -> Tuple[Any, ...]:
+        """Identify only dimensions that describe the same value at the same geometry.
+
+        Equal nominal values at different positions or orientations are intentionally
+        retained; engineering drawings routinely repeat a value on different features.
+        """
+        if dim.dimension_category in {"DIAMETER", "RADIUS"}:
+            point_names = ("defpoint", "defpoint4")
+        else:
+            point_names = ("defpoint2", "defpoint3")
+        endpoints = []
+        for name in point_names:
+            point = (dim.points or {}).get(name) or [0.0, 0.0]
+            endpoints.append(tuple(round(float(value), 3) for value in point[:2]))
+        return (
+            dim.dimension_category,
+            round(float(dim.nominal_value), 6),
+            cls._tolerance_signature(dim.tolerance_config),
+            tuple(sorted(endpoints)),
+        )
+
+    @classmethod
+    def _deduplicate_dimensions(cls, dimensions: Sequence[ExtractedDimension]) -> Tuple[List[ExtractedDimension], int]:
+        unique: Dict[Tuple[Any, ...], ExtractedDimension] = {}
+        suppressed = 0
+        for dim in dimensions:
+            signature = cls._dimension_geometry_signature(dim)
+            existing = unique.get(signature)
+            if existing is None:
+                unique[signature] = dim
+                continue
+            if dim.entity_handle:
+                existing.duplicate_entity_handles.append(dim.entity_handle)
+            suppressed += 1
+        return list(unique.values()), suppressed
 
     @staticmethod
     def _case_id(prefix: str, dxf_path: str, suffix: str) -> str:
@@ -214,6 +304,7 @@ class HistoricalDataIngestor:
                 "dxf_path": os.path.abspath(dxf_path),
                 "product_family": family,
                 "entity_handle": dim.entity_handle,
+                "duplicate_entity_handles": list(dim.duplicate_entity_handles),
                 "source_entity_type": dim.source_entity_type,
                 "dimension_category": dim.dimension_category,
                 "raw_text": dim.raw_text,
@@ -312,7 +403,12 @@ class HistoricalDataIngestor:
                 conflicts += len(matches)
                 continue
             evidence_keys = [self._evidence_key(dxf_path, item[0]) for item in matches]
-            supporting_handles = sorted({item[0].entity_handle for item in matches if item[0].entity_handle})
+            supporting_handles = sorted({
+                handle
+                for item in matches
+                for handle in [item[0].entity_handle, *item[0].duplicate_entity_handles]
+                if handle
+            })
             confidence = max(0.90, min(0.97, 0.97 - (difference / max(threshold, 1e-9)) * 0.07))
             case = ToleranceCase(
                 case_id=self._case_id("HIST2", dxf_path, f"{node.id}_{field_name}"),
@@ -407,6 +503,7 @@ class HistoricalDataIngestor:
         inferred_feature_types: Counter[str] = Counter()
         auto_inferred_examples: List[Dict[str, Any]] = []
         parse_errors = 0
+        duplicate_dimension_entities_suppressed = 0
         dxf_paths = sorted(dxf_map.values())
         if max_dxf_files is not None:
             dxf_paths = dxf_paths[:max_dxf_files]
@@ -415,6 +512,8 @@ class HistoricalDataIngestor:
             for index, (dxf_path, extracted_dicts) in enumerate(extracted_results, start=1):
                 try:
                     extracted = [ExtractedDimension(**item) for item in extracted_dicts]
+                    extracted, suppressed = self._deduplicate_dimensions(extracted)
+                    duplicate_dimension_entities_suppressed += suppressed
                     dimensions_by_path[os.path.normcase(os.path.abspath(dxf_path))] = extracted
                     extraction_statuses.update(item.validation_status for item in extracted)
                     for dim in extracted:
@@ -487,10 +586,12 @@ class HistoricalDataIngestor:
                 "processed_pairs": len(pair_keys),
                 "duplicate_step_names": discovery["duplicate_steps"],
                 "duplicate_dxf_names": discovery["duplicate_dxfs"],
+                "revision_selection": discovery["revision_selection"],
             },
             "extraction": {
                 "all_candidate_statuses": dict(extraction_statuses),
                 "parse_errors": parse_errors,
+                "duplicate_dimension_entities_suppressed": duplicate_dimension_entities_suppressed,
                 "native_tolerance_entities": len(raw_cases),
                 "consumed_by_feature_links": len(consumed_evidence),
                 "feature_inference_2d": {

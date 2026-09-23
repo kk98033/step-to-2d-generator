@@ -335,7 +335,8 @@ def list_tolerance_cases(
     category: Optional[str] = None,
     search: Optional[str] = None,
     page: int = 1,
-    page_size: int = 36
+    page_size: int = 36,
+    group_by_drawing: bool = False,
 ):
     """
     取得歷史特徵案例庫詳細案例清單，支援分頁、分類篩選與關鍵字搜尋
@@ -458,6 +459,28 @@ def list_tolerance_cases(
 
             case_list.append(d)
 
+        evidence_count = len(case_list)
+        if group_by_drawing:
+            grouped = {}
+            for item in case_list:
+                key = item["model_name"].lower()
+                if key not in grouped:
+                    representative = dict(item)
+                    representative["drawing_case_count"] = 0
+                    representative["drawing_verified_count"] = 0
+                    representative["drawing_eligible_count"] = 0
+                    representative["drawing_feature_types"] = []
+                    grouped[key] = representative
+                aggregate = grouped[key]
+                aggregate["drawing_case_count"] += 1
+                aggregate["drawing_verified_count"] += int(bool(item.get("feature_identity_verified")))
+                aggregate["drawing_eligible_count"] += int(bool(item.get("retrieval_eligible")))
+                feature_types = aggregate["drawing_feature_types"]
+                for feature_type in ([item.get("feature_type")] if item.get("feature_identity_verified") else item.get("candidate_feature_types", [])):
+                    if feature_type and feature_type not in feature_types:
+                        feature_types.append(feature_type)
+            case_list = list(grouped.values())
+
         total_filtered = len(case_list)
         import math
         if page_size > 0:
@@ -474,7 +497,9 @@ def list_tolerance_cases(
         return {
             "status": "ok",
             "total_count": total_filtered,
+            "evidence_count": evidence_count,
             "all_cases_count": len(case_base.cases),
+            "group_by_drawing": group_by_drawing,
             "page": curr_page,
             "page_size": page_size,
             "total_pages": total_pages,
