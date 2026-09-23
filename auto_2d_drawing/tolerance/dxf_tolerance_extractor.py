@@ -44,6 +44,7 @@ class ExtractedDimension:
     extraction_confidence: float = 0.0
     is_feature_dimension: bool = False
     validation_reasons: List[str] = field(default_factory=list)
+    feature_inference_2d: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -94,8 +95,29 @@ class DxfToleranceExtractor:
         except Exception:
             return []
 
-        extracted_list: List[ExtractedDimension] = []
         file_name = os.path.basename(dxf_path)
+
+        return self.extract_from_modelspace(
+            msp,
+            file_name,
+            include_rejected=include_rejected,
+            native_dimensions_only=native_dimensions_only,
+        )
+
+    def extract_from_modelspace(
+        self,
+        msp,
+        file_name: str,
+        include_rejected: bool = False,
+        native_dimensions_only: bool = False,
+    ) -> List[ExtractedDimension]:
+        """Extract dimensions from an already-open modelspace.
+
+        Keeping parsing on the caller's document lets the independent 2D
+        feature inference engine inspect the same geometry without opening a
+        large company drawing twice.
+        """
+        extracted_list: List[ExtractedDimension] = []
 
         for entity in msp:
             e_type = entity.dxftype()
@@ -126,11 +148,15 @@ class DxfToleranceExtractor:
         # 取得錨定座標點
         defpoint = getattr(entity.dxf, 'defpoint', (0.0, 0.0, 0.0))
         defpoint2 = getattr(entity.dxf, 'defpoint2', (0.0, 0.0, 0.0))
+        defpoint3 = getattr(entity.dxf, 'defpoint3', (0.0, 0.0, 0.0))
+        defpoint4 = getattr(entity.dxf, 'defpoint4', (0.0, 0.0, 0.0))
         text_mid = getattr(entity.dxf, 'text_midpoint', (0.0, 0.0, 0.0))
 
         points = {
             "defpoint": [round(defpoint.x, 3), round(defpoint.y, 3)],
             "defpoint2": [round(defpoint2.x, 3), round(defpoint2.y, 3)] if hasattr(defpoint2, 'x') else [0.0, 0.0],
+            "defpoint3": [round(defpoint3.x, 3), round(defpoint3.y, 3)] if hasattr(defpoint3, 'x') else [0.0, 0.0],
+            "defpoint4": [round(defpoint4.x, 3), round(defpoint4.y, 3)] if hasattr(defpoint4, 'x') else [0.0, 0.0],
             "text_mid": [round(text_mid.x, 3), round(text_mid.y, 3)] if hasattr(text_mid, 'x') else [0.0, 0.0],
         }
 

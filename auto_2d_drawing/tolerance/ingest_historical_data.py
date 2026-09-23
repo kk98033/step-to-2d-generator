@@ -23,6 +23,8 @@ from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+import ezdxf
+
 _current_dir = os.path.dirname(os.path.abspath(__file__))
 _ws_root = os.path.abspath(os.path.join(_current_dir, "..", ".."))
 if _ws_root not in sys.path:
@@ -42,6 +44,7 @@ from auto_2d_drawing.tolerance.feature_graph import (
     FeatureNode,
     candidate_feature_types_for_dimension,
 )
+from auto_2d_drawing.tolerance.feature_inference_2d import FeatureInference2DEngine
 
 
 DEFAULT_SOURCE_DIRS = (
@@ -55,11 +58,20 @@ def _extract_dxf_worker(dxf_path: str) -> Tuple[str, List[Dict[str, Any]]]:
     """Process-safe DXF reader used only for the independent 2D extraction."""
     logging.getLogger("ezdxf").setLevel(logging.ERROR)
     extractor = DxfToleranceExtractor()
-    dimensions = extractor.extract_from_file(
-        dxf_path,
+    try:
+        doc = ezdxf.readfile(dxf_path)
+        modelspace = doc.modelspace()
+    except Exception:
+        return dxf_path, []
+    dimensions = extractor.extract_from_modelspace(
+        modelspace,
+        os.path.basename(dxf_path),
         include_rejected=True,
         native_dimensions_only=True,
     )
+    inference_engine = FeatureInference2DEngine(modelspace)
+    for item in dimensions:
+        item.feature_inference_2d = inference_engine.infer(item)
     return dxf_path, [item.to_dict() for item in dimensions]
 
 
@@ -173,7 +185,13 @@ class HistoricalDataIngestor:
             "explicit_tolerance_present",
             "nominal_and_deviation_range_valid",
         ]
-        candidates = candidate_feature_types_for_dimension(dim.dimension_category)
+        inference = dict(dim.feature_inference_2d or {})
+        inferred_candidates = inference.get("candidates", [])
+        candidates = [
+            item.get("feature_type")
+            for item in inferred_candidates
+            if item.get("feature_type") in CANONICAL_FEATURE_TYPES
+        ] or candidate_feature_types_for_dimension(dim.dimension_category)
         return ToleranceCase(
             case_id=self._case_id("DXF2", dxf_path, dim.entity_handle),
             part_type="GENERAL",
@@ -206,6 +224,7 @@ class HistoricalDataIngestor:
                 "verification_checks": checks,
                 "feature_taxonomy": "FeatureGraphExtractor",
                 "candidate_feature_types": candidates,
+                "feature_inference_2d": inference,
                 "feature_identity_verified": False,
                 "functional_role_verified": False,
             },
@@ -384,6 +403,8 @@ class HistoricalDataIngestor:
         dimensions_by_path: Dict[str, List[ExtractedDimension]] = {}
         raw_cases: Dict[Tuple[str, str], ToleranceCase] = {}
         extraction_statuses: Counter[str] = Counter()
+        inference_statuses: Counter[str] = Counter()
+        inferred_feature_types: Counter[str] = Counter()
         parse_errors = 0
         dxf_paths = sorted(dxf_map.values())
         if max_dxf_files is not None:
@@ -398,6 +419,11 @@ class HistoricalDataIngestor:
                     for dim in extracted:
                         if self._tolerance_is_plausible(dim):
                             raw_cases[self._evidence_key(dxf_path, dim)] = self._make_raw_case(dxf_path, dim)
+                            inference_status = str((dim.feature_inference_2d or {}).get("status", "NOT_RUN"))
+                            inference_statuses[inference_status] += 1
+                            inferred_type = (dim.feature_inference_2d or {}).get("feature_type")
+                            if inferred_type:
+                                inferred_feature_types[str(inferred_type)] += 1
                 except Exception:
                     parse_errors += 1
                 if index % 200 == 0:
@@ -451,6 +477,12 @@ class HistoricalDataIngestor:
                 "parse_errors": parse_errors,
                 "native_tolerance_entities": len(raw_cases),
                 "consumed_by_feature_links": len(consumed_evidence),
+                "feature_inference_2d": {
+                    "method": FeatureInference2DEngine.METHOD,
+                    "status_counts": dict(inference_statuses),
+                    "auto_inferred_feature_counts": dict(inferred_feature_types),
+                    "retrieval_eligible": 0,
+                },
             },
             "verification": {
                 "counts": dict(verification_counts),
