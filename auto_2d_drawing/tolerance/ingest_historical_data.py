@@ -36,7 +36,12 @@ from auto_2d_drawing.tolerance.dxf_tolerance_extractor import (
     DxfToleranceExtractor,
     ExtractedDimension,
 )
-from auto_2d_drawing.tolerance.feature_graph import FeatureGraphExtractor, FeatureNode
+from auto_2d_drawing.tolerance.feature_graph import (
+    CANONICAL_FEATURE_TYPES,
+    FeatureGraphExtractor,
+    FeatureNode,
+    candidate_feature_types_for_dimension,
+)
 
 
 DEFAULT_SOURCE_DIRS = (
@@ -148,21 +153,17 @@ class HistoricalDataIngestor:
     @staticmethod
     def _raw_feature_identity(dim: ExtractedDimension) -> Tuple[str, str, Dict[str, float], str]:
         category = dim.dimension_category
-        config = dim.tolerance_config or {}
         if category == "DIAMETER":
-            fit_class = str(config.get("fit_class", ""))
-            if config.get("mode") == "FIT" and fit_class:
-                if fit_class.isupper():
-                    return "hole", "HOLE_FIT_DIAMETER", {"diameter": dim.nominal_value}, "AUTO_VERIFIED"
-                return "shaft_segment", "SHAFT_FIT_DIAMETER", {"diameter": dim.nominal_value}, "AUTO_VERIFIED"
-            return "diameter_feature", "UNRESOLVED_DIAMETER", {"diameter": dim.nominal_value}, "AUTO_EXTRACTED"
-        if category == "RADIUS":
-            return "radius_feature", "RADIUS_DIMENSION", {"radius": dim.nominal_value}, "AUTO_EXTRACTED"
-        if category == "CHAMFER":
-            return "pilot_chamfer", "CHAMFER_DIMENSION", {"chamfer_height": dim.nominal_value}, "AUTO_EXTRACTED"
-        if category == "ANGULAR":
-            return "angular_feature", "ANGULAR_DIMENSION", {"angle": dim.nominal_value}, "AUTO_EXTRACTED"
-        return "linear_feature", "UNRESOLVED_LINEAR", {"length": dim.nominal_value}, "AUTO_EXTRACTED"
+            nominal = {"diameter": dim.nominal_value}
+        elif category == "RADIUS":
+            nominal = {"radius": dim.nominal_value}
+        elif category == "CHAMFER":
+            nominal = {"chamfer_height": dim.nominal_value}
+        elif category == "ANGULAR":
+            nominal = {"angle": dim.nominal_value}
+        else:
+            nominal = {"length": dim.nominal_value}
+        return "unresolved_feature", f"UNRESOLVED_{category}", nominal, "AUTO_EXTRACTED"
 
     def _make_raw_case(self, dxf_path: str, dim: ExtractedDimension) -> ToleranceCase:
         feature_type, role, nominal, status = self._raw_feature_identity(dim)
@@ -172,8 +173,7 @@ class HistoricalDataIngestor:
             "explicit_tolerance_present",
             "nominal_and_deviation_range_valid",
         ]
-        if status == "AUTO_VERIFIED":
-            checks.append("iso_fit_letter_identifies_shaft_or_hole")
+        candidates = candidate_feature_types_for_dimension(dim.dimension_category)
         return ToleranceCase(
             case_id=self._case_id("DXF2", dxf_path, dim.entity_handle),
             part_type="GENERAL",
@@ -204,7 +204,9 @@ class HistoricalDataIngestor:
                 "parser_confidence": dim.extraction_confidence,
                 "verification_method": "DXF_NATIVE_ENTITY",
                 "verification_checks": checks,
-                "feature_identity_verified": status == "AUTO_VERIFIED",
+                "feature_taxonomy": "FeatureGraphExtractor",
+                "candidate_feature_types": candidates,
+                "feature_identity_verified": False,
                 "functional_role_verified": False,
             },
         )
@@ -214,11 +216,13 @@ class HistoricalDataIngestor:
         nominal = node.nominal or {}
         if node.feature_type in {"shaft_segment", "hole"}:
             yield "diameter", float(nominal.get("diameter", 0.0) or 0.0), ("DIAMETER",)
+            yield "length", float(nominal.get("length", 0.0) or 0.0), ("LINEAR",)
         elif node.feature_type == "retaining_ring_groove":
             yield "groove_diameter", float(nominal.get("groove_diameter", 0.0) or 0.0), ("DIAMETER",)
             yield "groove_width", float(nominal.get("groove_width", 0.0) or 0.0), ("LINEAR",)
         elif node.feature_type == "pilot_chamfer":
             yield "chamfer_height", float(nominal.get("chamfer_height", 0.0) or 0.0), ("CHAMFER", "LINEAR")
+            yield "angle", float(nominal.get("angle", 0.0) or 0.0), ("ANGULAR",)
         elif node.feature_type == "transition_fillet":
             yield "radius", float(nominal.get("radius", 0.0) or 0.0), ("RADIUS",)
         elif node.feature_type == "locating_shoulder":
@@ -285,6 +289,9 @@ class HistoricalDataIngestor:
 
             matches.sort(key=lambda item: item[2])
             primary_dim, node, difference, threshold = matches[0]
+            if node.feature_type not in CANONICAL_FEATURE_TYPES:
+                conflicts += len(matches)
+                continue
             evidence_keys = [self._evidence_key(dxf_path, item[0]) for item in matches]
             supporting_handles = sorted({item[0].entity_handle for item in matches if item[0].entity_handle})
             confidence = max(0.90, min(0.97, 0.97 - (difference / max(threshold, 1e-9)) * 0.07))
@@ -323,6 +330,7 @@ class HistoricalDataIngestor:
                     "value_difference_mm": round(difference, 6),
                     "match_threshold_mm": round(threshold, 6),
                     "verification_method": "EXACT_FILENAME_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+                    "feature_taxonomy": "FeatureGraphExtractor",
                     "verification_checks": [
                         "exact_step_dxf_filename",
                         "native_dxf_dimension_entity",

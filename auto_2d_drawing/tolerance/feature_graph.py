@@ -18,6 +18,35 @@ from auto_2d_drawing.feature_extractor import FeatureExtractor
 from auto_2d_drawing.part_classifier import PartClassifier
 
 
+# Shared tolerance-feature taxonomy. Historical ingestion must use the same
+# feature names produced by FeatureGraphExtractor instead of inventing a
+# parallel 2D-only classification.
+CANONICAL_FEATURE_TYPES = frozenset({
+    "shaft_segment",
+    "hole",
+    "retaining_ring_groove",
+    "locating_shoulder",
+    "pilot_chamfer",
+    "transition_fillet",
+})
+
+DIMENSION_CATEGORY_FEATURE_CANDIDATES = {
+    "DIAMETER": ("shaft_segment", "hole", "retaining_ring_groove"),
+    "LINEAR": ("shaft_segment", "hole", "retaining_ring_groove", "locating_shoulder", "pilot_chamfer"),
+    "RADIUS": ("transition_fillet",),
+    "CHAMFER": ("pilot_chamfer",),
+    "ANGULAR": ("pilot_chamfer",),
+}
+
+
+def candidate_feature_types_for_dimension(dimension_category: str) -> List[str]:
+    """Return FeatureGraphExtractor-compatible candidates for a 2D dimension."""
+    return list(DIMENSION_CATEGORY_FEATURE_CANDIDATES.get(
+        str(dimension_category or "").upper(),
+        (),
+    ))
+
+
 @dataclass
 class FeatureNode:
     """特徵關係圖中的單一特徵節點"""
