@@ -17,6 +17,7 @@ from auto_2d_drawing.tolerance.feature_graph import (
     CANONICAL_FEATURE_TYPES,
     candidate_feature_types_for_dimension,
 )
+from auto_2d_drawing.tolerance.dxf_structure_2d import DxfStructure2DAnalyzer
 
 
 Point2D = Tuple[float, float]
@@ -54,7 +55,8 @@ class FeatureInference2DEngine:
     HIDDEN_LAYER_TOKENS = ("hidden", "hid", "dash", "隱藏", "隐藏")
 
     def __init__(self, modelspace=None):
-        self.primitives = self._collect_primitives(modelspace) if modelspace is not None else []
+        self.structure_analyzer = DxfStructure2DAnalyzer(modelspace) if modelspace is not None else None
+        self.primitives = self.structure_analyzer.primitives if self.structure_analyzer is not None else []
 
     def infer(self, dimension) -> Dict[str, Any]:
         category = str(getattr(dimension, "dimension_category", "UNKNOWN") or "UNKNOWN").upper()
@@ -69,6 +71,8 @@ class FeatureInference2DEngine:
         self._apply_dimension_semantics(category, clean_text, tolerance, candidates)
         geometry = self._observe_geometry(dimension)
         self._apply_geometry_evidence(category, dimension, geometry, candidates)
+        structure = self.structure_analyzer.analyze_dimension(dimension) if self.structure_analyzer is not None else {}
+        self._apply_structure_evidence(category, structure, candidates)
 
         # Python's sort is stable, so equal scores retain the canonical
         # candidate order instead of gaining a misleading alphabetical winner.
@@ -104,6 +108,7 @@ class FeatureInference2DEngine:
                 for item in ranked
             ],
             "geometry_context": geometry,
+            "structure_context": structure,
             "feature_identity_verified": False,
             "retrieval_eligible": False,
         }
@@ -192,6 +197,38 @@ class FeatureInference2DEngine:
             if hidden_count >= 2 and hole:
                 hole.raise_to(0.68, "線性尺寸兩端鄰近隱藏輪廓，可能是孔深或內部段長")
 
+    def _apply_structure_evidence(
+        self,
+        category: str,
+        structure: Dict[str, Any],
+        candidates: Dict[str, _Candidate],
+    ) -> None:
+        if category != "DIAMETER" or not structure:
+            return
+        cross_view = structure.get("cross_view_evidence", {})
+        visible_pairs = cross_view.get("matching_visible_pairs", [])
+        outer_visible_pairs = [item for item in visible_pairs if item.get("outer_silhouette")]
+        hidden_pairs = cross_view.get("matching_hidden_pairs", [])
+        shaft = self._candidate(candidates, "shaft_segment")
+        hole = self._candidate(candidates, "hole")
+        association_status = structure.get("association_status")
+        attachment_is_reliable = association_status in {"NATIVE_ASSOCIATIVE", "GEOMETRIC_ATTACHMENT"}
+
+        if attachment_is_reliable and outer_visible_pairs and not hidden_pairs and shaft:
+            shaft.raise_to(0.93, "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對")
+        elif attachment_is_reliable and hidden_pairs and not visible_pairs and hole:
+            hole.raise_to(0.93, "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑隱藏線對")
+        elif visible_pairs and hidden_pairs:
+            if shaft:
+                shaft.raise_to(0.76, "跨視圖同時存在可見與隱藏線對，可能有重疊特徵")
+            if hole:
+                hole.raise_to(0.76, "跨視圖同時存在可見與隱藏線對，無法唯一判定內外")
+        elif visible_pairs and not outer_visible_pairs:
+            if shaft:
+                shaft.raise_to(0.72, "跨視圖找到可見線對，但它不是局部最外輪廓，可能來自剖視內部")
+            if hole:
+                hole.raise_to(0.72, "內側可見線對可能是剖視孔，也可能是其他內部結構")
+
     def _observe_geometry(self, dimension) -> Dict[str, Any]:
         reference_points = self._dimension_reference_points(dimension)
         nominal = abs(float(getattr(dimension, "nominal_value", 0.0) or 0.0))
@@ -231,8 +268,8 @@ class FeatureInference2DEngine:
                 "has_larger_concentric_circle": has_larger,
             })
 
-        hidden = [item for item in nearby if self._is_hidden_layer(item.layer)]
-        visible_lines = [item for item in nearby if item.entity_type in {"LINE", "LWPOLYLINE", "POLYLINE"} and not self._is_hidden_layer(item.layer)]
+        hidden = [item for item in nearby if self._is_hidden_layer(item.layer, getattr(item, "linetype", ""))]
+        visible_lines = [item for item in nearby if item.entity_type in {"LINE", "LWPOLYLINE", "POLYLINE"} and not self._is_hidden_layer(item.layer, getattr(item, "linetype", ""))]
         return {
             "reference_points": [[round(x, 3), round(y, 3)] for x, y in reference_points],
             "search_radius": round(proximity, 4),
@@ -273,8 +310,8 @@ class FeatureInference2DEngine:
             return 0.0
         return max(math.dist(left, right) for index, left in enumerate(points) for right in points[index + 1:])
 
-    def _is_hidden_layer(self, layer: str) -> bool:
-        lowered = str(layer or "").lower()
+    def _is_hidden_layer(self, layer: str, linetype: str = "") -> bool:
+        lowered = f"{layer or ''} {linetype or ''}".lower()
         return any(token in lowered for token in self.HIDDEN_LAYER_TOKENS)
 
     @classmethod

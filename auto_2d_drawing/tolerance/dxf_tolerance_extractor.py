@@ -45,6 +45,7 @@ class ExtractedDimension:
     is_feature_dimension: bool = False
     validation_reasons: List[str] = field(default_factory=list)
     feature_inference_2d: Dict[str, Any] = field(default_factory=dict)
+    association_metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -214,7 +215,53 @@ class DxfToleranceExtractor:
             extraction_confidence=confidence,
             is_feature_dimension=True,
             validation_reasons=reasons,
+            association_metadata=self._read_association_metadata(entity),
         )
+
+    @staticmethod
+    def _read_association_metadata(entity) -> Dict[str, Any]:
+        """Preserve native associative references when a source DXF has them.
+
+        Many converted company drawings have already lost these links.  The
+        explicit empty result is still important evidence: downstream code can
+        distinguish a missing CAD dependency from a failed geometric match.
+        """
+        reactor_handles = sorted(str(handle) for handle in (entity.reactors or []))
+        xdata_handles: List[str] = []
+        xdata_geometry_handles: List[str] = []
+        try:
+            for _app_name, tags in (entity.xdata.data or {}).items():
+                handles = [str(tag.value) for tag in tags if tag.code == 1005]
+                xdata_handles.extend(handles)
+                is_dimstyle_override = any(tag.code == 1000 and str(tag.value).upper() == "DSTYLE" for tag in tags)
+                if not is_dimstyle_override:
+                    xdata_geometry_handles.extend(handles)
+        except (AttributeError, TypeError):
+            pass
+
+        extension_entries: List[Dict[str, str]] = []
+        if entity.has_extension_dict:
+            try:
+                for name, item in entity.get_extension_dict().items():
+                    extension_entries.append({
+                        "name": str(name),
+                        "handle": str(getattr(item.dxf, "handle", "") or ""),
+                        "entity_type": item.dxftype(),
+                    })
+            except (AttributeError, TypeError, ValueError):
+                pass
+
+        direct_handles = sorted({
+            handle for handle in reactor_handles + xdata_geometry_handles if handle
+        })
+        return {
+            "dimension_block": str(getattr(entity.dxf, "geometry", "") or ""),
+            "reactor_handles": reactor_handles,
+            "xdata_handles": sorted(set(xdata_handles)),
+            "extension_dictionary": extension_entries,
+            "direct_geometry_handles": direct_handles,
+            "has_native_association": bool(direct_handles or extension_entries),
+        }
 
     @staticmethod
     def _read_dimension_style_tolerance(entity) -> Optional[Dict[str, Any]]:
