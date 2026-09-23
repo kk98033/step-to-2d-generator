@@ -1,17 +1,30 @@
-version: '3.8'
-
 services:
-  cad-generator:
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: forcecon-cad-generator
+    container_name: forcecon-step-to-2d
     restart: unless-stopped
     ports:
       - "8000:8000"
     volumes:
-      # 持久化 CAD 模型庫與產出的 2D 工程圖
-      - ./models:/app/models
-      - ./output:/app/output
+      - ./models:/data/models
+      - ./auto_2d_drawing/output:/data/output
+      - ./auto_2d_drawing/templates:/data/templates
+      - ./auto_2d_drawing/tolerance/data:/data/tolerance
+      - ${CAD_COMPANY_DATA_DIR:-./company_data}:/data/company-reference:ro
     environment:
-      - PYTHONUNBUFFERED=1
+      PYTHONUNBUFFERED: "1"
+      CAD_MODELS_DIR: /data/models
+      CAD_OUTPUT_DIR: /data/output
+      CAD_TEMPLATES_DIR: /data/templates
+      CAD_TOLERANCE_CASE_DB: /data/tolerance/feature_case_base.json
+      CAD_NEW_EXAMPLE_DIR: /data/company-reference
+      CAD_TOLERANCE_DXF_DIR: /data/company-reference/temp_dxf_cache_ref
+      CAD_EXTERNAL_PREDICTION_API_KEY: ${CAD_EXTERNAL_PREDICTION_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3

@@ -1,43 +1,53 @@
-# ==============================================================================
-# FORCECON STEP-to-2D CAD Generator - Dockerfile
-# Base: Conda-forge Python 3.10 with OpenCASCADE PythonOCC 7.7.2
-# ==============================================================================
-FROM condaforge/miniforge3:latest
+FROM node:22-bookworm-slim AS frontend-build
+
+WORKDIR /frontend
+COPY web_app/frontend/package.json web_app/frontend/package-lock.json ./
+RUN npm ci
+COPY web_app/frontend/ ./
+RUN npm run build
+
+
+FROM condaforge/miniforge3:latest AS runtime
 
 WORKDIR /app
 
-# 安裝系統圖形與字型相依套件 (OpenGL, OSMesa, X11, CJK Fonts)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    libxrender1 \
-    libxext6 \
-    fonts-noto-cjk \
-    fonts-wqy-microhei \
     curl \
+    fonts-noto-cjk \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
-# 建立 Python 3.10 環境並安裝 PythonOCC
-RUN conda create -n occenv -c conda-forge python=3.10 pythonocc-core=7.7.2 -y \
-    && conda clean -afy
+COPY environment.docker.yml /tmp/environment.yml
+RUN conda env create -f /tmp/environment.yml \
+    && conda clean -afy \
+    && rm /tmp/environment.yml
 
-# 複製依賴檔案
-COPY requirements.txt .
+ENV PATH="/opt/conda/envs/pyoccenv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PORT=8000 \
+    CAD_MODELS_DIR=/data/models \
+    CAD_OUTPUT_DIR=/data/output \
+    CAD_REFERENCE_DIR=/data/reference \
+    CAD_TEMPLATES_DIR=/data/templates \
+    CAD_TOLERANCE_CASE_DB=/data/tolerance/feature_case_base.json \
+    CAD_NEW_EXAMPLE_DIR=/data/company-reference \
+    CAD_TOLERANCE_DXF_DIR=/data/company-reference/temp_dxf_cache_ref \
+    CAD_CN_FONT_PATH=/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
 
-# 在 Conda 環境中安裝 Python 模組
-RUN /opt/conda/envs/occenv/bin/pip install --no-cache-dir -r requirements.txt \
-    fastapi uvicorn ezdxf svglib pypdfium2 shapely trimesh reportlab cairosvg
-
-# 複製專案程式碼
 COPY . /app/
+COPY --from=frontend-build /frontend/dist /app/web_app/frontend/dist
 
-# 設定環境變數
-ENV PATH="/opt/conda/envs/occenv/bin:$PATH"
-ENV PYTHONUNBUFFERED=1
-ENV PORT=8000
+RUN mkdir -p /data/models /data/output /data/reference /data/company-reference /data/templates /data/tolerance \
+    && cp -a /app/auto_2d_drawing/templates/. /data/templates/ \
+    && cp /app/auto_2d_drawing/tolerance/data/feature_case_base.json /data/tolerance/feature_case_base.json
 
 EXPOSE 8000
 
-# 預設啟動 FastAPI 後端伺服器 (包含已編譯之靜態前端)
-WORKDIR /app/web_app/backend
-CMD ["python", "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl --fail http://localhost:8000/api/health || exit 1
+
+CMD ["python", "-m", "uvicorn", "web_app.backend.server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

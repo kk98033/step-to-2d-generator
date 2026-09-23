@@ -59,7 +59,10 @@ class FeatureCaseBase:
     """
     特徵案例庫與 CAD-RAG 檢索引擎
     """
-    DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), "data", "feature_case_base.json")
+    DEFAULT_DB_PATH = os.path.abspath(os.environ.get(
+        "CAD_TOLERANCE_CASE_DB",
+        os.path.join(os.path.dirname(__file__), "data", "feature_case_base.json"),
+    ))
     FEATURE_TYPE_ALIASES = {
         "cylinder": "shaft_segment",
         "shaft": "shaft_segment",

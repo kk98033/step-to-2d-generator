@@ -12,7 +12,7 @@ import { OrbitControls, Html } from '@react-three/drei';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import * as THREE from 'three';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
 interface TreeNode {
   name: string;
@@ -662,6 +662,8 @@ function App() {
     baseline?: string;
     prefix?: string;
     tolerance_config?: Record<string, any>;
+    tolerance_source?: 'HISTORICAL_RAG' | 'EXTERNAL_NEURAL_MODEL' | 'MANUAL';
+    external_prediction_metadata?: Record<string, any>;
   }>>({});
   const [ruleFilter, setRuleFilter] = useState<string>('ALL');
   const [ruleSearch, setRuleSearch] = useState<string>('');
@@ -684,6 +686,8 @@ function App() {
 
   // --- AI CAD-RAG Tolerance Decision State ---
   const [aiRecommendations, setAiRecommendations] = useState<Record<string, any>>({});
+  const [externalPredictionsByRule, setExternalPredictionsByRule] = useState<Record<string, any>>({});
+  const [externalPredictionMeta, setExternalPredictionMeta] = useState<Record<string, any> | null>(null);
   const [isRecommendingTolerances, setIsRecommendingTolerances] = useState<boolean>(false);
   const [toleranceStats, setToleranceStats] = useState<{ total_cases: number; categories: Record<string, number> } | null>(null);
   const [recommendSummary, setRecommendSummary] = useState<{ total_rules: number; high_confidence_count: number; product_family?: string; part_type?: string } | null>(null);
@@ -724,6 +728,10 @@ function App() {
     setCustomDrawingResult(null);
     setDrawingPan({ x: 0, y: 0 });
     setAnnotationZoom(1);
+    setAiRecommendations({});
+    setExternalPredictionsByRule({});
+    setExternalPredictionMeta(null);
+    setRecommendSummary(null);
   }, [selectedPart]);
 
   useEffect(() => {
@@ -852,7 +860,7 @@ function App() {
             };
           });
 
-          // 🌟 預設選取與 3D 特徵圖層完全一致（優先選取核心特徵，最多 15 項，排除微小圓角，避免模型雜亂）
+          // 預設選取與 3D 特徵圖層一致（優先核心特徵，最多 15 項，排除微小圓角）
           const topKeyRules = rules.filter((r: any) => {
             const cat = (r.category || r.type || '').toLowerCase();
             return !cat.includes('fillet') && !cat.includes('round');
@@ -966,6 +974,8 @@ function App() {
     baseline: string;
     prefix: string;
     tolerance_config: Record<string, any>;
+    tolerance_source: 'HISTORICAL_RAG' | 'EXTERNAL_NEURAL_MODEL' | 'MANUAL';
+    external_prediction_metadata: Record<string, any>;
   }>) => {
     setRuleConfig(prev => ({
       ...prev,
@@ -974,6 +984,33 @@ function App() {
         ...updates
       }
     }));
+  };
+
+  const applyToleranceSource = (ruleId: string, source: 'HISTORICAL_RAG' | 'EXTERNAL_NEURAL_MODEL') => {
+    const historical = aiRecommendations[ruleId];
+    const external = externalPredictionsByRule[ruleId];
+    if (source === 'EXTERNAL_NEURAL_MODEL' && external) {
+      updateRuleConfig(ruleId, {
+        tolerance: external.formatted_display || external.tolerance_str || '',
+        tolerance_config: external.tolerance_config || { mode: external.predicted_mode || 'NONE' },
+        tolerance_source: source,
+        external_prediction_metadata: {
+          provider: externalPredictionMeta?.provider,
+          model_name: externalPredictionMeta?.model_name,
+          model_version: externalPredictionMeta?.model_version,
+          confidence: external.confidence,
+        },
+      });
+      return;
+    }
+    if (historical) {
+      updateRuleConfig(ruleId, {
+        tolerance: historical.tolerance_str !== undefined ? historical.tolerance_str : (historical.fit_class || ''),
+        tolerance_config: historical.tolerance_config || { mode: historical.recommended_mode || 'NONE' },
+        tolerance_source: 'HISTORICAL_RAG',
+        external_prediction_metadata: {},
+      });
+    }
   };
 
   const handleAiRecommendTolerances = async () => {
@@ -994,6 +1031,15 @@ function App() {
       if (res.data?.status === 'ok') {
         const recs: Record<string, any> = res.data.recommendations || {};
         setAiRecommendations(recs);
+        const externalSet = res.data.external_prediction_set || null;
+        setExternalPredictionsByRule(externalSet?.predictions_by_rule || {});
+        setExternalPredictionMeta(externalSet ? {
+          provider: externalSet.provider,
+          model_name: externalSet.model_name,
+          model_version: externalSet.model_version,
+          model_artifact_id: externalSet.model_artifact_id,
+          received_at_utc: externalSet.received_at_utc,
+        } : null);
         setRecommendSummary({
           total_rules: res.data.total_rules || Object.keys(recs).length,
           high_confidence_count: res.data.high_confidence_count || 0,
@@ -1008,8 +1054,11 @@ function App() {
             const existing = nextCfg[rId] || {};
             nextCfg[rId] = {
               ...existing,
-              tolerance: rec.tolerance_str !== undefined ? rec.tolerance_str : (rec.fit_class || ''),
-              tolerance_config: rec.tolerance_config || { mode: rec.recommended_mode || 'NONE' }
+              ...(existing.tolerance_source === 'EXTERNAL_NEURAL_MODEL' ? {} : {
+                tolerance: rec.tolerance_str !== undefined ? rec.tolerance_str : (rec.fit_class || ''),
+                tolerance_config: rec.tolerance_config || { mode: rec.recommended_mode || 'NONE' },
+                tolerance_source: 'HISTORICAL_RAG',
+              })
             };
           });
           return nextCfg;
@@ -1040,20 +1089,41 @@ function App() {
 
   const handleSaveAsHistoricalCase = async (ruleId: string) => {
     const rec = aiRecommendations[ruleId];
+    const external = externalPredictionsByRule[ruleId];
     const cfg = ruleConfig[ruleId] || {};
     const rule = candidateRules.find(r => (r.id || r.rule_id) === ruleId);
     if (!rule) return;
+    const modelId = results?.model_id || results?.output_dir || jobId;
+    const dimType = String(rule.dim_type || rule.category || '').toUpperCase();
+    const nominal = Number(rule.nominal_value || 0);
+    const nominalDimensions = dimType.includes('DIAMETER')
+      ? { diameter: nominal }
+      : dimType.includes('RADIUS')
+        ? { radius: nominal }
+        : { length: nominal };
 
     try {
       const res = await axios.post(`${API_BASE}/api/tolerance/save-case`, {
-        part_type: 'SHAFT',
-        feature_type: rule.category || 'shaft_segment',
-        inferred_role: rec?.inferred_role || 'FUNCTIONAL_JOURNAL',
-        nominal_dimensions: { nominal: rule.nominal_value || 0 },
+        part_type: recommendSummary?.part_type || rule.part_type || 'GENERAL',
+        feature_type: rule.feature_type || rule.category || 'unknown',
+        inferred_role: rec?.inferred_role || rule.inferred_role || rule.role || 'UNKNOWN',
+        nominal_dimensions: nominalDimensions,
         tolerance_config: cfg.tolerance_config || { mode: 'FIT', fit_class: cfg.tolerance },
         neighbor_types: [],
         boundary_position: 'INTERIOR',
-        description: `工程師於 UI 審定之 ${ruleId} 公差案例`
+        description: `工程師於 UI 審定之 ${ruleId} 公差案例`,
+        source_metadata: {
+          model_id: modelId,
+          part_id: selectedPart,
+          rule_id: ruleId,
+          decision_source: cfg.tolerance_source || 'MANUAL',
+          external_model: cfg.tolerance_source === 'EXTERNAL_NEURAL_MODEL' ? {
+            provider: externalPredictionMeta?.provider,
+            model_name: externalPredictionMeta?.model_name,
+            model_version: externalPredictionMeta?.model_version,
+            confidence: external?.confidence,
+          } : null,
+        }
       });
       if (res.data?.status === 'ok') {
         alert(`已成功將 ${ruleId} 公差案例存入歷史案例庫（總數: ${res.data.total_cases} 筆）！`);
@@ -1143,6 +1213,8 @@ function App() {
           preferred_view: cfg.preferred_view || r.preferred_view || r.view || 'front',
           tolerance_config: tolCfg,
           tolerance: cfg.tolerance !== undefined ? cfg.tolerance : (r.tolerance || r.default_tolerance || ''),
+          tolerance_source: cfg.tolerance_source || 'MANUAL',
+          external_prediction_metadata: cfg.external_prediction_metadata || {},
           prefix: cfg.prefix !== undefined ? cfg.prefix : (r.prefix || r.default_prefix || ''),
           baseline: cfg.baseline || r.baseline || 'NONE'
         };
@@ -1414,6 +1486,14 @@ function App() {
             <File color="#3B82F6" size={32} />
           </div>
           <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>FORCECON Auto 2D</h1>
+          <a
+            href="/tolerance-inspector.html"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', margin: '16px 0 20px', padding: '10px 14px', background: '#262626', border: '1px solid #2563eb', borderRadius: 6, color: '#dbeafe', textDecoration: 'none', fontSize: 14, fontWeight: 600 }}
+          >
+            <Database size={17} />
+            開啟公差案例檢視器
+            <ExternalLink size={14} />
+          </a>
           {/* Mode Toggle */}
           <div style={{ display: 'flex', background: '#222', borderRadius: 8, padding: 4, marginBottom: 24 }}>
             <button onClick={() => setUploadMode('single')} style={{ flex: 1, padding: '8px 0', borderRadius: 6, border: 'none', background: uploadMode === 'single' ? '#3B82F6' : 'transparent', color: uploadMode === 'single' ? '#fff' : '#888', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}>單一模型轉換</button>
@@ -1620,14 +1700,11 @@ function App() {
           <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>{status === 'uploading' ? '上傳中...' : '處理中...'}</h2>
           <div style={{ width: '100%', background: '#333', borderRadius: 999, height: 12, marginBottom: 8, overflow: 'hidden' }}>
             <div style={{ 
-              backgroundSize: '1.5rem 1.5rem',
-              backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.15) 75%, transparent 75%, transparent)', 
               backgroundColor: '#3B82F6', 
               height: 12, 
               borderRadius: 999, 
               transition: 'width 0.3s', 
-              width: `${Math.max(2, percent)}%`,
-              animation: 'progress-stripes 1s linear infinite'
+              width: `${Math.max(2, percent)}%`
             }} />
           </div>
           <p style={{ fontSize: 13, color: '#888', minHeight: 20 }}>{progressMsg}{dots}</p>
@@ -2324,7 +2401,7 @@ function App() {
                     <div style={{ position: 'absolute', inset: 0, background: 'rgba(9, 13, 22, 0.85)', backdropFilter: 'blur(6px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 25, gap: 12 }}>
                       <Loader2 size={38} color="#38bdf8" className="animate-spin" />
                       <span style={{ fontSize: 14, color: '#f8fafc', fontWeight: 700, letterSpacing: 0.5 }}>
-                        ✨ 正在即時提取 3D 特徵圖層...
+                        正在即時提取 3D 特徵圖層...
                       </span>
                       <span style={{ fontSize: 12, color: '#94a3b8' }}>
                         正在分析零件拓撲面與特徵幾何，請稍候
@@ -2521,6 +2598,13 @@ function App() {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 10, color: '#a3a3a3', background: '#18181b', padding: '4px 8px', borderRadius: 3, border: '1px solid #27272a' }}>
                       <span>已完成 {recommendSummary.total_rules} 條規則推薦 · 產品族 {recommendSummary.product_family || '未識別'} · 零件 {recommendSummary.part_type || 'GENERAL'}</span>
                       <span style={{ color: '#34d399', fontWeight: 600 }}>{recommendSummary.high_confidence_count} 項高信心度匹配</span>
+                    </div>
+                  )}
+                  {recommendSummary && (
+                    <div style={{ fontSize: 10, color: externalPredictionMeta ? '#93c5fd' : '#737373', background: '#18181b', padding: '4px 8px', borderRadius: 3, border: `1px solid ${externalPredictionMeta ? '#1e3a8a' : '#27272a'}` }}>
+                      {externalPredictionMeta
+                        ? `外部神經模型：${externalPredictionMeta.provider} / ${externalPredictionMeta.model_name} ${externalPredictionMeta.model_version} · ${Object.keys(externalPredictionsByRule).length} 筆，可在各規則中比較後採用`
+                        : '尚未收到此外部模型／零件的神經網路公差預測；CAD-RAG 與規則結果仍可獨立使用'}
                     </div>
                   )}
                 </div>
@@ -2749,6 +2833,8 @@ function App() {
                       const cat = (rule.category || rule.type || '').toLowerCase();
                       const cfg = ruleConfig[rId] || {};
                       const rec = aiRecommendations[rId];
+                      const externalPrediction = externalPredictionsByRule[rId];
+                      const selectedToleranceSource = cfg.tolerance_source || (rec ? 'HISTORICAL_RAG' : 'MANUAL');
                        const rawSides = cfg.sides || cfg.side || rule.sides || rule.side || ['BOTTOM'];
                       const currentSides: string[] = Array.isArray(rawSides) ? rawSides : [rawSides];
                       const currentViews = cfg.views || rule.target_views || rule.views || ['front', 'top', 'right'];
@@ -2896,7 +2982,7 @@ function App() {
                                           {reasons.join(' · ')} · {evidence.verification_status || 'UNVERIFIED'}
                                         </div>
                                         <div style={{ color: evidence.has_source_drawing ? '#60a5fa' : '#64748b', fontSize: 9, marginTop: 3 }}>
-                                          {evidence.has_source_drawing ? '點擊查看原始 PDF／向量圖' : '無原始圖面（種子或規則案例）'}
+                                          {evidence.has_source_drawing ? '點擊查看原始 PDF／向量圖' : '無可追溯原始圖面'}
                                         </div>
                                       </button>
                                     );
@@ -2933,6 +3019,69 @@ function App() {
                                   </button>
                                 </div>
                               )}
+                            </div>
+                          )}
+
+                          {(rec || externalPrediction) && (
+                            <div style={{ marginLeft: 22, display: 'flex', gap: 5, alignItems: 'center' }}>
+                              <span style={{ fontSize: 9, color: '#737373' }}>採用來源:</span>
+                              {rec && (
+                                <button
+                                  type="button"
+                                  onClick={(event) => { event.stopPropagation(); applyToleranceSource(rId, 'HISTORICAL_RAG'); }}
+                                  style={{ fontSize: 9, padding: '3px 7px', borderRadius: 3, cursor: 'pointer', border: `1px solid ${selectedToleranceSource === 'HISTORICAL_RAG' ? '#2563eb' : '#334155'}`, background: selectedToleranceSource === 'HISTORICAL_RAG' ? '#1e3a8a' : '#171717', color: selectedToleranceSource === 'HISTORICAL_RAG' ? '#bfdbfe' : '#94a3b8' }}
+                                >
+                                  歷史案例／工程規則
+                                </button>
+                              )}
+                              {externalPrediction && (
+                                <button
+                                  type="button"
+                                  onClick={(event) => { event.stopPropagation(); applyToleranceSource(rId, 'EXTERNAL_NEURAL_MODEL'); }}
+                                  style={{ fontSize: 9, padding: '3px 7px', borderRadius: 3, cursor: 'pointer', border: `1px solid ${selectedToleranceSource === 'EXTERNAL_NEURAL_MODEL' ? '#2563eb' : '#334155'}`, background: selectedToleranceSource === 'EXTERNAL_NEURAL_MODEL' ? '#1e3a8a' : '#171717', color: selectedToleranceSource === 'EXTERNAL_NEURAL_MODEL' ? '#dbeafe' : '#94a3b8' }}
+                                >
+                                  神經網路預測
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {externalPrediction && (
+                            <div style={{ marginLeft: 22, background: '#131b26', border: '1px solid #1e3a8a', borderRadius: 4, padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                                <span style={{ fontSize: 10, color: '#dbeafe', fontWeight: 700 }}>
+                                  神經模型預測 · {externalPrediction.formatted_display || externalPrediction.predicted_mode || '未提供顯示值'}
+                                </span>
+                                <span style={{ fontSize: 9, color: '#93c5fd', fontWeight: 600 }}>
+                                  {Math.round((externalPrediction.confidence || 0) * 100)}% 模型信心
+                                </span>
+                              </div>
+                              <div style={{ fontSize: 9, color: '#93c5fd' }}>
+                                {externalPredictionMeta?.provider} / {externalPredictionMeta?.model_name} {externalPredictionMeta?.model_version}
+                              </div>
+                              {(externalPrediction.explanation || []).length > 0 && (
+                                <div style={{ fontSize: 9, color: '#d4d4d8', lineHeight: 1.4 }}>
+                                  {(externalPrediction.explanation || []).join('；')}
+                                </div>
+                              )}
+                              {(externalPrediction.warnings || []).length > 0 && (
+                                <div style={{ fontSize: 9, color: '#fbbf24', lineHeight: 1.4 }}>
+                                  注意：{(externalPrediction.warnings || []).join('；')}
+                                </div>
+                              )}
+                              {Object.keys(externalPrediction.input_features || {}).length > 0 && (
+                                <div style={{ fontSize: 9, color: '#a3a3a3', lineHeight: 1.4, wordBreak: 'break-word' }}>
+                                  模型輸入摘要：{JSON.stringify(externalPrediction.input_features)}
+                                </div>
+                              )}
+                              {Object.keys(externalPrediction.uncertainty || {}).length > 0 && (
+                                <div style={{ fontSize: 9, color: '#a3a3a3', lineHeight: 1.4, wordBreak: 'break-word' }}>
+                                  不確定性：{JSON.stringify(externalPrediction.uncertainty)}
+                                </div>
+                              )}
+                              <div style={{ fontSize: 9, color: '#a1a1aa' }}>
+                                此結果為獨立模型輸出，不代表已由歷史案例或 STEP 幾何核實。
+                              </div>
                             </div>
                           )}
 
@@ -3034,16 +3183,16 @@ function App() {
                                         onChange={(e) => {
                                           const val = e.target.value;
                                           if (val === 'NONE') {
-                                            updateRuleConfig(rId, { tolerance_config: { mode: 'NONE' }, tolerance: '' });
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'NONE' }, tolerance: '', tolerance_source: 'MANUAL' });
                                           } else if (val === 'GROOVE') {
-                                            updateRuleConfig(rId, { tolerance_config: { mode: 'GROOVE', upper_dev: 0.040, lower_dev: 0.000 }, tolerance: '(+0.040/0.000)' });
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'GROOVE', upper_dev: 0.040, lower_dev: 0.000 }, tolerance: '(+0.040/0.000)', tolerance_source: 'MANUAL' });
                                           } else if (val === 'CUSTOM_SYMMETRIC') {
-                                            updateRuleConfig(rId, { tolerance_config: { mode: 'CUSTOM_SYMMETRIC', dev: currentTolConfig.dev || 0.05 }, tolerance: `±${currentTolConfig.dev || 0.05}` });
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'CUSTOM_SYMMETRIC', dev: currentTolConfig.dev || 0.05 }, tolerance: `±${currentTolConfig.dev || 0.05}`, tolerance_source: 'MANUAL' });
                                           } else if (val === 'CUSTOM_LIMITS') {
-                                            updateRuleConfig(rId, { tolerance_config: { mode: 'CUSTOM_LIMITS', upper_dev: currentTolConfig.upper_dev || 0.02, lower_dev: currentTolConfig.lower_dev || -0.01 }, tolerance: `(+${currentTolConfig.upper_dev || 0.02}/${currentTolConfig.lower_dev || -0.01})` });
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'CUSTOM_LIMITS', upper_dev: currentTolConfig.upper_dev || 0.02, lower_dev: currentTolConfig.lower_dev || -0.01 }, tolerance: `(+${currentTolConfig.upper_dev || 0.02}/${currentTolConfig.lower_dev || -0.01})`, tolerance_source: 'MANUAL' });
                                           } else {
                                             const isHole = cat.includes('hole') || val.startsWith('H') || val.startsWith('P') || val.startsWith('JS');
-                                            updateRuleConfig(rId, { tolerance_config: { mode: 'FIT', fit_class: val, is_hole: isHole }, tolerance: val });
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'FIT', fit_class: val, is_hole: isHole }, tolerance: val, tolerance_source: 'MANUAL' });
                                           }
                                         }}
                                         style={{
@@ -3092,7 +3241,7 @@ function App() {
                                           value={currentTolConfig.dev !== undefined ? currentTolConfig.dev : 0.05}
                                           onChange={(e) => {
                                             const val = parseFloat(e.target.value) || 0.0;
-                                            updateRuleConfig(rId, { tolerance_config: { ...currentTolConfig, mode: 'CUSTOM_SYMMETRIC', dev: val }, tolerance: `±${val}` });
+                                            updateRuleConfig(rId, { tolerance_config: { ...currentTolConfig, mode: 'CUSTOM_SYMMETRIC', dev: val }, tolerance: `±${val}`, tolerance_source: 'MANUAL' });
                                           }}
                                           style={{ width: 60, background: '#1f1f1f', border: '1px solid #333', borderRadius: 3, color: '#facc15', fontSize: 10, padding: '2px 6px' }}
                                         />
@@ -3111,7 +3260,7 @@ function App() {
                                           onChange={(e) => {
                                             const val = parseFloat(e.target.value) || 0.0;
                                             const low = currentTolConfig.lower_dev !== undefined ? currentTolConfig.lower_dev : -0.01;
-                                            updateRuleConfig(rId, { tolerance_config: { ...currentTolConfig, mode: 'CUSTOM_LIMITS', upper_dev: val, lower_dev: low }, tolerance: `(+${val}/${low})` });
+                                            updateRuleConfig(rId, { tolerance_config: { ...currentTolConfig, mode: 'CUSTOM_LIMITS', upper_dev: val, lower_dev: low }, tolerance: `(+${val}/${low})`, tolerance_source: 'MANUAL' });
                                           }}
                                           style={{ width: 50, background: '#1f1f1f', border: '1px solid #333', borderRadius: 3, color: '#4ade80', fontSize: 10, padding: '2px 6px' }}
                                         />
@@ -3123,7 +3272,7 @@ function App() {
                                           onChange={(e) => {
                                             const val = parseFloat(e.target.value) || 0.0;
                                             const up = currentTolConfig.upper_dev !== undefined ? currentTolConfig.upper_dev : 0.02;
-                                            updateRuleConfig(rId, { tolerance_config: { ...currentTolConfig, mode: 'CUSTOM_LIMITS', upper_dev: up, lower_dev: val }, tolerance: `(+${up}/${val})` });
+                                            updateRuleConfig(rId, { tolerance_config: { ...currentTolConfig, mode: 'CUSTOM_LIMITS', upper_dev: up, lower_dev: val }, tolerance: `(+${up}/${val})`, tolerance_source: 'MANUAL' });
                                           }}
                                           style={{ width: 50, background: '#1f1f1f', border: '1px solid #333', borderRadius: 3, color: '#f87171', fontSize: 10, padding: '2px 6px' }}
                                         />

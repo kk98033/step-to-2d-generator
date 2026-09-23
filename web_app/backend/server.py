@@ -3,12 +3,16 @@ import sys
 import uuid
 import json
 import shutil
-from typing import Dict, Any, List, Optional
+import secrets
+from math import isfinite
+from typing import Dict, Any, List, Optional, Literal
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
-from fastapi import FastAPI, UploadFile, File, Body, HTTPException
+from fastapi import FastAPI, UploadFile, File, Body, HTTPException, Header
 from fastapi.responses import Response, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, model_validator
 
 # Add parent dir to path so we can import original modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -16,7 +20,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from auto_2d_drawing.config import MODELS_DIR, OUTPUT_DIR
 from auto_2d_drawing.batch_generate import batch_generate
 
-app = FastAPI(title="FORCECON Auto 2D Drawing API")
+app = FastAPI(
+    title="FORCECON STEP-to-2D API",
+    version="0.4.0-dev",
+    description=(
+        "STEP/STP 轉工程圖、3D 特徵查找、智慧標註與開發中的 CAD-RAG 公差推薦 API。"
+        "整合方請以 /docs、/openapi.json 與 docs/api_reference.md 為契約入口。"
+    ),
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -161,6 +172,121 @@ template_manager = TemplateManager()
 case_base = FeatureCaseBase()
 tolerance_service = ToleranceDecisionService(case_base=case_base)
 
+
+class ExternalTolerancePrediction(BaseModel):
+    """One independently produced neural-model prediction for a drawing rule."""
+
+    rule_id: str = Field(min_length=1)
+    feature_id: Optional[str] = None
+    predicted_mode: Literal[
+        "FIT", "CUSTOM_SYMMETRIC", "CUSTOM_LIMITS", "GROOVE", "NONE"
+    ] = "NONE"
+    tolerance_config: Dict[str, Any] = Field(default_factory=dict)
+    formatted_display: Optional[str] = None
+    confidence: float = Field(ge=0.0, le=1.0)
+    explanation: List[str] = Field(default_factory=list)
+    input_features: Dict[str, Any] = Field(default_factory=dict)
+    uncertainty: Dict[str, Any] = Field(default_factory=dict)
+    warnings: List[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_tolerance_config(self):
+        config = self.tolerance_config
+        config_mode = config.get("mode") if config else None
+        if self.predicted_mode == "NONE":
+            if config_mode not in (None, "NONE"):
+                raise ValueError("predicted_mode NONE requires tolerance_config.mode NONE")
+            return self
+        if not config:
+            raise ValueError("tolerance_config is required when predicted_mode is not NONE")
+        if config_mode != self.predicted_mode:
+            raise ValueError("tolerance_config.mode must match predicted_mode")
+        if self.predicted_mode == "FIT" and not str(config.get("fit_class") or "").strip():
+            raise ValueError("FIT requires tolerance_config.fit_class")
+        if self.predicted_mode == "CUSTOM_SYMMETRIC":
+            dev = config.get("dev")
+            if type(dev) not in (int, float) or not isfinite(float(dev)) or dev < 0:
+                raise ValueError("CUSTOM_SYMMETRIC requires a non-negative numeric dev")
+        if self.predicted_mode in {"CUSTOM_LIMITS", "GROOVE"}:
+            upper = config.get("upper_dev")
+            lower = config.get("lower_dev")
+            if (
+                type(upper) not in (int, float)
+                or type(lower) not in (int, float)
+                or not isfinite(float(upper))
+                or not isfinite(float(lower))
+            ):
+                raise ValueError(f"{self.predicted_mode} requires numeric upper_dev and lower_dev")
+            if lower > upper:
+                raise ValueError("lower_dev cannot exceed upper_dev")
+        return self
+
+
+class ExternalTolerancePredictionSet(BaseModel):
+    """Versioned prediction batch submitted by an external neural model."""
+
+    schema_version: Literal["1.0"] = "1.0"
+    provider: str = Field(min_length=1)
+    model_name: str = Field(min_length=1)
+    model_version: str = Field(min_length=1)
+    model_artifact_id: Optional[str] = None
+    request_id: Optional[str] = None
+    training_data_scope: Optional[str] = None
+    predictions: List[ExternalTolerancePrediction] = Field(min_length=1)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ExternalPredictionWriteResponse(BaseModel):
+    status: Literal["ok"]
+    model_id: str
+    part_id: str
+    source_type: Literal["EXTERNAL_NEURAL_MODEL"]
+    provider: str
+    model_name: str
+    model_version: str
+    prediction_count: int
+    received_at_utc: datetime
+
+
+class ExternalPredictionReadResponse(ExternalTolerancePredictionSet):
+    status: Literal["ok"]
+    source_type: Literal["EXTERNAL_NEURAL_MODEL"]
+    model_id: str
+    part_id: str
+    received_at_utc: datetime
+    predictions_by_rule: Dict[str, ExternalTolerancePrediction]
+
+
+class ExternalPredictionDeleteResponse(BaseModel):
+    status: Literal["ok"]
+    model_id: str
+    part_id: str
+
+
+def _external_prediction_path(output_dir: str, part_id: str) -> str:
+    directory = os.path.join(output_dir, "_external_tolerance_predictions")
+    return os.path.join(directory, f"{part_id}.json")
+
+
+def _load_external_prediction_set(output_dir: str, part_id: str) -> Optional[Dict[str, Any]]:
+    path = _external_prediction_path(output_dir, part_id)
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    predictions = payload.get("predictions") or []
+    payload["predictions_by_rule"] = {
+        item["rule_id"]: item for item in predictions if item.get("rule_id")
+    }
+    return payload
+
+
+def _authorize_external_prediction_api(x_api_key: Optional[str]) -> None:
+    configured_key = os.environ.get("CAD_EXTERNAL_PREDICTION_API_KEY", "")
+    provided_key = x_api_key if isinstance(x_api_key, str) else ""
+    if configured_key and not secrets.compare_digest(provided_key, configured_key):
+        raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key")
+
 from auto_2d_drawing.tolerance.dxf_tolerance_extractor import DxfToleranceExtractor
 from auto_2d_drawing.tolerance.feature_inference_2d import FeatureInference2DEngine
 import ezdxf
@@ -169,6 +295,12 @@ from ezdxf.addons.drawing.svg import SVGBackend
 from ezdxf.addons.drawing.layout import Page
 
 dxf_extractor = DxfToleranceExtractor()
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TOLERANCE_DXF_DIR = os.path.abspath(os.environ.get(
+    "CAD_TOLERANCE_DXF_DIR",
+    r"D:\School\力致\力致_ref\temp_dxf_cache_ref",
+))
 
 DWG_INDEX_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -195,12 +327,20 @@ if os.path.exists(DWG_INDEX_PATH):
 
 def lookup_drawing_paths(name: str):
     clean = os.path.splitext(name)[0].upper()
+    indexed = None
     if clean in dwg_index:
-        return dwg_index[clean]
-    for k, v in dwg_index.items():
-        if clean == k or clean in k or k in clean:
-            return v
-    return None
+        indexed = dict(dwg_index[clean])
+    else:
+        for k, v in dwg_index.items():
+            if clean == k or clean in k or k in clean:
+                indexed = dict(v)
+                break
+
+    resolved = indexed or {}
+    mounted_dxf = os.path.join(TOLERANCE_DXF_DIR, f"{os.path.splitext(name)[0]}.dxf")
+    if os.path.exists(mounted_dxf):
+        resolved["dxf"] = mounted_dxf
+    return resolved or None
 
 def _add_tolerance_highlight(doc, msp, entity_handle: Optional[str]):
     if not entity_handle:
@@ -714,6 +854,113 @@ def download_drawing_file(model_name: str, format: str = "dwg"):
     return FileResponse(target_path, filename=filename)
 
 
+@app.post(
+    "/api/tolerance/external-predictions/{model_id}/{part_id}",
+    response_model=ExternalPredictionWriteResponse,
+)
+def save_external_tolerance_predictions(
+    model_id: str,
+    part_id: str,
+    prediction_set: ExternalTolerancePredictionSet,
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+):
+    """Store a versioned neural-model prediction batch beside model outputs.
+
+    Predictions remain an independent source. They are never inserted into the
+    verified historical case base and do not silently override CAD-RAG output.
+    """
+    _authorize_external_prediction_api(x_api_key)
+    output_dir = _safe_output_dir(model_id)
+    part_id = _safe_part_id(part_id)
+    rule_ids = [item.rule_id for item in prediction_set.predictions]
+    if len(rule_ids) != len(set(rule_ids)):
+        raise HTTPException(status_code=400, detail="Duplicate rule_id in predictions")
+    current_rules = get_candidate_annotation_rules(model_id, part_id).get("rules") or []
+    valid_rule_ids = {
+        str(rule.get("rule_id") or rule.get("id"))
+        for rule in current_rules
+        if rule.get("rule_id") or rule.get("id")
+    }
+    unknown_rule_ids = sorted(set(rule_ids) - valid_rule_ids)
+    if unknown_rule_ids:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Predictions contain rule_id values not present in current candidate rules",
+                "unknown_rule_ids": unknown_rule_ids,
+            },
+        )
+
+    payload = prediction_set.model_dump()
+    payload.update({
+        "source_type": "EXTERNAL_NEURAL_MODEL",
+        "model_id": model_id,
+        "part_id": part_id,
+        "received_at_utc": datetime.now(timezone.utc).isoformat(),
+    })
+    path = _external_prediction_path(output_dir, part_id)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    temp_path = f"{path}.{uuid.uuid4().hex}.tmp"
+    try:
+        with open(temp_path, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        os.replace(temp_path, path)
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+    return {
+        "status": "ok",
+        "model_id": model_id,
+        "part_id": part_id,
+        "source_type": payload["source_type"],
+        "provider": payload["provider"],
+        "model_name": payload["model_name"],
+        "model_version": payload["model_version"],
+        "prediction_count": len(payload["predictions"]),
+        "received_at_utc": payload["received_at_utc"],
+    }
+
+
+@app.get(
+    "/api/tolerance/external-predictions/{model_id}/{part_id}",
+    response_model=ExternalPredictionReadResponse,
+)
+def get_external_tolerance_predictions(
+    model_id: str,
+    part_id: str,
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+):
+    """Return the latest external neural-model prediction batch for a part."""
+    _authorize_external_prediction_api(x_api_key)
+    output_dir = _safe_output_dir(model_id)
+    part_id = _safe_part_id(part_id)
+    payload = _load_external_prediction_set(output_dir, part_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="External tolerance predictions not found")
+    return {"status": "ok", **payload}
+
+
+@app.delete(
+    "/api/tolerance/external-predictions/{model_id}/{part_id}",
+    response_model=ExternalPredictionDeleteResponse,
+)
+def delete_external_tolerance_predictions(
+    model_id: str,
+    part_id: str,
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+):
+    """Remove the active external prediction batch without touching CAD-RAG cases."""
+    _authorize_external_prediction_api(x_api_key)
+    output_dir = _safe_output_dir(model_id)
+    part_id = _safe_part_id(part_id)
+    path = _external_prediction_path(output_dir, part_id)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="External tolerance predictions not found")
+    os.remove(path)
+    return {"status": "ok", "model_id": model_id, "part_id": part_id}
+
+
 @app.post("/api/tolerance/recommend")
 def recommend_tolerances(body: Dict[str, Any] = Body(...)):
     """
@@ -797,7 +1044,8 @@ def recommend_tolerances(body: Dict[str, Any] = Body(...)):
             "total_rules": rec_result.get("total_rules"),
             "high_confidence_count": rec_result.get("high_confidence_count"),
             "recommendations": rec_result.get("recommendations"),
-            "feature_graph": rec_result.get("feature_graph")
+            "feature_graph": rec_result.get("feature_graph"),
+            "external_prediction_set": _load_external_prediction_set(output_dir, part_id),
         }
     except Exception as e:
         print(f"Tolerance recommendation error: {e}")
@@ -1397,9 +1645,8 @@ async def save_part_annotations(
     }
 
 # === 範例圖 API ===
-EXAMPLE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                           "auto_2d_drawing", "reference", "example_output")
-NEW_EXAMPLE_DIR = r"F:\School\力致\new_data"
+EXAMPLE_DIR = os.path.join(PROJECT_ROOT, "auto_2d_drawing", "reference", "example_output")
+NEW_EXAMPLE_DIR = os.path.abspath(os.environ.get("CAD_NEW_EXAMPLE_DIR", r"F:\School\力致\new_data"))
 PROCESSED_FAN_20260625_DIR_NAME = "fan_20260625_autodraw"
 PROCESSED_FAN_20260625_DIR = os.path.join(OUTPUT_DIR, PROCESSED_FAN_20260625_DIR_NAME)
 
@@ -1567,6 +1814,50 @@ async def list_processed_fan_20260625():
             manifest = json.load(f)
     return {"processed_tree": tree if tree["children"] else None, "manifest": manifest}
 
+
+@app.get("/api/health", tags=["system"])
+def health_check():
+    """Container/orchestrator liveness endpoint; does not execute CAD work."""
+    return {
+        "status": "ok",
+        "service": "forcecon-step-to-2d",
+        "version": app.version,
+        "models_dir": MODELS_DIR,
+        "output_dir": OUTPUT_DIR,
+    }
+
+
+# === 公差設定相容 API ===
+# 保留給仍使用全域預設值的舊整合；新的逐特徵整合應使用
+# /api/tolerance/external-predictions 與 annotation render payload。
+class ToleranceConfig(BaseModel):
+    default_tolerance: Optional[str] = "±0.1"
+    feature_overrides: Optional[Dict[str, str]] = Field(default_factory=dict)
+
+
+global_tolerances = ToleranceConfig(
+    default_tolerance="±0.1",
+    feature_overrides={"shaft": "±0.05", "hole": "±0.02"},
+)
+
+
+@app.get("/api/tolerances")
+async def get_tolerances():
+    """取得目前的相容性全域公差設定。"""
+    return global_tolerances.model_dump()
+
+
+@app.post("/api/tolerances")
+async def update_tolerances(config: ToleranceConfig):
+    """更新相容性全域公差設定；資料只存在目前 process。"""
+    global global_tolerances
+    global_tolerances = config
+    return {
+        "status": "success",
+        "message": "Tolerances updated.",
+        "data": global_tolerances.model_dump(),
+    }
+
 # === 前端網頁路由 ===
 @app.get("/tolerance-inspector.html", include_in_schema=False)
 def tolerance_inspector_page():
@@ -1587,32 +1878,6 @@ if os.path.exists(FRONTEND_DIR):
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 else:
     print(f"Warning: Frontend dist directory not found at {FRONTEND_DIR}. Please run 'npm run build' in frontend folder.")
-
-# === 公差設定 API (預留給未來機器學習外部模組) ===
-from pydantic import BaseModel
-from typing import Any, Dict, Optional
-
-class ToleranceConfig(BaseModel):
-    default_tolerance: Optional[str] = "±0.1"
-    feature_overrides: Optional[Dict[str, str]] = {}
-
-# 在記憶體中暫存公差設定
-global_tolerances = ToleranceConfig(
-    default_tolerance="±0.1",
-    feature_overrides={"shaft": "±0.05", "hole": "±0.02"}
-)
-
-@app.get("/api/tolerances")
-async def get_tolerances():
-    """取得目前的公差設定"""
-    return global_tolerances.dict()
-
-@app.post("/api/tolerances")
-async def update_tolerances(config: ToleranceConfig):
-    """從外部更新公差設定"""
-    global global_tolerances
-    global_tolerances = config
-    return {"status": "success", "message": "Tolerances updated.", "data": global_tolerances.dict()}
 
 if __name__ == "__main__":
     import uvicorn
