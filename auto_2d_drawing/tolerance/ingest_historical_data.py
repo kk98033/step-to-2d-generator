@@ -55,6 +55,33 @@ DEFAULT_SOURCE_DIRS = (
 DEFAULT_REPORT_PATH = os.path.join(_current_dir, "data", "feature_case_base_rebuild_report.json")
 
 
+def _tolerance_is_plausible_dimension(dim: ExtractedDimension) -> bool:
+    config = dim.tolerance_config or {}
+    mode = config.get("mode", "NONE")
+    if mode == "NONE" or not (0.0 < dim.nominal_value < 100000.0):
+        return False
+    if dim.source_entity_type not in {
+        "DIMENSION",
+        "ARC_DIMENSION",
+        "RADIAL_DIMENSION",
+        "DIAMETER_DIMENSION",
+    }:
+        return False
+    if not dim.is_feature_dimension or dim.validation_status != "AUTO_VALIDATED":
+        return False
+
+    if mode == "FIT":
+        return bool(config.get("fit_class"))
+    if mode == "CUSTOM_SYMMETRIC":
+        deviation = abs(float(config.get("dev", 0.0) or 0.0))
+        return 0.0 < deviation <= max(5.0, dim.nominal_value * 0.5)
+    if mode in {"CUSTOM_LIMITS", "GROOVE"}:
+        upper = abs(float(config.get("upper_dev", 0.0) or 0.0))
+        lower = abs(float(config.get("lower_dev", 0.0) or 0.0))
+        return max(upper, lower) > 0.0 and max(upper, lower) <= max(5.0, dim.nominal_value * 0.5)
+    return False
+
+
 def _extract_dxf_worker(dxf_path: str) -> Tuple[str, List[Dict[str, Any]]]:
     """Process-safe DXF reader used only for the independent 2D extraction."""
     logging.getLogger("ezdxf").setLevel(logging.ERROR)
@@ -70,8 +97,10 @@ def _extract_dxf_worker(dxf_path: str) -> Tuple[str, List[Dict[str, Any]]]:
         include_rejected=True,
         native_dimensions_only=True,
     )
-    inference_engine = FeatureInference2DEngine(modelspace)
-    for item in dimensions:
+    plausible_dimensions = [item for item in dimensions if _tolerance_is_plausible_dimension(item)]
+    needs_geometry = any(item.dimension_category == "DIAMETER" for item in plausible_dimensions)
+    inference_engine = FeatureInference2DEngine(modelspace if needs_geometry else None)
+    for item in plausible_dimensions:
         item.feature_inference_2d = inference_engine.infer(item)
     return dxf_path, [item.to_dict() for item in dimensions]
 
@@ -179,30 +208,7 @@ class HistoricalDataIngestor:
 
     @staticmethod
     def _tolerance_is_plausible(dim: ExtractedDimension) -> bool:
-        config = dim.tolerance_config or {}
-        mode = config.get("mode", "NONE")
-        if mode == "NONE" or not (0.0 < dim.nominal_value < 100000.0):
-            return False
-        if dim.source_entity_type not in {
-            "DIMENSION",
-            "ARC_DIMENSION",
-            "RADIAL_DIMENSION",
-            "DIAMETER_DIMENSION",
-        }:
-            return False
-        if not dim.is_feature_dimension or dim.validation_status != "AUTO_VALIDATED":
-            return False
-
-        if mode == "FIT":
-            return bool(config.get("fit_class"))
-        if mode == "CUSTOM_SYMMETRIC":
-            deviation = abs(float(config.get("dev", 0.0) or 0.0))
-            return 0.0 < deviation <= max(5.0, dim.nominal_value * 0.5)
-        if mode in {"CUSTOM_LIMITS", "GROOVE"}:
-            upper = abs(float(config.get("upper_dev", 0.0) or 0.0))
-            lower = abs(float(config.get("lower_dev", 0.0) or 0.0))
-            return max(upper, lower) > 0.0 and max(upper, lower) <= max(5.0, dim.nominal_value * 0.5)
-        return False
+        return _tolerance_is_plausible_dimension(dim)
 
     @staticmethod
     def _evidence_key(dxf_path: str, dim: ExtractedDimension) -> Tuple[str, str]:
@@ -508,7 +514,7 @@ class HistoricalDataIngestor:
         if max_dxf_files is not None:
             dxf_paths = dxf_paths[:max_dxf_files]
         with ProcessPoolExecutor(max_workers=max(1, workers)) as executor:
-            extracted_results = executor.map(_extract_dxf_worker, dxf_paths, chunksize=4)
+            extracted_results = executor.map(_extract_dxf_worker, dxf_paths, chunksize=1)
             for index, (dxf_path, extracted_dicts) in enumerate(extracted_results, start=1):
                 try:
                     extracted = [ExtractedDimension(**item) for item in extracted_dicts]
