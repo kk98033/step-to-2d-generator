@@ -296,10 +296,15 @@ def get_tolerance_stats():
         series_cnt = Counter()
         drawings = set()
         verification = Counter()
+        feature_linkage = Counter()
 
         for c in case_base.cases:
             roles[c.inferred_role] += 1
             verification[c.effective_verification_status()] += 1
+            metadata = c.source_metadata or {}
+            feature_linkage[
+                "FEATURE_LINKED" if metadata.get("feature_identity_verified") else "UNRESOLVED_FEATURE"
+            ] += 1
             src = c.evidence_source or "UNKNOWN"
             drawings.add(src)
             family = (
@@ -317,6 +322,7 @@ def get_tolerance_stats():
             "total_drawings": len(drawings),
             "roles": dict(roles.most_common()),
             "verification": dict(verification.most_common()),
+            "feature_linkage": dict(feature_linkage),
             "retrieval_eligible_cases": sum(1 for c in case_base.cases if c.is_retrieval_eligible()),
             "top_series": dict(series_cnt.most_common(20))
         }
@@ -364,6 +370,8 @@ def list_tolerance_cases(
             d = c.to_dict()
             d["verification_status"] = c.effective_verification_status()
             d["retrieval_eligible"] = c.is_retrieval_eligible()
+            d["feature_identity_verified"] = bool((c.source_metadata or {}).get("feature_identity_verified"))
+            d["candidate_feature_types"] = list((c.source_metadata or {}).get("candidate_feature_types") or [])
 
             t_cfg = c.tolerance_config or {}
             mode = t_cfg.get("mode", "FIT")

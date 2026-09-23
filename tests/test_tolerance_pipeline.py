@@ -5,6 +5,8 @@ import ezdxf
 from auto_2d_drawing.tolerance.case_base import FeatureCaseBase, ToleranceCase
 from auto_2d_drawing.tolerance.dxf_tolerance_extractor import DxfToleranceExtractor
 from auto_2d_drawing.tolerance.feature_graph import FeatureNode
+from auto_2d_drawing.tolerance.feature_graph import candidate_feature_types_for_dimension
+from auto_2d_drawing.tolerance.ingest_historical_data import HistoricalDataIngestor
 from auto_2d_drawing.tolerance.tolerance_decision_service import ToleranceDecisionService
 
 
@@ -49,6 +51,118 @@ class DxfToleranceExtractorTests(unittest.TestCase):
 
 
 class CaseRetrievalTests(unittest.TestCase):
+    def test_raw_dxf_dimensions_remain_unresolved_in_feature_graph_taxonomy(self):
+        item = DxfToleranceExtractor()._parse_dimension_entity(
+            self._native_dimension_with_tolerance(),
+            "sample.dxf",
+        )
+        feature_type, role, nominal, status = HistoricalDataIngestor._raw_feature_identity(item)
+
+        self.assertEqual(feature_type, "unresolved_feature")
+        self.assertEqual(role, "UNRESOLVED_LINEAR")
+        self.assertEqual(nominal, {"length": 10.0})
+        self.assertEqual(status, "AUTO_EXTRACTED")
+        self.assertEqual(
+            candidate_feature_types_for_dimension("RADIUS"),
+            ["transition_fillet"],
+        )
+
+    @staticmethod
+    def _native_dimension_with_tolerance():
+        doc = ezdxf.new()
+        override = doc.modelspace().add_linear_dim(
+            base=(0, 2),
+            p1=(0, 0),
+            p2=(10, 0),
+            override={"dimtol": 1, "dimtp": 0.1, "dimtm": 0.1},
+        )
+        override.render()
+        return override.dimension
+
+    def test_retrieved_candidate_is_not_marked_adopted_on_fallback(self):
+        case = ToleranceCase(
+            case_id="low-similarity",
+            part_type="SHAFT",
+            feature_type="shaft_segment",
+            inferred_role="SHAFT_SEGMENT_DIAMETER",
+            nominal_dimensions={"diameter": 10.0, "length": 2.0},
+            neighbor_types=[],
+            boundary_position="INTERIOR",
+            tolerance_config={"mode": "CUSTOM_SYMMETRIC", "dev": 0.02},
+            confidence=0.95,
+            evidence_source="company.dxf",
+            description="verified company case",
+            verification_status="AUTO_VERIFIED",
+        )
+        match = {
+            "case": case,
+            "similarity": 0.59,
+            "score_breakdown": {},
+            "verification_status": "AUTO_VERIFIED",
+            "product_family": "TEST",
+            "same_product_family": True,
+        }
+
+        class StubCaseBase:
+            cases = [case]
+
+            @staticmethod
+            def search_similar_cases_detailed(*_args, **_kwargs):
+                return [match]
+
+        node = FeatureNode(
+            id="shaft-1",
+            feature_type="shaft_segment",
+            nominal={"diameter": 10.0, "length": 2.0},
+            axial_span=[0.0, 2.0],
+            center_axial=1.0,
+            inferred_role="BEARING_JOURNAL",
+        )
+        result = ToleranceDecisionService(case_base=StubCaseBase())._evaluate_recommendation(
+            "journal_main", "shaft", True, 10.0, node, "SHAFT"
+        ).to_dict()
+
+        self.assertEqual(result["retrieval_trace"]["decision_source"], "GENERAL_FALLBACK")
+        self.assertFalse(result["evidence_cases"][0]["used_for_decision"])
+        self.assertFalse(result["evidence_cases"][0]["used_as_context"])
+        self.assertEqual(result["evidence_cases"][0]["evidence_role"], "RETRIEVED_CANDIDATE")
+
+    def test_high_similarity_historical_case_is_explicitly_marked_adopted(self):
+        base = FeatureCaseBase.__new__(FeatureCaseBase)
+        base.cases = [
+            ToleranceCase(
+                case_id="adopted-case",
+                part_type="SHAFT",
+                feature_type="shaft_segment",
+                inferred_role="BEARING_JOURNAL",
+                nominal_dimensions={"diameter": 10.0, "length": 8.0},
+                neighbor_types=["locating_shoulder"],
+                boundary_position="INTERIOR",
+                tolerance_config={"mode": "CUSTOM_SYMMETRIC", "dev": 0.02},
+                confidence=0.95,
+                evidence_source="1FQ6H3010H-R01.dxf",
+                description="verified company case",
+                verification_status="ENGINEER_VERIFIED",
+            )
+        ]
+        node = FeatureNode(
+            id="shaft-1",
+            feature_type="shaft_segment",
+            nominal={"diameter": 10.0, "length": 8.0},
+            axial_span=[0.0, 8.0],
+            center_axial=4.0,
+            neighbor_types=["locating_shoulder"],
+            inferred_role="BEARING_JOURNAL",
+        )
+        result = ToleranceDecisionService(case_base=base)._evaluate_recommendation(
+            "journal_main", "shaft", True, 10.0, node, "SHAFT", product_family="FQ6H"
+        ).to_dict()
+
+        self.assertEqual(result["retrieval_trace"]["decision_source"], "HISTORICAL_CASE")
+        self.assertEqual(result["retrieval_trace"]["adopted_case_id"], "adopted-case")
+        self.assertTrue(result["evidence_cases"][0]["used_for_decision"])
+        self.assertEqual(result["evidence_cases"][0]["evidence_role"], "ADOPTED_HISTORICAL_CASE")
+
     def test_only_verified_or_strictly_auto_verified_cases_are_eligible(self):
         base_kwargs = dict(
             case_id="status-check",

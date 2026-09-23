@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at_utc": "2026-09-22T12:11:55.237094+00:00",
+  "generated_at_utc": "2026-09-23T04:14:26.496018+00:00",
   "source_directories": [
     "D:\\School\\力致\\力致_ref",
     "D:\\School\\力致\\new_data"
@@ -23,31 +23,28 @@
       "REVIEW_REQUIRED": 75
     },
     "parse_errors": 0,
-    "native_tolerance_entities": 25119,
-    "consumed_by_feature_links": 6
+    "native_tolerance_entities": 25118,
+    "consumed_by_feature_links": 16
   },
   "verification": {
     "counts": {
-      "AUTO_EXTRACTED": 25113,
-      "AUTO_VERIFIED": 6
+      "AUTO_EXTRACTED": 25102,
+      "AUTO_VERIFIED": 14
     },
     "pair_match_stats": {
-      "unique_dimension_matches": 6,
-      "ambiguous_dimension_matches": 21,
-      "unmatched_dimensions": 219,
+      "unique_dimension_matches": 16,
+      "ambiguous_dimension_matches": 40,
+      "unmatched_dimensions": 190,
       "conflicting_tolerance_matches": 0
     },
     "pair_errors": []
   },
   "database": {
-    "total_cases": 25119,
+    "total_cases": 25116,
     "feature_counts": {
-      "linear_feature": 23983,
-      "angular_feature": 553,
-      "diameter_feature": 566,
-      "shaft_segment": 3,
-      "pilot_chamfer": 3,
-      "radius_feature": 11
+      "unresolved_feature": 25102,
+      "shaft_segment": 13,
+      "pilot_chamfer": 1
     },
     "seed_cases": 0
   }

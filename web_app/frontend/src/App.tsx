@@ -2845,6 +2845,13 @@ function App() {
                               <div style={{ fontSize: 10, color: '#cbd5e1', lineHeight: 1.35 }}>
                                 {rec.reasoning_description}
                               </div>
+                              <div style={{ fontSize: 9, color: '#94a3b8' }}>
+                                {rec.retrieval_trace?.decision_source === 'HISTORICAL_CASE'
+                                  ? `決策來源：已採用歷史案例 ${rec.retrieval_trace?.adopted_case_id || ''}`
+                                  : rec.retrieval_trace?.decision_source === 'RULE_WITH_CASE_CONTEXT'
+                                    ? `決策來源：規則推論；案例 ${rec.retrieval_trace?.context_case_id || ''} 僅供情境參考`
+                                    : '決策來源：一般規則；未採用任何歷史案例'}
+                              </div>
                               {rec.evidence_cases && rec.evidence_cases.length > 0 && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 3 }}>
                                   <div style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700 }}>查找案例與相似原因</div>
@@ -2876,12 +2883,12 @@ function App() {
                                           });
                                         }}
                                         title={evidence.has_source_drawing ? '開啟此案例的原始 PDF／圖面' : '此案例沒有可追溯的原始圖面'}
-                                        style={{ width: '100%', textAlign: 'left', background: '#171717', border: `1px solid ${evidence.used_for_decision ? '#047857' : '#334155'}`, borderRadius: 3, padding: '5px 6px', cursor: evidence.has_source_drawing ? 'pointer' : 'not-allowed', opacity: evidence.has_source_drawing ? 1 : 0.72 }}
+                                        style={{ width: '100%', textAlign: 'left', background: '#171717', border: `1px solid ${evidence.used_for_decision ? '#047857' : (evidence.used_as_context ? '#1d4ed8' : '#334155')}`, borderRadius: 3, padding: '5px 6px', cursor: evidence.has_source_drawing ? 'pointer' : 'not-allowed', opacity: evidence.has_source_drawing ? 1 : 0.72 }}
                                       >
                                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: '#dbeafe', fontSize: 9, fontWeight: 600 }}>
                                           <span>{evidence.case_id} · {evidence.drawing || '未知圖面'} · {evidence.same_product_family ? '同產品族' : (evidence.product_family ? `跨產品族 ${evidence.product_family}` : '通用標準')}</span>
-                                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: evidence.used_for_decision ? '#6ee7b7' : '#94a3b8' }}>
-                                            {evidence.used_for_decision ? '已採用' : (!evidence.decision_eligible ? '待驗證' : (evidence.dimension_compatible ? '候選' : '語意不符'))} · {percent}%
+                                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: evidence.used_for_decision ? '#6ee7b7' : (evidence.used_as_context ? '#93c5fd' : '#94a3b8') }}>
+                                            {evidence.used_for_decision ? '已採用' : (evidence.used_as_context ? '規則參考' : (!evidence.decision_eligible ? '待驗證' : (evidence.dimension_compatible ? '候選' : '語意不符')))} · {percent}%
                                             {evidence.has_source_drawing && <ExternalLink size={9} />}
                                           </span>
                                         </div>

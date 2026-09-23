@@ -231,6 +231,8 @@ class ToleranceDecisionService:
                 )
                 item["decision_eligible"] = match["case"].is_retrieval_eligible()
                 item["used_for_decision"] = False
+                item["used_as_context"] = False
+                item["evidence_role"] = "RETRIEVED_CANDIDATE"
                 evidence_cases.append(item)
             retrieval_trace.update({
                 "retrieved_case_count": len(display_matches),
@@ -245,12 +247,12 @@ class ToleranceDecisionService:
                 top_match = rag_matches[0]
                 top_case = top_match["case"]
                 sim_score = top_match["similarity"]
-                for item in evidence_cases:
-                    if item["case_id"] == top_case.case_id:
-                        item["used_for_decision"] = True
-
                 # === Tier 1: 高信心度歷史案例匹配 (Similarity >= 0.85) ===
                 if sim_score >= 0.85:
+                    for item in evidence_cases:
+                        if item["case_id"] == top_case.case_id:
+                            item["used_for_decision"] = True
+                            item["evidence_role"] = "ADOPTED_HISTORICAL_CASE"
                     t_cfg = top_case.tolerance_config
                     mode = t_cfg.get("mode", "FIT")
                     fit_cls = t_cfg.get("fit_class")
@@ -288,13 +290,21 @@ class ToleranceDecisionService:
                         tier_level="TIER_1_RAG_MATCH",
                         evidence_sources=[top_case.case_id, top_case.evidence_source],
                         evidence_cases=evidence_cases,
-                        retrieval_trace={**retrieval_trace, "decision_source": "HISTORICAL_CASE"},
+                        retrieval_trace={
+                            **retrieval_trace,
+                            "decision_source": "HISTORICAL_CASE",
+                            "adopted_case_id": top_case.case_id,
+                        },
                         reasoning_description=desc,
                         is_hole=is_hole,
                     )
 
                 # === Tier 2: 語意啟發式推論 (Similarity 0.65 ~ 0.85) ===
                 elif sim_score >= 0.60:
+                    for item in evidence_cases:
+                        if item["case_id"] == top_case.case_id:
+                            item["used_as_context"] = True
+                            item["evidence_role"] = "RULE_CONTEXT_ONLY"
                     role = node.inferred_role
                     
                     if not is_diameter:
@@ -360,7 +370,11 @@ class ToleranceDecisionService:
                         tier_level="TIER_2_RULE_INFERENCE",
                         evidence_sources=[f"ROLE_INFERENCE:{role}", top_case.case_id],
                         evidence_cases=evidence_cases,
-                        retrieval_trace={**retrieval_trace, "decision_source": "RULE_WITH_CASE_CONTEXT"},
+                        retrieval_trace={
+                            **retrieval_trace,
+                            "decision_source": "RULE_WITH_CASE_CONTEXT",
+                            "context_case_id": top_case.case_id,
+                        },
                         reasoning_description=desc,
                         is_hole=node.feature_type == "hole",
                     )

@@ -75,6 +75,7 @@ class FeatureCaseBase:
         "overall_dimension": "overall_dimension",
         "shaft_overall": "overall_dimension",
         "linear_feature": "linear_feature",
+        "unresolved_feature": "unresolved_feature",
     }
 
     def __init__(self, db_path: Optional[str] = None):
