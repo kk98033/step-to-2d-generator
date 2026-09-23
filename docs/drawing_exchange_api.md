@@ -1,5 +1,7 @@
 # 工程圖與標註交換 API 文件
 
+> 本頁聚焦外部標註系統的交換流程；完整端點、錯誤、版本與公差推薦契約請見 [`api_reference.md`](api_reference.md)。
+
 本文件描述外部系統如何和 STEP-to-2D Generator 對接：
 
 1. 上傳 STEP/STP。
