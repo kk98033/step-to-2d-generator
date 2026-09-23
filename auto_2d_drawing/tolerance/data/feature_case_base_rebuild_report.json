@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at_utc": "2026-09-23T04:14:26.496018+00:00",
+  "generated_at_utc": "2026-09-23T07:53:21.032782+00:00",
   "source_directories": [
     "D:\\School\\力致\\力致_ref",
     "D:\\School\\力致\\new_data"
@@ -9,26 +9,859 @@
   "dry_run": false,
   "discovery": {
     "unique_step_files": 223,
-    "unique_dxf_files": 1744,
-    "processed_dxf_files": 1744,
+    "unique_dxf_files": 1697,
+    "processed_dxf_files": 1697,
     "exact_name_pairs": 10,
     "processed_pairs": 10,
     "duplicate_step_names": 36,
-    "duplicate_dxf_names": 0
+    "duplicate_dxf_names": 0,
+    "revision_selection": {
+      "step": {
+        "discovered_files": 259,
+        "selected_latest_files": 223,
+        "superseded_or_duplicate_files": 36,
+        "multi_revision_groups": 0,
+        "duplicate_latest_revision_files": 36
+      },
+      "dxf": {
+        "discovered_files": 1744,
+        "selected_latest_files": 1697,
+        "superseded_or_duplicate_files": 47,
+        "multi_revision_groups": 25,
+        "duplicate_latest_revision_files": 0
+      }
+    }
   },
   "extraction": {
     "all_candidate_statuses": {
-      "AUTO_VALIDATED": 25126,
-      "NO_TOLERANCE": 11251,
-      "REVIEW_REQUIRED": 75
+      "AUTO_VALIDATED": 23526,
+      "NO_TOLERANCE": 10786,
+      "REVIEW_REQUIRED": 73
     },
     "parse_errors": 0,
-    "native_tolerance_entities": 25118,
-    "consumed_by_feature_links": 16
+    "duplicate_dimension_entities_suppressed": 241,
+    "native_tolerance_entities": 23518,
+    "consumed_by_feature_links": 16,
+    "feature_inference_2d": {
+      "method": "DXF_2D_RULES_V2",
+      "status_counts": {
+        "UNRESOLVED": 22648,
+        "REVIEW_CANDIDATE": 833,
+        "AUTO_INFERRED_2D": 37
+      },
+      "auto_inferred_feature_counts": {
+        "shaft_segment": 36,
+        "hole": 1
+      },
+      "auto_inferred_examples": [
+        {
+          "drawing_file": "1AL0W5000H-R03.dxf",
+          "entity_handle": "7ADD",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 35.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "7106"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_003"
+                ],
+                "handles": [
+                  "6EDA",
+                  "6F3C"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 35.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "1DS7D2050H-R00.dxf",
+          "entity_handle": "15040",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 8.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "15011"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_003"
+                ],
+                "handles": [
+                  "15010",
+                  "15061"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              },
+              {
+                "view_ids": [
+                  "view_003"
+                ],
+                "handles": [
+                  "1507B",
+                  "15061"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              },
+              {
+                "view_ids": [
+                  "view_005"
+                ],
+                "handles": [
+                  "150C7",
+                  "150F4"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "1FLA33010H-R01.dxf",
+          "entity_handle": "B263",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 20.188,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸端點附近有可見外輪廓線，但仍可能是剖視內孔",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "B1A8"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_007"
+                ],
+                "handles": [
+                  "C0EB",
+                  "C129"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 20.1212,
+                "outer_silhouette": true
+              },
+              {
+                "view_ids": [
+                  "view_007"
+                ],
+                "handles": [
+                  "C0C3",
+                  "C0E8"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 20.1212,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "1FNC03010H-R01.dxf",
+          "entity_handle": "CC6D",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 20.188,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "B1A8"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_008"
+                ],
+                "handles": [
+                  "C0EB",
+                  "C129"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 20.1212,
+                "outer_silhouette": true
+              },
+              {
+                "view_ids": [
+                  "view_008"
+                ],
+                "handles": [
+                  "C0C3",
+                  "C0E8"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 20.1212,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "1MQCG2040H-R00.dxf",
+          "entity_handle": "1656C",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 5.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "16569"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_004"
+                ],
+                "handles": [
+                  "16558",
+                  "16564"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 5.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "2AF071010H-R00.dxf",
+          "entity_handle": "189C",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 2.7,
+          "feature_type": "hole",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "封閉圓也可能是孔，需側視圖或配合代號確認",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑隱藏線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "1887"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [],
+            "matching_hidden_pairs": [
+              {
+                "view_ids": [
+                  "view_001"
+                ],
+                "handles": [
+                  "C84",
+                  "C83"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 2.7,
+                "outer_silhouette": false
+              }
+            ]
+          }
+        },
+        {
+          "drawing_file": "2DS7D1220H-R00.dxf",
+          "entity_handle": "18D4",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 8.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "155E"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_002"
+                ],
+                "handles": [
+                  "1525",
+                  "389A"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              },
+              {
+                "view_ids": [
+                  "view_002"
+                ],
+                "handles": [
+                  "38C7",
+                  "389A"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              },
+              {
+                "view_ids": [
+                  "view_003"
+                ],
+                "handles": [
+                  "3CD2",
+                  "3CFF"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "2FJ7U1141H-R00.dxf",
+          "entity_handle": "8935",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 21.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "8933"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_001"
+                ],
+                "handles": [
+                  "8942",
+                  "8941"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 21.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "2FL3F1141H-R00.dxf",
+          "entity_handle": "89B6",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 19.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "8901"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_001"
+                ],
+                "handles": [
+                  "89B4",
+                  "89B2"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 19.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "2FMAG1141H-R00.dxf",
+          "entity_handle": "6192",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 27.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "6190"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_001"
+                ],
+                "handles": [
+                  "5F5C",
+                  "5F5A"
+                ],
+                "orientation": "VERTICAL",
+                "separation": 27.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "2MQCG25805-R00.dxf",
+          "entity_handle": "137E9",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 5.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "137E6"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_002"
+                ],
+                "handles": [
+                  "137D5",
+                  "137E1"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 5.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "3S10113067-R00.dxf",
+          "entity_handle": "1549",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 6.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "120C"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_003"
+                ],
+                "handles": [
+                  "254B",
+                  "2568"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 6.0,
+                "outer_silhouette": true
+              },
+              {
+                "view_ids": [
+                  "view_002"
+                ],
+                "handles": [
+                  "118E",
+                  "23B4"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 6.0,
+                "outer_silhouette": true
+              },
+              {
+                "view_ids": [
+                  "view_002"
+                ],
+                "handles": [
+                  "2397",
+                  "23B4"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 6.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "彈簧螺絲組合-1DS7D2050H-A00.dxf",
+          "entity_handle": "12789",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 8.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "12755"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_005"
+                ],
+                "handles": [
+                  "1273F",
+                  "12754"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "彈簧螺絲組合-1DS7D2050H-A01.dxf",
+          "entity_handle": "12789",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 8.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "12755"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_005"
+                ],
+                "handles": [
+                  "1273F",
+                  "12754"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "彈簧螺絲組合-1DS7D2050H-A02.dxf",
+          "entity_handle": "142BC",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 8.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "14285"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_005"
+                ],
+                "handles": [
+                  "1424A",
+                  "14259"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "彈簧螺絲組合-1DS7D2050H-A03.dxf",
+          "entity_handle": "142BC",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 8.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "14285"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_005"
+                ],
+                "handles": [
+                  "1424A",
+                  "14259"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "彈簧螺絲組合-1DS7D2050H-A04.dxf",
+          "entity_handle": "149B1",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 8.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "1496A"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_005"
+                ],
+                "handles": [
+                  "14931",
+                  "1495F"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "彈簧螺絲組合-1DS7D2050H-A05.dxf",
+          "entity_handle": "15040",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 8.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "15011"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_003"
+                ],
+                "handles": [
+                  "15010",
+                  "15061"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              },
+              {
+                "view_ids": [
+                  "view_003"
+                ],
+                "handles": [
+                  "1507B",
+                  "15061"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              },
+              {
+                "view_ids": [
+                  "view_005"
+                ],
+                "handles": [
+                  "150C7",
+                  "150F4"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "彈簧螺絲組合-1MQCG2040H-A00.dxf",
+          "entity_handle": "16007",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 5.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "16004"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_004"
+                ],
+                "handles": [
+                  "15FFA",
+                  "16003"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 5.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "彈簧螺絲組合-1MQCG2040H-A01.dxf",
+          "entity_handle": "16007",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 5.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "16004"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_004"
+                ],
+                "handles": [
+                  "15FFA",
+                  "16003"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 5.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        }
+      ],
+      "retrieval_eligible": 0
+    }
   },
   "verification": {
     "counts": {
-      "AUTO_EXTRACTED": 25102,
+      "AUTO_EXTRACTED": 23502,
       "AUTO_VERIFIED": 14
     },
     "pair_match_stats": {
@@ -40,9 +873,9 @@
     "pair_errors": []
   },
   "database": {
-    "total_cases": 25116,
+    "total_cases": 23516,
     "feature_counts": {
-      "unresolved_feature": 25102,
+      "unresolved_feature": 23502,
       "shaft_segment": 13,
       "pilot_chamfer": 1
     },

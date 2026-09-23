@@ -48,7 +48,7 @@ class _Candidate:
 class FeatureInference2DEngine:
     """Infer FeatureGraph-compatible feature types from structured DXF data."""
 
-    METHOD = "DXF_2D_RULES_V1"
+    METHOD = "DXF_2D_RULES_V2"
     AUTO_THRESHOLD = 0.90
     REVIEW_THRESHOLD = 0.65
     MIN_MARGIN = 0.12
@@ -69,10 +69,24 @@ class FeatureInference2DEngine:
         tolerance = dict(getattr(dimension, "tolerance_config", {}) or {})
 
         self._apply_dimension_semantics(category, clean_text, tolerance, candidates)
-        geometry = self._observe_geometry(dimension)
-        self._apply_geometry_evidence(category, dimension, geometry, candidates)
-        structure = self.structure_analyzer.analyze_dimension(dimension) if self.structure_analyzer is not None else {}
-        self._apply_structure_evidence(category, structure, candidates)
+        # Only diameter classification currently derives actionable evidence
+        # from full-drawing geometry (circle attachment and cross-view line
+        # pairs). Scanning every primitive for linear dimensions produced only
+        # weak review hints and dominated corpus rebuild time.
+        if category == "DIAMETER" and self.structure_analyzer is not None:
+            geometry = self._observe_geometry(dimension)
+            self._apply_geometry_evidence(category, dimension, geometry, candidates)
+            structure = self.structure_analyzer.analyze_dimension(dimension)
+            self._apply_structure_evidence(category, structure, candidates)
+        else:
+            geometry = {
+                "reference_points": [
+                    [round(x, 3), round(y, 3)]
+                    for x, y in self._dimension_reference_points(dimension)
+                ],
+                "geometry_scan": "NOT_REQUIRED_FOR_CATEGORY",
+            }
+            structure = {}
 
         # Python's sort is stable, so equal scores retain the canonical
         # candidate order instead of gaining a misleading alphabetical winner.
