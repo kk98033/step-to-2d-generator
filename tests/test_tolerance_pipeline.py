@@ -5,6 +5,7 @@ import ezdxf
 from auto_2d_drawing.tolerance.case_base import FeatureCaseBase, ToleranceCase
 from auto_2d_drawing.tolerance.dxf_tolerance_extractor import DxfToleranceExtractor, ExtractedDimension
 from auto_2d_drawing.tolerance.feature_inference_2d import FeatureInference2DEngine
+from auto_2d_drawing.tolerance.dxf_structure_2d import DxfStructure2DAnalyzer
 from auto_2d_drawing.tolerance.feature_graph import FeatureNode
 from auto_2d_drawing.tolerance.feature_graph import candidate_feature_types_for_dimension
 from auto_2d_drawing.tolerance.ingest_historical_data import HistoricalDataIngestor
@@ -108,6 +109,65 @@ class FeatureInference2DTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "UNRESOLVED")
         self.assertIsNone(result["feature_type"])
+
+    def test_definition_points_recover_lost_associative_geometry(self):
+        doc = ezdxf.new()
+        msp = doc.modelspace()
+        line = msp.add_line((0, 0), (10, 0), dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((0, 0), (0, 5), dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((10, 0), (10, 5), dxfattribs={"layer": "VISIBLE"})
+        override = msp.add_linear_dim(base=(0, 8), p1=(0, 0), p2=(10, 0))
+        override.render()
+        dimension = DxfToleranceExtractor()._parse_dimension_entity(override.dimension, "sample.dxf")
+
+        result = DxfStructure2DAnalyzer(msp).analyze_dimension(dimension)
+
+        self.assertFalse(result["native_association_available"])
+        self.assertEqual(result["association_status"], "GEOMETRIC_ATTACHMENT")
+        self.assertIn(line.dxf.handle, result["attached_geometry_handles"])
+
+    def test_cross_view_visible_pair_identifies_shaft_candidate(self):
+        doc = ezdxf.new()
+        msp = doc.modelspace()
+        msp.add_circle((0, 0), 5, dxfattribs={"layer": "VISIBLE"})
+        msp.add_circle((0, 0), 10, dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((30, -5), (50, -5), dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((30, 5), (50, 5), dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((30, -5), (30, 5), dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((50, -5), (50, 5), dxfattribs={"layer": "VISIBLE"})
+        dimension = self._dimension(
+            "DIAMETER",
+            10.0,
+            points={"defpoint": [5.0, 0.0], "defpoint4": [-5.0, 0.0]},
+        )
+
+        result = FeatureInference2DEngine(msp).infer(dimension)
+
+        self.assertEqual(result["status"], "AUTO_INFERRED_2D")
+        self.assertEqual(result["feature_type"], "shaft_segment")
+        pairs = result["structure_context"]["cross_view_evidence"]["matching_visible_pairs"]
+        self.assertTrue(pairs)
+        self.assertTrue(pairs[0]["outer_silhouette"])
+
+    def test_cross_view_hidden_pair_identifies_hole_candidate(self):
+        doc = ezdxf.new()
+        msp = doc.modelspace()
+        msp.add_circle((0, 0), 5, dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((30, -5), (50, -5), dxfattribs={"layer": "HIDDEN"})
+        msp.add_line((30, 5), (50, 5), dxfattribs={"layer": "HIDDEN"})
+        msp.add_line((30, -5), (30, 5), dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((50, -5), (50, 5), dxfattribs={"layer": "VISIBLE"})
+        dimension = self._dimension(
+            "DIAMETER",
+            10.0,
+            points={"defpoint": [5.0, 0.0], "defpoint4": [-5.0, 0.0]},
+        )
+
+        result = FeatureInference2DEngine(msp).infer(dimension)
+
+        self.assertEqual(result["status"], "AUTO_INFERRED_2D")
+        self.assertEqual(result["feature_type"], "hole")
+        self.assertTrue(result["structure_context"]["cross_view_evidence"]["matching_hidden_pairs"])
 
 
 class CaseRetrievalTests(unittest.TestCase):

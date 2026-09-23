@@ -405,6 +405,7 @@ class HistoricalDataIngestor:
         extraction_statuses: Counter[str] = Counter()
         inference_statuses: Counter[str] = Counter()
         inferred_feature_types: Counter[str] = Counter()
+        auto_inferred_examples: List[Dict[str, Any]] = []
         parse_errors = 0
         dxf_paths = sorted(dxf_map.values())
         if max_dxf_files is not None:
@@ -424,6 +425,21 @@ class HistoricalDataIngestor:
                             inferred_type = (dim.feature_inference_2d or {}).get("feature_type")
                             if inferred_type:
                                 inferred_feature_types[str(inferred_type)] += 1
+                                if len(auto_inferred_examples) < 20:
+                                    top_candidate = ((dim.feature_inference_2d or {}).get("candidates") or [{}])[0]
+                                    structure = (dim.feature_inference_2d or {}).get("structure_context") or {}
+                                    auto_inferred_examples.append({
+                                        "drawing_file": os.path.basename(dxf_path),
+                                        "entity_handle": dim.entity_handle,
+                                        "dimension_category": dim.dimension_category,
+                                        "nominal_value": dim.nominal_value,
+                                        "feature_type": inferred_type,
+                                        "confidence": (dim.feature_inference_2d or {}).get("confidence"),
+                                        "evidence": top_candidate.get("evidence", []),
+                                        "association_status": structure.get("association_status"),
+                                        "attached_geometry_handles": structure.get("attached_geometry_handles", []),
+                                        "cross_view_evidence": structure.get("cross_view_evidence", {}),
+                                    })
                 except Exception:
                     parse_errors += 1
                 if index % 200 == 0:
@@ -481,6 +497,7 @@ class HistoricalDataIngestor:
                     "method": FeatureInference2DEngine.METHOD,
                     "status_counts": dict(inference_statuses),
                     "auto_inferred_feature_counts": dict(inferred_feature_types),
+                    "auto_inferred_examples": auto_inferred_examples,
                     "retrieval_eligible": 0,
                 },
             },
