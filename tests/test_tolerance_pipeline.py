@@ -1,4 +1,6 @@
 import unittest
+import os
+import tempfile
 
 import ezdxf
 
@@ -171,6 +173,37 @@ class FeatureInference2DTests(unittest.TestCase):
 
 
 class CaseRetrievalTests(unittest.TestCase):
+    def test_revision_selection_keeps_only_highest_revision(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for name in ("2FQ6V4030H-R00.dxf", "2FQ6V4030H-R02.dxf", "2FQ6V4030H-R01.dxf"):
+                open(os.path.join(temp_dir, name), "w").close()
+
+            discovery = HistoricalDataIngestor().discover_sources([temp_dir])
+
+        self.assertEqual(list(discovery["dxf_map"]), ["2fq6v4030h-r02"])
+        self.assertEqual(discovery["revision_selection"]["dxf"]["superseded_or_duplicate_files"], 2)
+
+    def test_dimension_deduplication_requires_same_geometry(self):
+        common = dict(
+            dim_type="LINEAR",
+            nominal_value=10.0,
+            raw_text="",
+            prefix="",
+            tolerance_config={"mode": "CUSTOM_SYMMETRIC", "dev": 0.1},
+            layer="DIM",
+            drawing_file="sample.dxf",
+            dimension_category="LINEAR",
+        )
+        first = ExtractedDimension(**common, entity_handle="A", points={"defpoint2": [0, 0], "defpoint3": [10, 0]})
+        duplicate = ExtractedDimension(**common, entity_handle="B", points={"defpoint2": [10, 0], "defpoint3": [0, 0]})
+        distinct = ExtractedDimension(**common, entity_handle="C", points={"defpoint2": [0, 0], "defpoint3": [0, 10]})
+
+        dimensions, suppressed = HistoricalDataIngestor._deduplicate_dimensions([first, duplicate, distinct])
+
+        self.assertEqual(suppressed, 1)
+        self.assertEqual([item.entity_handle for item in dimensions], ["A", "C"])
+        self.assertEqual(dimensions[0].duplicate_entity_handles, ["B"])
+
     def test_raw_dxf_dimensions_remain_unresolved_in_feature_graph_taxonomy(self):
         item = DxfToleranceExtractor()._parse_dimension_entity(
             self._native_dimension_with_tolerance(),

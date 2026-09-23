@@ -46,6 +46,7 @@ class ExtractedDimension:
     validation_reasons: List[str] = field(default_factory=list)
     feature_inference_2d: Dict[str, Any] = field(default_factory=dict)
     association_metadata: Dict[str, Any] = field(default_factory=dict)
+    duplicate_entity_handles: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
