@@ -12,6 +12,7 @@
 """
 
 import os
+import re
 import sys
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
@@ -48,6 +49,8 @@ class ToleranceRecommendation:
     retrieval_trace: Dict[str, Any] = None
     reasoning_description: str = ""     # 推薦理由
     is_hole: bool = False
+    decision_status: str = "REVIEW_REQUIRED"
+    confidence_basis: str = "UNCALIBRATED_HEURISTIC"
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
@@ -125,7 +128,14 @@ class ToleranceDecisionService:
 
             # 執行三層推薦決策 (Tier 1~3)
             rec = self._evaluate_recommendation(
-                rule_id, cat, is_dia, nom_val, matched_node, graph.part_type, product_family
+                rule_id,
+                cat,
+                is_dia,
+                nom_val,
+                matched_node,
+                graph.part_type,
+                product_family,
+                dimension_category=dim_type,
             )
             recommendations[rule_id] = rec.to_dict()
 
@@ -181,6 +191,7 @@ class ToleranceDecisionService:
         node: Optional[FeatureNode],
         part_type: str,
         product_family: Optional[str] = None,
+        dimension_category: Optional[str] = None,
     ) -> ToleranceRecommendation:
         eligible_case_count = sum(1 for case in self.case_base.cases if case.is_retrieval_eligible())
         evidence_cases: List[Dict[str, Any]] = []
@@ -200,8 +211,15 @@ class ToleranceDecisionService:
         # 若有節點，優先執行 CAD-RAG 檢索。案例還必須與尺寸語意相容，
         # 避免使用軸徑配合案例推論階梯長度或其他線性尺寸。
         if node:
+            query_dimension_category = FeatureCaseBase.canonical_dimension_category(
+                dimension_category or ("DIAMETER" if is_diameter else "LINEAR")
+            )
             raw_matches = self.case_base.search_similar_cases_detailed(
-                node, part_type=part_type, top_k=3, product_family=product_family
+                node,
+                part_type=part_type,
+                top_k=8,
+                product_family=product_family,
+                dimension_category=query_dimension_category,
             )
             audit_matches = self.case_base.search_similar_cases_detailed(
                 node,
@@ -209,6 +227,7 @@ class ToleranceDecisionService:
                 top_k=24,
                 include_unverified=True,
                 product_family=product_family,
+                dimension_category=query_dimension_category,
             )
             review_matches = [
                 match for match in audit_matches
@@ -222,12 +241,14 @@ class ToleranceDecisionService:
             )
             rag_matches = [
                 match for match in raw_matches
-                if self._case_is_dimension_compatible(match["case"], category, is_diameter)
+                if self._case_is_dimension_compatible(
+                    match["case"], category, is_diameter, query_dimension_category
+                )
             ]
             for match in display_matches:
                 item = self._serialize_evidence_match(match)
                 item["dimension_compatible"] = self._case_is_dimension_compatible(
-                    match["case"], category, is_diameter
+                    match["case"], category, is_diameter, query_dimension_category
                 )
                 item["decision_eligible"] = match["case"].is_retrieval_eligible()
                 item["used_for_decision"] = False
@@ -247,8 +268,15 @@ class ToleranceDecisionService:
                 top_match = rag_matches[0]
                 top_case = top_match["case"]
                 sim_score = top_match["similarity"]
+                consensus, consensus_match = self._summarize_case_consensus(rag_matches)
+                retrieval_trace["consensus"] = consensus
+                strong_single_match = sim_score >= 0.85 and not consensus["near_top_conflict"]
+                adopted_match = top_match if strong_single_match else consensus_match
                 # === Tier 1: 高信心度歷史案例匹配 (Similarity >= 0.85) ===
-                if sim_score >= 0.85:
+                if adopted_match is not None:
+                    top_match = adopted_match
+                    top_case = top_match["case"]
+                    sim_score = top_match["similarity"]
                     for item in evidence_cases:
                         if item["case_id"] == top_case.case_id:
                             item["used_for_decision"] = True
@@ -287,7 +315,11 @@ class ToleranceDecisionService:
                         lower_dev=l_dev,
                         formatted_display=formatted,
                         confidence=round(top_case.confidence * sim_score, 2),
-                        tier_level="TIER_1_RAG_MATCH",
+                        tier_level=(
+                            "TIER_1_RAG_MATCH"
+                            if strong_single_match
+                            else "TIER_1_RAG_CONSENSUS"
+                        ),
                         evidence_sources=[top_case.case_id, top_case.evidence_source],
                         evidence_cases=evidence_cases,
                         retrieval_trace={
@@ -297,10 +329,15 @@ class ToleranceDecisionService:
                         },
                         reasoning_description=desc,
                         is_hole=is_hole,
+                        decision_status="RECOMMENDED",
+                        confidence_basis="HISTORICAL_EVIDENCE_UNCALIBRATED",
                     )
 
                 # === Tier 2: 語意啟發式推論 (Similarity 0.65 ~ 0.85) ===
-                elif sim_score >= 0.60:
+                # Generic extraction labels must not be converted into a
+                # guessed engineering tolerance. Tier 2 is reserved for roles
+                # that have an explicit project rule.
+                elif sim_score >= 0.65 and self._role_supports_rule_inference(node.inferred_role):
                     for item in evidence_cases:
                         if item["case_id"] == top_case.case_id:
                             item["used_as_context"] = True
@@ -377,6 +414,8 @@ class ToleranceDecisionService:
                         },
                         reasoning_description=desc,
                         is_hole=node.feature_type == "hole",
+                        decision_status="RULE_SUGGESTION",
+                        confidence_basis="ENGINEERING_RULE_HEURISTIC",
                     )
 
         # === Tier 3: 基礎保底 (General Fallback / ISO 2768-m) ===
@@ -433,17 +472,129 @@ class ToleranceDecisionService:
             evidence_cases=evidence_cases,
             retrieval_trace=retrieval_trace,
             reasoning_description=desc,
+            decision_status="REVIEW_REQUIRED",
+            confidence_basis="FALLBACK_HEURISTIC",
         )
+
+    @staticmethod
+    def _summarize_case_consensus(
+        matches: List[Dict[str, Any]],
+    ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+        """Summarize agreement and return an adoptable historical match.
+
+        Consensus is intentionally strict until a larger gold set can calibrate
+        the thresholds: three agreeing cases, two independent part groups and
+        at least 67% of similarity-weighted evidence.
+        """
+        if not matches:
+            return {
+                "eligible": False,
+                "support_case_count": 0,
+                "support_part_count": 0,
+                "weighted_agreement": 0.0,
+                "near_top_conflict": False,
+            }, None
+
+        def signature(case: ToleranceCase) -> Tuple[Any, ...]:
+            config = case.tolerance_config or {}
+            mode = str(config.get("mode") or "NONE").upper()
+            if mode == "CUSTOM_SYMMETRIC":
+                dev = abs(float(config.get("dev", config.get("upper_dev", 0.0)) or 0.0))
+                upper, lower = dev, -dev
+            else:
+                upper = float(config.get("upper_dev", 0.0) or 0.0)
+                lower = float(config.get("lower_dev", 0.0) or 0.0)
+            return (
+                mode,
+                str(config.get("fit_class") or ""),
+                round(upper, 6),
+                round(lower, 6),
+                bool(config.get("is_hole", False)),
+            )
+
+        def part_group(case: ToleranceCase) -> str:
+            metadata = case.source_metadata or {}
+            source = metadata.get("drawing_file") or case.evidence_source or case.case_id
+            stem = os.path.splitext(os.path.basename(str(source)))[0].upper()
+            return re.sub(r"-(?:R|A)\d+$", "", stem)
+
+        grouped: Dict[Tuple[Any, ...], List[Dict[str, Any]]] = {}
+        for match in matches:
+            grouped.setdefault(signature(match["case"]), []).append(match)
+
+        def group_weight(items: List[Dict[str, Any]]) -> float:
+            return sum(
+                float(item.get("similarity", 0.0)) * float(item["case"].confidence)
+                for item in items
+            )
+
+        winning_signature, winning_items = max(
+            grouped.items(), key=lambda pair: group_weight(pair[1])
+        )
+        total_weight = sum(group_weight(items) for items in grouped.values())
+        winning_weight = group_weight(winning_items)
+        agreement = winning_weight / total_weight if total_weight > 0 else 0.0
+        support_parts = {part_group(item["case"]) for item in winning_items}
+        top_similarity = float(matches[0].get("similarity", 0.0))
+        near_top = [
+            item for item in matches
+            if float(item.get("similarity", 0.0)) >= max(0.80, top_similarity - 0.03)
+        ]
+        near_top_conflict = len({signature(item["case"]) for item in near_top}) > 1
+        eligible = (
+            len(winning_items) >= 3
+            and len(support_parts) >= 2
+            and agreement >= 0.67
+            and max(float(item.get("similarity", 0.0)) for item in winning_items) >= 0.65
+            and signature(matches[0]["case"]) == winning_signature
+        )
+        summary = {
+            "eligible": eligible,
+            "support_case_count": len(winning_items),
+            "support_part_count": len(support_parts),
+            "weighted_agreement": round(agreement, 3),
+            "near_top_conflict": near_top_conflict,
+            "winning_tolerance": {
+                "mode": winning_signature[0],
+                "fit_class": winning_signature[1] or None,
+                "upper_dev": winning_signature[2],
+                "lower_dev": winning_signature[3],
+                "is_hole": winning_signature[4],
+            },
+            "support_case_ids": [item["case"].case_id for item in winning_items],
+        }
+        winning_items.sort(key=lambda item: item.get("similarity", 0.0), reverse=True)
+        return summary, winning_items[0] if eligible else None
+
+    @staticmethod
+    def _role_supports_rule_inference(role: Optional[str]) -> bool:
+        return str(role or "").upper() in {
+            "BEARING_JOURNAL",
+            "PRESS_FIT_HUB",
+            "RETAINING_RING_GROOVE",
+            "BEARING_BORE",
+            "PILOT_LEAD_IN",
+            "AXIAL_LOCATING_SHOULDER",
+        }
 
     @staticmethod
     def _case_is_dimension_compatible(
         case: ToleranceCase,
         category: str,
         is_diameter: bool,
+        dimension_category: Optional[str] = None,
     ) -> bool:
         """Reject cases whose tolerance semantics differ from the candidate rule."""
         config = case.tolerance_config or {}
         mode = config.get("mode", "NONE")
+        case_category = FeatureCaseBase.canonical_dimension_category(
+            str((case.source_metadata or {}).get("dimension_category") or "")
+        )
+        query_category = FeatureCaseBase.canonical_dimension_category(
+            dimension_category or ("DIAMETER" if is_diameter else "LINEAR")
+        )
+        if case_category and query_category and case_category != query_category:
+            return False
         if is_diameter:
             if category == "groove":
                 return mode in {"GROOVE", "CUSTOM_LIMITS", "CUSTOM_SYMMETRIC"}

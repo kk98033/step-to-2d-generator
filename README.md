@@ -11,6 +11,7 @@
 | [系統架構](docs/architecture.md) | 元件邊界、資料流、目錄與部署架構 |
 | [特徵查找引擎](docs/feature-search-engine.md) | 3D FeatureGraph、2D DXF 推定與跨視圖策略 |
 | [公差推薦系統](docs/tolerance-recommendation.md) | CAD-RAG、Tier 1～3、證據資格與目前限制 |
+| [公差推薦 Benchmark](docs/tolerance-benchmark.md) | 防資料洩漏切分、來源重播、檢索與推薦評估指標 |
 | [外部神經模型接入](docs/external-tolerance-model-api.md) | 獨立 AI 公差預測提交、解釋欄位與工程師來源選擇 |
 | [繪圖與標註引擎](docs/drawing-engine.md) | HLR、視圖、規則、排版及輸出管線 |
 | [網站頁面與操作流程](docs/web-pages.md) | 首頁、模型工作區、公差檢視器及頁面關係 |
@@ -73,10 +74,10 @@
 | --- | ---: |
 | 最新版 DXF 圖面 | 1,697 |
 | 含公差圖面 | 1,507 |
-| 有效尺寸／公差證據 | 23,516 |
-| STEP 幾何核實、可參與 RAG | 14 |
-| 2D 高信心推定（不直接進 RAG） | 37 |
-| 2D 待覆核候選 | 833 |
+| 有效尺寸／公差證據 | 23,518 |
+| 通過 DXF 附著＋STEP 投影＋特徵位置核實、可參與 RAG | 4 |
+| 2D 高信心推定（不直接進 RAG） | 34 |
+| 2D 待覆核候選 | 836 |
 
 完整方法、資格與風險請讀[公差推薦系統](docs/tolerance-recommendation.md)。
 

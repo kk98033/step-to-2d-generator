@@ -226,7 +226,11 @@ class FeatureInference2DEngine:
         shaft = self._candidate(candidates, "shaft_segment")
         hole = self._candidate(candidates, "hole")
         association_status = structure.get("association_status")
-        attachment_is_reliable = association_status in {"NATIVE_ASSOCIATIVE", "GEOMETRIC_ATTACHMENT"}
+        attachment_is_reliable = association_status in {
+            "NATIVE_ASSOCIATIVE",
+            "GEOMETRIC_ATTACHMENT",
+            "RECOVERED_DIMENSION_GEOMETRY",
+        }
 
         if attachment_is_reliable and outer_visible_pairs and not hidden_pairs and shaft:
             shaft.raise_to(0.93, "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對")

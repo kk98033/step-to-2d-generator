@@ -28,6 +28,7 @@ class CadPrimitive2D:
     points: List[Point2D] = field(default_factory=list)
     center: Optional[Point2D] = None
     radius: float = 0.0
+    source_group: Optional[str] = None
 
     @property
     def bbox(self) -> BBox2D:
@@ -69,7 +70,7 @@ class ViewCluster2D:
 class DxfStructure2DAnalyzer:
     """Analyze vector topology without modifying the legacy drawing engine."""
 
-    METHOD = "DXF_ASSOCIATION_AND_VIEW_GRAPH_V1"
+    METHOD = "DXF_ASSOCIATION_AND_VIEW_GRAPH_V2"
     ANNOTATION_LAYER_TOKENS = (
         "dim", "text", "note", "title", "border", "frame", "尺寸", "標注",
         "标注", "圖框", "图框", "rev", "ecn",
@@ -173,6 +174,35 @@ class DxfStructure2DAnalyzer:
             if index in self.primitive_to_view
         })
         primary_view = view_ids[0] if len(view_ids) == 1 else None
+
+        # Some DWG-to-DXF converters discard the standard diameter endpoint
+        # (group code 15 / defpoint4), while keeping two virtual geometry
+        # points whose separation is exactly the measured diameter.  Recover
+        # that relation only when the nominal-distance invariant is satisfied
+        # and both points belong to one unambiguous drawing view.  This is not
+        # a generic proximity fallback: a matching number by itself can never
+        # create an attachment.
+        recovered_geometry = self._recover_diameter_geometry(dimension)
+        if (
+            not native_indexes
+            and confidence < 0.90
+            and recovered_geometry is not None
+        ):
+            recovered_view_ids = self._view_ids_containing_points(
+                recovered_geometry["endpoints"],
+                margin=max(0.25, min(1.0, nominal * 0.02)),
+            )
+            if len(recovered_view_ids) == 1:
+                association_status = "RECOVERED_DIMENSION_GEOMETRY"
+                confidence = 0.90
+                view_ids = recovered_view_ids
+                primary_view = recovered_view_ids[0]
+                recovered_geometry["view_id"] = primary_view
+            else:
+                recovered_geometry["rejection_reason"] = (
+                    "AMBIGUOUS_VIEW" if recovered_view_ids else "NO_CONTAINING_VIEW"
+                )
+                recovered_geometry["candidate_view_ids"] = recovered_view_ids
         cross_view = self._cross_view_evidence(dimension, attached_indexes, primary_view)
 
         return {
@@ -185,6 +215,7 @@ class DxfStructure2DAnalyzer:
             "common_attachment_handles": common_exact_handles,
             "view_ids": view_ids,
             "primary_view_id": primary_view,
+            "recovered_dimension_geometry": recovered_geometry,
             "cross_view_evidence": cross_view,
             "view_cluster_count": len(self.view_clusters),
         }
@@ -290,47 +321,109 @@ class DxfStructure2DAnalyzer:
         ]
         if not candidate_indexes:
             return []
+        inserted_groups: Dict[str, List[int]] = {}
+        direct_indexes: List[int] = []
+        for index in candidate_indexes:
+            source_group = self.primitives[index].source_group
+            if source_group:
+                inserted_groups.setdefault(source_group, []).append(index)
+            else:
+                direct_indexes.append(index)
         lengths = [self.primitives[index].length for index in candidate_indexes if self.primitives[index].length > 1e-6]
         typical = statistics.median(lengths) if lengths else 1.0
         max_length = max(100.0, typical * 30.0)
-        candidate_indexes = [index for index in candidate_indexes if self.primitives[index].length <= max_length]
+        direct_indexes = [index for index in direct_indexes if self.primitives[index].length <= max_length]
 
-        # Sparse center-grid clustering is intentionally linear in entity
-        # count.  Expanding long entity bboxes across every occupied grid cell
-        # made dense production drawings prohibitively expensive.
+        # Rasterize the actual primitive path into a sparse grid.  The former
+        # center-only grid split a single view whenever a long outline crossed
+        # several cells: only the entity midpoint occupied a cell.  Sampling
+        # the path keeps the algorithm near-linear while allowing connected
+        # outlines to form one drawing-view component.
         cell_size = max(5.0, min(50.0, typical * 4.0))
         buckets: Dict[Tuple[int, int], List[int]] = {}
-        for index in candidate_indexes:
-            bbox = self.primitives[index].bbox
-            center = ((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0)
-            cell = (math.floor(center[0] / cell_size), math.floor(center[1] / cell_size))
-            buckets.setdefault(cell, []).append(index)
+        for index in direct_indexes:
+            for cell in self._primitive_grid_cells(self.primitives[index], cell_size):
+                buckets.setdefault(cell, []).append(index)
 
         groups: List[List[int]] = []
         unvisited = set(buckets)
         while unvisited:
             start = unvisited.pop()
             stack = [start]
-            indexes: List[int] = []
+            indexes = set()
             while stack:
                 cell = stack.pop()
-                indexes.extend(buckets[cell])
+                indexes.update(buckets[cell])
                 for dx in (-1, 0, 1):
                     for dy in (-1, 0, 1):
                         neighbor = (cell[0] + dx, cell[1] + dy)
                         if neighbor in unvisited:
                             unvisited.remove(neighbor)
                             stack.append(neighbor)
-            groups.append(indexes)
+            groups.append(sorted(indexes))
+        groups.extend(sorted(inserted_groups.values(), key=lambda indexes: self._group_bbox(indexes)))
         retained = [
             indexes for indexes in groups
-            if len(indexes) >= 2 or any(self.primitives[index].entity_type == "CIRCLE" for index in indexes)
+            if (
+                len(indexes) >= 2
+                or any(self.primitives[index].entity_type == "CIRCLE" for index in indexes)
+                or any(len(self.primitives[index].points) >= 4 for index in indexes)
+            )
         ]
         retained.sort(key=lambda indexes: self._group_bbox(indexes))
         return [
             ViewCluster2D(f"view_{number:03d}", indexes, self._group_bbox(indexes))
             for number, indexes in enumerate(retained, start=1)
         ]
+
+    @staticmethod
+    def _primitive_grid_cells(
+        primitive: CadPrimitive2D,
+        cell_size: float,
+        max_samples_per_segment: int = 128,
+    ) -> List[Tuple[int, int]]:
+        """Return sparse grid cells traversed by a CAD primitive.
+
+        Sampling is capped so malformed or very long entities cannot turn one
+        drawing into an unbounded grid expansion.  Circles are sampled on the
+        circumference rather than filling their bounding box, which prevents
+        unrelated geometry inside a large circle from being connected merely
+        because their bounding boxes overlap.
+        """
+
+        points: List[Point2D] = []
+        if primitive.center is not None and primitive.radius > 0.0:
+            circumference = 2.0 * math.pi * primitive.radius
+            count = max(12, min(max_samples_per_segment, int(math.ceil(circumference / cell_size)) * 2))
+            cx, cy = primitive.center
+            points.extend(
+                (
+                    cx + primitive.radius * math.cos(2.0 * math.pi * index / count),
+                    cy + primitive.radius * math.sin(2.0 * math.pi * index / count),
+                )
+                for index in range(count)
+            )
+        elif primitive.points:
+            if len(primitive.points) == 1:
+                points.append(primitive.points[0])
+            for start, end in zip(primitive.points, primitive.points[1:]):
+                length = math.dist(start, end)
+                count = max(1, min(max_samples_per_segment, int(math.ceil(length / cell_size))))
+                points.extend(
+                    (
+                        start[0] + (end[0] - start[0]) * step / count,
+                        start[1] + (end[1] - start[1]) * step / count,
+                    )
+                    for step in range(count + 1)
+                )
+
+        if not points:
+            bbox = primitive.bbox
+            points.append(((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0))
+        return sorted({
+            (math.floor(point[0] / cell_size), math.floor(point[1] / cell_size))
+            for point in points
+        })
 
     def _group_bbox(self, indexes: Sequence[int]) -> BBox2D:
         boxes = [self.primitives[index].bbox for index in indexes]
@@ -357,6 +450,82 @@ class DxfStructure2DAnalyzer:
                 if point != (0.0, 0.0) or not result:
                     result.append((key, point))
         return result
+
+    @staticmethod
+    def _recover_diameter_geometry(dimension) -> Optional[Dict[str, Any]]:
+        """Recover a degraded diameter definition from virtual points.
+
+        Autodesk's diameter definition uses ``defpoint`` and ``defpoint4``.
+        Several company drawings converted from DWG have a zero/missing
+        ``defpoint4`` but retain ``defpoint2`` and ``defpoint3`` as the two
+        endpoints of the measured diameter.  We accept that converter pattern
+        only when their distance agrees tightly with the nominal value.
+        """
+
+        category = str(getattr(dimension, "dimension_category", "") or "").upper()
+        nominal = abs(float(getattr(dimension, "nominal_value", 0.0) or 0.0))
+        if category != "DIAMETER" or nominal <= 0.0:
+            return None
+        points = dict(getattr(dimension, "points", {}) or {})
+        standard_endpoint = points.get("defpoint4")
+        if (
+            isinstance(standard_endpoint, Sequence)
+            and len(standard_endpoint) >= 2
+            and math.hypot(float(standard_endpoint[0]), float(standard_endpoint[1])) > 1e-9
+        ):
+            return None
+        left, right = points.get("defpoint2"), points.get("defpoint3")
+        if not (
+            isinstance(left, Sequence)
+            and isinstance(right, Sequence)
+            and len(left) >= 2
+            and len(right) >= 2
+        ):
+            return None
+        endpoints = [
+            (float(left[0]), float(left[1])),
+            (float(right[0]), float(right[1])),
+        ]
+        separation = math.dist(*endpoints)
+        tolerance = max(0.01, min(0.05, nominal * 0.002))
+        if separation <= 1e-9 or abs(separation - nominal) > tolerance:
+            return None
+        return {
+            "kind": "DIAMETER_ENDPOINT_PAIR",
+            "source_points": ["defpoint2", "defpoint3"],
+            "endpoints": [[round(value, 6) for value in point] for point in endpoints],
+            "center": [
+                round((endpoints[0][0] + endpoints[1][0]) / 2.0, 6),
+                round((endpoints[0][1] + endpoints[1][1]) / 2.0, 6),
+            ],
+            "endpoint_distance": round(separation, 6),
+            "nominal_distance": round(nominal, 6),
+            "distance_error": round(abs(separation - nominal), 6),
+            "tolerance": round(tolerance, 6),
+        }
+
+    def _view_ids_containing_points(
+        self,
+        points: Sequence[Sequence[float]],
+        margin: float,
+    ) -> List[str]:
+        matches: List[Tuple[float, str]] = []
+        for cluster in self.view_clusters:
+            if all(
+                cluster.bbox[0] - margin <= float(point[0]) <= cluster.bbox[2] + margin
+                and cluster.bbox[1] - margin <= float(point[1]) <= cluster.bbox[3] + margin
+                for point in points
+            ):
+                area = max(cluster.width, 0.0) * max(cluster.height, 0.0)
+                matches.append((area, cluster.view_id))
+        matches.sort()
+        if len(matches) >= 2 and matches[0][0] <= matches[1][0] * 0.5:
+            # A sheet border/title block often encloses the real projected
+            # view.  Prefer a clearly smaller local cluster only when it
+            # contains every recovered endpoint; similarly-sized overlaps
+            # remain ambiguous and are rejected.
+            return [matches[0][1]]
+        return sorted(view_id for _area, view_id in matches)
 
     @classmethod
     def _distance_to_primitive(cls, point: Point2D, primitive: CadPrimitive2D) -> float:
@@ -476,14 +645,49 @@ class DxfStructure2DAnalyzer:
         return True
 
     @staticmethod
+    def _iter_expanded_entities(
+        entities,
+        prefix: str = "",
+        depth: int = 0,
+        root_group: Optional[str] = None,
+    ):
+        """Yield model-space geometry, recursively expanding INSERT blocks.
+
+        Company drawings frequently store every projected view in anonymous
+        AutoCAD blocks.  Ignoring INSERT entities leaves only the sheet frame
+        and makes dimension attachment impossible.  ``virtual_entities()``
+        applies the block transform without mutating the source document.
+        """
+
+        if depth > 8:
+            return
+        for position, entity in enumerate(entities):
+            entity_type = entity.dxftype()
+            native_handle = str(getattr(entity.dxf, "handle", "") or "")
+            source_id = f"{prefix}{native_handle or position}"
+            if entity_type == "INSERT":
+                try:
+                    virtual_entities = list(entity.virtual_entities())
+                except Exception:
+                    continue
+                yield from DxfStructure2DAnalyzer._iter_expanded_entities(
+                    virtual_entities,
+                    prefix=f"{source_id}/",
+                    depth=depth + 1,
+                    root_group=root_group or source_id,
+                )
+                continue
+            yield entity, source_id, root_group
+
+    @staticmethod
     def _collect_primitives(modelspace) -> List[CadPrimitive2D]:
         primitives: List[CadPrimitive2D] = []
         document = getattr(modelspace, "doc", None)
-        for entity in modelspace:
+        for entity, source_id, source_group in DxfStructure2DAnalyzer._iter_expanded_entities(modelspace):
             entity_type = entity.dxftype()
             if entity_type not in {"LINE", "CIRCLE", "ARC", "LWPOLYLINE", "POLYLINE"}:
                 continue
-            handle = str(getattr(entity.dxf, "handle", "") or "")
+            handle = source_id if source_group else str(getattr(entity.dxf, "handle", "") or source_id)
             layer = str(getattr(entity.dxf, "layer", "0") or "0")
             linetype = str(getattr(entity.dxf, "linetype", "BYLAYER") or "BYLAYER")
             if linetype.upper() == "BYLAYER" and document is not None:
@@ -494,20 +698,20 @@ class DxfStructure2DAnalyzer:
             try:
                 if entity_type == "LINE":
                     points = [(float(entity.dxf.start.x), float(entity.dxf.start.y)), (float(entity.dxf.end.x), float(entity.dxf.end.y))]
-                    primitives.append(CadPrimitive2D(entity_type, handle, layer, linetype=linetype, points=points))
+                    primitives.append(CadPrimitive2D(entity_type, handle, layer, linetype=linetype, points=points, source_group=source_group))
                 elif entity_type in {"CIRCLE", "ARC"}:
                     center = (float(entity.dxf.center.x), float(entity.dxf.center.y))
-                    primitives.append(CadPrimitive2D(entity_type, handle, layer, linetype=linetype, center=center, radius=float(entity.dxf.radius)))
+                    primitives.append(CadPrimitive2D(entity_type, handle, layer, linetype=linetype, center=center, radius=float(entity.dxf.radius), source_group=source_group))
                 elif entity_type == "LWPOLYLINE":
                     points = [(float(item[0]), float(item[1])) for item in entity.get_points("xy")]
                     if bool(getattr(entity, "closed", False)) and points:
                         points.append(points[0])
-                    primitives.append(CadPrimitive2D(entity_type, handle, layer, linetype=linetype, points=points))
+                    primitives.append(CadPrimitive2D(entity_type, handle, layer, linetype=linetype, points=points, source_group=source_group))
                 else:
                     points = [(float(vertex.dxf.location.x), float(vertex.dxf.location.y)) for vertex in entity.vertices]
                     if bool(getattr(entity, "is_closed", False)) and points:
                         points.append(points[0])
-                    primitives.append(CadPrimitive2D(entity_type, handle, layer, linetype=linetype, points=points))
+                    primitives.append(CadPrimitive2D(entity_type, handle, layer, linetype=linetype, points=points, source_group=source_group))
             except (AttributeError, TypeError, ValueError):
                 continue
         return primitives

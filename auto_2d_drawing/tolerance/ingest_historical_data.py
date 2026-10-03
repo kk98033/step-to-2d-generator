@@ -46,6 +46,12 @@ from auto_2d_drawing.tolerance.feature_graph import (
     candidate_feature_types_for_dimension,
 )
 from auto_2d_drawing.tolerance.feature_inference_2d import FeatureInference2DEngine
+from auto_2d_drawing.tolerance.assembly_components import (
+    build_component_pair_manifest,
+    load_component_shape,
+)
+from auto_2d_drawing.tolerance.historical_manifest import build_pair_manifest
+from auto_2d_drawing.tolerance.projection_geometry_verifier import ProjectionGeometryVerifier
 
 
 DEFAULT_SOURCE_DIRS = (
@@ -53,6 +59,7 @@ DEFAULT_SOURCE_DIRS = (
     r"D:\School\力致\new_data",
 )
 DEFAULT_REPORT_PATH = os.path.join(_current_dir, "data", "feature_case_base_rebuild_report.json")
+DEFAULT_MANIFEST_PATH = os.path.join(_current_dir, "data", "historical_pair_manifest.json")
 
 
 def _tolerance_is_plausible_dimension(dim: ExtractedDimension) -> bool:
@@ -194,10 +201,21 @@ class HistoricalDataIngestor:
         dxf_map, dxf_revision_stats = self._select_latest_revisions(dxf_candidates)
 
         pair_keys = sorted(set(step_map) & set(dxf_map))
+        pair_manifest = build_pair_manifest(step_map.values(), dxf_map.values())
+        component_manifest = build_component_pair_manifest(
+            pair_manifest["unpaired_step_paths"],
+            pair_manifest["unpaired_dxf_paths"],
+        )
+        pair_manifest["component_manifest"] = component_manifest
+        pair_manifest["verified_pairs"].extend(component_manifest["verified_pairs"])
+        pair_manifest["statistics"]["component_pair_count"] = len(component_manifest["verified_pairs"])
+        pair_manifest["statistics"]["total_verification_pair_count"] = len(pair_manifest["verified_pairs"])
         return {
             "step_map": step_map,
             "dxf_map": dxf_map,
             "pair_keys": pair_keys,
+            "verified_pairs": pair_manifest["verified_pairs"],
+            "pair_manifest": pair_manifest,
             "duplicate_steps": sum(max(0, count - 1) for count in step_name_counts.values()),
             "duplicate_dxfs": sum(max(0, count - 1) for count in dxf_name_counts.values()),
             "revision_selection": {
@@ -352,22 +370,39 @@ class HistoricalDataIngestor:
     def _tolerance_signature(config: Dict[str, Any]) -> str:
         return json.dumps(config or {}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
-    def _load_feature_graph(self, step_path: str):
+    @staticmethod
+    def _load_step_shape(step_path: str):
         reader = STEPControl_Reader()
         if reader.ReadFile(step_path) != IFSelect_RetDone:
             return None
         reader.TransferRoots()
-        return self.frg_extractor.build_graph(reader.OneShape())
+        return reader.OneShape()
+
+    def _load_feature_graph(self, step_path: str):
+        shape = self._load_step_shape(step_path)
+        return self.frg_extractor.build_graph(shape) if shape is not None else None
 
     def _verify_pair(
         self,
         step_path: str,
         dxf_path: str,
         dimensions: Sequence[ExtractedDimension],
-    ) -> Tuple[List[Tuple[ToleranceCase, List[Tuple[str, str]]]], Dict[str, int]]:
-        graph = self._load_feature_graph(step_path)
+        pair_evidence: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[Tuple[ToleranceCase, List[Tuple[str, str]]]], Dict[str, Any]]:
+        component_label_entry = str((pair_evidence or {}).get("component_label_entry") or "")
+        shape = (
+            load_component_shape(step_path, component_label_entry)
+            if component_label_entry
+            else self._load_step_shape(step_path)
+        )
+        graph = self.frg_extractor.build_graph(shape) if shape is not None else None
         if graph is None or not graph.nodes:
             return [], {"pair_load_failures": 1}
+        try:
+            modelspace = ezdxf.readfile(dxf_path).modelspace()
+            geometry_verifier = ProjectionGeometryVerifier(modelspace, shape=shape)
+        except Exception:
+            return [], {"projection_verifier_failures": 1}
 
         unique_matches: List[Tuple[ExtractedDimension, FeatureNode, str, float, float]] = []
         ambiguous = 0
@@ -397,6 +432,8 @@ class HistoricalDataIngestor:
 
         verified: List[Tuple[ToleranceCase, List[Tuple[str, str]]]] = []
         conflicts = 0
+        insufficient_geometry = 0
+        rejected_evidence: List[Dict[str, Any]] = []
         for (_node_id, field_name), matches in grouped.items():
             signatures = {self._tolerance_signature(item[0].tolerance_config) for item in matches}
             if len(signatures) != 1:
@@ -404,7 +441,26 @@ class HistoricalDataIngestor:
                 continue
 
             matches.sort(key=lambda item: item[2])
-            primary_dim, node, difference, threshold = matches[0]
+            geometry_results = [
+                (match, geometry_verifier.verify(match[0], match[1], field_name))
+                for match in matches
+            ]
+            accepted_geometry = [item for item in geometry_results if item[1].get("passed")]
+            if not accepted_geometry:
+                insufficient_geometry += len(matches)
+                for (rejected_dim, rejected_node, difference, threshold), evidence in geometry_results:
+                    rejected_evidence.append({
+                        "evidence_key": list(self._evidence_key(dxf_path, rejected_dim)),
+                        "candidate_feature_id": rejected_node.id,
+                        "candidate_feature_type": rejected_node.feature_type,
+                        "candidate_nominal_field": field_name,
+                        "value_difference_mm": round(difference, 6),
+                        "match_threshold_mm": round(threshold, 6),
+                        "geometry_verification": evidence,
+                    })
+                continue
+            accepted_geometry.sort(key=lambda item: (-float(item[1].get("score", 0.0)), item[0][2]))
+            (primary_dim, node, difference, threshold), geometry_evidence = accepted_geometry[0]
             if node.feature_type not in CANONICAL_FEATURE_TYPES:
                 conflicts += len(matches)
                 continue
@@ -415,7 +471,21 @@ class HistoricalDataIngestor:
                 for handle in [item[0].entity_handle, *item[0].duplicate_entity_handles]
                 if handle
             })
-            confidence = max(0.90, min(0.97, 0.97 - (difference / max(threshold, 1e-9)) * 0.07))
+            pair_method = str((pair_evidence or {}).get("pair_method") or "EXACT_FILENAME")
+            pair_checks = list((pair_evidence or {}).get("verification_checks") or ["exact_step_dxf_filename"])
+            confidence_ceiling = {
+                "EXACT_FILENAME": 0.97,
+                "EMBEDDED_PART_EXACT_REVISION": 0.96,
+                "XCAF_COMPONENT_EXACT_REVISION": 0.96,
+                "XCAF_COMPONENT_UNVERSIONED_LATEST_DXF": 0.93,
+            }
+            maximum_confidence = confidence_ceiling.get(pair_method, 0.92)
+            confidence = max(0.90, min(maximum_confidence, maximum_confidence - (difference / max(threshold, 1e-9)) * 0.06))
+            evidence_label = (
+                "Exact-name STEP/DXF"
+                if pair_method == "EXACT_FILENAME"
+                else "Same-part same-revision STEP/DXF"
+            )
             case = ToleranceCase(
                 case_id=self._case_id("HIST2", dxf_path, f"{node.id}_{field_name}"),
                 part_type=graph.part_type,
@@ -428,7 +498,7 @@ class HistoricalDataIngestor:
                 confidence=round(confidence, 3),
                 evidence_source=os.path.basename(dxf_path),
                 description=(
-                    f"Exact-name STEP/DXF evidence: {node.feature_type} {field_name} "
+                    f"{evidence_label} evidence: {node.feature_type} {field_name} "
                     f"{primary_dim.nominal_value:g} in {os.path.basename(dxf_path)}."
                 ),
                 verification_status="AUTO_VERIFIED",
@@ -448,17 +518,32 @@ class HistoricalDataIngestor:
                     "matched_feature_id": node.id,
                     "matched_nominal_field": field_name,
                     "matched_feature_center_axial": node.center_axial,
+                    "matched_feature_source_info": node.source_info,
                     "value_difference_mm": round(difference, 6),
                     "match_threshold_mm": round(threshold, 6),
-                    "verification_method": "EXACT_FILENAME_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+                    "pair_id": (pair_evidence or {}).get("pair_id"),
+                    "part_number": (pair_evidence or {}).get("part_number"),
+                    "revision": (pair_evidence or {}).get("revision"),
+                    "pair_method": pair_method,
+                    "component_name": (pair_evidence or {}).get("component_name"),
+                    "component_revision": (pair_evidence or {}).get("component_revision"),
+                    "component_label_entry": (pair_evidence or {}).get("component_label_entry"),
+                    "component_fingerprint": (pair_evidence or {}).get("component_fingerprint"),
+                    "verification_method": f"{pair_method}_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+                    "geometry_verification": geometry_evidence,
                     "feature_taxonomy": "FeatureGraphExtractor",
                     "verification_checks": [
-                        "exact_step_dxf_filename",
+                        *pair_checks,
                         "native_dxf_dimension_entity",
                         "explicit_tolerance_present",
                         "dimension_type_matches_feature_type",
                         "nominal_value_matches_step_geometry",
                         "unique_step_feature_candidate",
+                        "dxf_dimension_geometry_attachment",
+                        "local_2d_feature_semantics",
+                        "step_hlr_projection_signature",
+                        "drawing_view_step_projection_registration",
+                        "dimension_matches_projected_feature_location",
                         "consistent_duplicate_dimension_tolerances",
                     ],
                     "feature_identity_verified": True,
@@ -472,6 +557,8 @@ class HistoricalDataIngestor:
             "ambiguous_dimension_matches": ambiguous,
             "unmatched_dimensions": no_match,
             "conflicting_tolerance_matches": conflicts,
+            "insufficient_geometry_evidence": insufficient_geometry,
+            "_rejected_evidence": rejected_evidence,
         }
 
     @staticmethod
@@ -490,6 +577,7 @@ class HistoricalDataIngestor:
         search_dirs: Sequence[str],
         output_path: Optional[str] = None,
         report_path: Optional[str] = None,
+        manifest_path: Optional[str] = None,
         max_pairs: Optional[int] = None,
         max_dxf_files: Optional[int] = None,
         workers: int = 4,
@@ -498,9 +586,9 @@ class HistoricalDataIngestor:
         discovery = self.discover_sources(search_dirs)
         dxf_map: Dict[str, str] = discovery["dxf_map"]
         step_map: Dict[str, str] = discovery["step_map"]
-        pair_keys: List[str] = discovery["pair_keys"]
+        verified_pairs: List[Dict[str, Any]] = discovery["verified_pairs"]
         if max_pairs is not None:
-            pair_keys = pair_keys[:max_pairs]
+            verified_pairs = verified_pairs[:max_pairs]
 
         dimensions_by_path: Dict[str, List[ExtractedDimension]] = {}
         raw_cases: Dict[Tuple[str, str], ToleranceCase] = {}
@@ -554,23 +642,37 @@ class HistoricalDataIngestor:
         consumed_evidence: set[Tuple[str, str]] = set()
         pair_stats: Counter[str] = Counter()
         pair_errors: List[Dict[str, str]] = []
-        for index, key in enumerate(pair_keys, start=1):
-            step_path = step_map[key]
-            dxf_path = dxf_map[key]
+        for index, pair in enumerate(verified_pairs, start=1):
+            step_path = pair["step_path"]
+            dxf_path = pair["dxf_path"]
             dimensions = [
                 item
                 for item in dimensions_by_path.get(os.path.normcase(os.path.abspath(dxf_path)), [])
                 if self._tolerance_is_plausible(item)
             ]
             try:
-                verified, stats = self._verify_pair(step_path, dxf_path, dimensions)
+                verified, stats = self._verify_pair(step_path, dxf_path, dimensions, pair_evidence=pair)
+                rejected_evidence = list(stats.pop("_rejected_evidence", []))
                 pair_stats.update(stats)
+                for rejected in rejected_evidence:
+                    evidence_key = tuple(rejected.pop("evidence_key"))
+                    raw_case = raw_cases.get(evidence_key)
+                    if raw_case is not None:
+                        raw_case.source_metadata["verification_candidate"] = {
+                            key: value for key, value in rejected.items()
+                            if key != "geometry_verification"
+                        }
+                        raw_case.source_metadata["geometry_verification"] = rejected["geometry_verification"]
+                        raw_case.source_metadata["feature_identity_verified"] = False
                 for case, evidence_keys in verified:
                     linked_cases.append(case)
                     consumed_evidence.update(evidence_keys)
             except Exception as exc:
-                pair_errors.append({"pair": key, "error": str(exc)})
-            print(f"Verified STEP/DXF pair {index}/{len(pair_keys)}: {key}", flush=True)
+                pair_errors.append({"pair": pair["pair_id"], "error": str(exc)})
+            print(
+                f"Verified STEP/DXF pair {index}/{len(verified_pairs)}: {pair['pair_id']}",
+                flush=True,
+            )
 
         final_cases = [case for key, case in raw_cases.items() if key not in consumed_evidence]
         final_cases.extend(linked_cases)
@@ -589,7 +691,9 @@ class HistoricalDataIngestor:
                 "unique_dxf_files": len(dxf_map),
                 "processed_dxf_files": len(dxf_paths),
                 "exact_name_pairs": len(discovery["pair_keys"]),
-                "processed_pairs": len(pair_keys),
+                "auto_verification_pairs": len(discovery["verified_pairs"]),
+                "processed_pairs": len(verified_pairs),
+                "pair_manifest_statistics": discovery["pair_manifest"]["statistics"],
                 "duplicate_step_names": discovery["duplicate_steps"],
                 "duplicate_dxf_names": discovery["duplicate_dxfs"],
                 "revision_selection": discovery["revision_selection"],
@@ -626,6 +730,7 @@ class HistoricalDataIngestor:
             self.case_base.db_path = target_path
             self.case_base.cases = final_cases
             self._atomic_write_json(report_path or DEFAULT_REPORT_PATH, report)
+            self._atomic_write_json(manifest_path or DEFAULT_MANIFEST_PATH, discovery["pair_manifest"])
         return report
 
     def scan_and_ingest_directories(self, search_dirs: List[str], max_models: int = 50) -> Dict[str, Any]:
@@ -638,6 +743,7 @@ def main() -> int:
     parser.add_argument("--source", action="append", dest="sources", help="Source directory; repeat as needed")
     parser.add_argument("--output", default=FeatureCaseBase.DEFAULT_DB_PATH)
     parser.add_argument("--report", default=DEFAULT_REPORT_PATH)
+    parser.add_argument("--manifest", default=DEFAULT_MANIFEST_PATH)
     parser.add_argument("--max-pairs", type=int, default=None)
     parser.add_argument("--max-dxf-files", type=int, default=None)
     parser.add_argument("--workers", type=int, default=4)
@@ -649,6 +755,7 @@ def main() -> int:
         args.sources or list(DEFAULT_SOURCE_DIRS),
         output_path=args.output,
         report_path=args.report,
+        manifest_path=args.manifest,
         max_pairs=args.max_pairs,
         max_dxf_files=args.max_dxf_files,
         workers=args.workers,

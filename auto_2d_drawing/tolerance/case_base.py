@@ -80,6 +80,14 @@ class FeatureCaseBase:
         "linear_feature": "linear_feature",
         "unresolved_feature": "unresolved_feature",
     }
+    DIMENSION_CATEGORY_ALIASES = {
+        "RADIAL": "RADIUS",
+        "RADIUS": "RADIUS",
+        "DIAMETER": "DIAMETER",
+        "LINEAR": "LINEAR",
+        "ANGULAR": "ANGULAR",
+        "CHAMFER": "CHAMFER",
+    }
 
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or self.DEFAULT_DB_PATH
@@ -126,6 +134,11 @@ class FeatureCaseBase:
         key = (feature_type or "").strip().lower()
         return cls.FEATURE_TYPE_ALIASES.get(key, key)
 
+    @classmethod
+    def canonical_dimension_category(cls, category: str) -> str:
+        key = (category or "").strip().upper()
+        return cls.DIMENSION_CATEGORY_ALIASES.get(key, key)
+
     @staticmethod
     def infer_product_family(source_name: str) -> str:
         """Extract the FORCECON product-system code, e.g. 1FQ6H... -> FQ6H."""
@@ -140,6 +153,7 @@ class FeatureCaseBase:
         top_k: int = 3,
         include_unverified: bool = False,
         product_family: Optional[str] = None,
+        dimension_category: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """回傳可追溯的 Top-K 檢索結果，包含每個相似度分項。"""
         if not self.cases:
@@ -152,6 +166,7 @@ class FeatureCaseBase:
         q_feature = self.canonical_feature_type(query_node.feature_type)
         query_part = (part_type or "GENERAL").upper()
         query_family = (product_family or "").upper()
+        query_dimension_category = self.canonical_dimension_category(dimension_category or "")
         scored_cases: List[Dict[str, Any]] = []
 
         for case in self.cases:
@@ -163,6 +178,16 @@ class FeatureCaseBase:
 
             case_feature = self.canonical_feature_type(case.feature_type)
             if case_feature != q_feature:
+                continue
+            case_metadata = case.source_metadata or {}
+            case_dimension_category = self.canonical_dimension_category(
+                str(case_metadata.get("dimension_category") or "")
+            )
+            if (
+                query_dimension_category
+                and case_dimension_category
+                and case_dimension_category != query_dimension_category
+            ):
                 continue
 
             c_nom = case.nominal_dimensions or {}
@@ -186,7 +211,10 @@ class FeatureCaseBase:
             else:
                 family_score = 0.1
             feature_score = 1.0
-            if query_node.inferred_role and case.inferred_role:
+            role_is_verified = bool(case_metadata.get("functional_role_verified", True))
+            if not role_is_verified:
+                role_score = 0.5
+            elif query_node.inferred_role and case.inferred_role:
                 role_score = 1.0 if query_node.inferred_role == case.inferred_role else 0.35
             else:
                 role_score = 0.5
@@ -198,7 +226,11 @@ class FeatureCaseBase:
             else:
                 topology_score = 0.2
 
-            diameter_score = math.exp(-0.35 * abs(q_dia - c_dia)) if q_dia > 0 and c_dia > 0 else 0.5
+            if q_dia > 0 and c_dia > 0:
+                relative_diameter_error = abs(q_dia - c_dia) / max(q_dia, c_dia, 0.001)
+                diameter_score = math.exp(-4.0 * relative_diameter_error)
+            else:
+                diameter_score = 0.5
             if q_len > 0 and c_len > 0:
                 relative_length_error = abs(q_len - c_len) / max(q_len, c_len, 0.001)
                 length_score = max(0.0, 1.0 - relative_length_error)
