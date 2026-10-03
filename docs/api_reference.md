@@ -451,12 +451,12 @@ Body 傳完整 template object。TemplateManager 負責建立 ID／保存。回�
 ```json
 {
   "status": "ok",
-  "total_cases": 23516,
+  "total_cases": 23517,
   "total_drawings": 1507,
   "roles": {},
-  "verification": {"AUTO_EXTRACTED": 23502, "AUTO_VERIFIED": 14},
-  "feature_linkage": {"FEATURE_LINKED": 14, "UNRESOLVED_FEATURE": 23502},
-  "retrieval_eligible_cases": 14,
+  "verification": {"AUTO_EXTRACTED": 23513, "AUTO_VERIFIED": 4},
+  "feature_linkage": {"FEATURE_LINKED": 4, "UNRESOLVED_FEATURE": 23513},
+  "retrieval_eligible_cases": 4,
   "top_series": {}
 }
 ```
@@ -481,8 +481,8 @@ Response：
 {
   "status": "ok",
   "total_count": 1507,
-  "evidence_count": 23516,
-  "all_cases_count": 23516,
+  "evidence_count": 23517,
+  "all_cases_count": 23517,
   "group_by_drawing": true,
   "page": 1,
   "page_size": 36,
@@ -531,6 +531,61 @@ Response：
   "all_dimensions": []
 }
 ```
+
+`AUTO_VERIFIED` 案例的 `source_metadata.geometry_verification` 會提供可機器判讀的核實證據：
+
+```json
+{
+  "method": "DXF_ATTACHMENT_STEP_HLR_V2",
+  "status": "GEOMETRY_VERIFIED",
+  "passed": true,
+  "score": 0.9867,
+  "checks": {
+    "reliable_dimension_attachment": true,
+    "local_feature_semantics": true,
+    "step_projection_signature": true,
+    "drawing_view_matches_step_projection": true,
+    "dimension_matches_projected_feature_location": true
+  },
+  "association": {
+    "association_status": "GEOMETRIC_ATTACHMENT",
+    "primary_view_id": "view_004",
+    "attached_geometry_handles": ["801B8", "801BF"]
+  },
+  "local_feature_evidence": {
+    "signature": "TWO_EXACT_EXTENSION_ENDPOINTS"
+  },
+  "step_projection_evidence": {
+    "passed": true,
+    "matching_views": [
+      {
+        "view": "front",
+        "signature": "VISIBLE_LENGTH_OR_SEPARATION",
+        "visible_axis_separation": true
+      }
+    ]
+  },
+  "view_registration": {
+    "dxf_view_id": "view_004",
+    "step_view": "front",
+    "score": 0.9055,
+    "contour_score": 0.865,
+    "rotation_degrees": 90,
+    "mirrored": false
+  },
+  "feature_localization": {
+    "status": "PROJECTED_NODE_ALIGNED",
+    "passed": true,
+    "score": 0.9996,
+    "node_center_3d": [-21.13, -8.2, 43.95],
+    "expected_normalized_point": [0.0311, 0.2703],
+    "observed_normalized_anchor": [0.0279, 0.2703],
+    "along_axis_error": 0.0
+  }
+}
+```
+
+呼叫端不得只根據 `score` 判定可採用性；必須同時要求 `passed=true`、案例狀態為 `AUTO_VERIFIED` 或 `ENGINEER_VERIFIED`，且推薦回應的 `decision_status` 不是 `REVIEW_REQUIRED`。
 
 ### `GET /api/tolerance/drawing-svg/{model_name}`
 
@@ -594,7 +649,9 @@ Response：
   "high_confidence_count": 2,
   "recommendations": {
     "shaft_segment_01_diameter": {
-      "tier_level": "TIER_1_HISTORICAL",
+      "tier_level": "TIER_1_RAG_MATCH",
+      "decision_status": "RECOMMENDED",
+      "confidence_basis": "HISTORICAL_EVIDENCE_UNCALIBRATED",
       "recommended_mode": "FIT",
       "formatted_display": "h6",
       "confidence": 0.9,
@@ -603,7 +660,14 @@ Response：
         "decision_source": "HISTORICAL_CASE",
         "adopted_case_id": "HIST2_...",
         "retrieved_case_count": 3,
-        "compatible_case_count": 1
+        "compatible_case_count": 1,
+        "consensus": {
+          "eligible": false,
+          "support_case_count": 1,
+          "support_part_count": 1,
+          "weighted_agreement": 1.0,
+          "near_top_conflict": false
+        }
       },
       "evidence_cases": [
         {

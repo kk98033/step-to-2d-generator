@@ -1491,7 +1491,10 @@ function App() {
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', margin: '16px 0 20px', padding: '10px 14px', background: '#262626', border: '1px solid #2563eb', borderRadius: 6, color: '#dbeafe', textDecoration: 'none', fontSize: 14, fontWeight: 600 }}
           >
             <Database size={17} />
-            開啟公差案例檢視器
+            <span>開啟公差案例檢視器</span>
+            <span style={{ fontSize: 9, lineHeight: 1, padding: '3px 5px', borderRadius: 3, border: '1px solid #b45309', background: '#292117', color: '#fbbf24', letterSpacing: 0.6 }}>
+              BETA
+            </span>
             <ExternalLink size={14} />
           </a>
           {/* Mode Toggle */}
@@ -2556,6 +2559,9 @@ function App() {
                       <span style={{ fontSize: 11, fontWeight: 700, color: '#f5f5f5', letterSpacing: 0.5 }}>
                         CAD-RAG 智慧公差推薦
                       </span>
+                      <span style={{ fontSize: 9, lineHeight: 1, padding: '3px 5px', borderRadius: 3, border: '1px solid #b45309', background: '#292117', color: '#fbbf24', fontWeight: 700, letterSpacing: 0.6 }}>
+                        BETA
+                      </span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#1a2234', border: '1px solid #1e3a8a', padding: '2px 6px', borderRadius: 3 }}>
                       <Database size={11} color="#60a5fa" />
@@ -2563,6 +2569,11 @@ function App() {
                         案例庫: {toleranceStats?.total_cases ?? 70} 筆
                       </span>
                     </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, padding: '6px 8px', borderRadius: 4, border: '1px solid #78350f', background: '#211a12', color: '#fcd34d', fontSize: 10, lineHeight: 1.45 }}>
+                    <AlertTriangle size={13} style={{ flex: '0 0 auto', marginTop: 1 }} />
+                    <span>Beta 決策輔助：推薦結果與歷史案例必須經工程師覆核，不可直接作為正式製造公差。</span>
                   </div>
 
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

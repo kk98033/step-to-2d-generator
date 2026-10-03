@@ -705,6 +705,28 @@ def get_drawing_details(model_name: str):
     取得該 DWG/DXF 圖紙的完整資訊，包含所有讀取到的尺寸標註與公差細節
     """
     clean_name = os.path.splitext(model_name)[0]
+    normalized_name = clean_name.lower().replace("-", "").replace("_", "")
+    case_evidence_by_handle = {}
+    for case in case_base.cases:
+        metadata = case.source_metadata or {}
+        drawing_name = os.path.splitext(
+            str(metadata.get("drawing_file") or case.evidence_source or "")
+        )[0]
+        if drawing_name.lower().replace("-", "").replace("_", "") != normalized_name:
+            continue
+        handle = str(metadata.get("entity_handle") or "")
+        if not handle:
+            continue
+        case_evidence_by_handle[handle] = {
+            "case_id": case.case_id,
+            "verification_status": case.effective_verification_status(),
+            "retrieval_eligible": case.is_retrieval_eligible(),
+            "matched_feature_id": metadata.get("matched_feature_id"),
+            "matched_feature_type": case.feature_type,
+            "matched_nominal_field": metadata.get("matched_nominal_field"),
+            "geometry_verification": metadata.get("geometry_verification"),
+            "verification_candidate": metadata.get("verification_candidate"),
+        }
     paths = lookup_drawing_paths(clean_name) or {}
     dwg_p = paths.get("dwg")
     dxf_p = paths.get("dxf")
@@ -767,6 +789,7 @@ def get_drawing_details(model_name: str):
                 ,"validation_reasons": d.validation_reasons
                 ,"feature_inference_2d": inference
             }
+            item.update(case_evidence_by_handle.get(str(d.entity_handle or ""), {}))
             extracted_dims.append(item)
             if mode != "NONE" and d.is_feature_dimension and d.validation_status in ("AUTO_VALIDATED", "REVIEW_REQUIRED"):
                 tolerances_only.append(item)

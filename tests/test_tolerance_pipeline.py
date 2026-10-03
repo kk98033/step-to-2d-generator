@@ -128,6 +128,120 @@ class FeatureInference2DTests(unittest.TestCase):
         self.assertEqual(result["association_status"], "GEOMETRIC_ATTACHMENT")
         self.assertIn(line.dxf.handle, result["attached_geometry_handles"])
 
+    def test_degraded_diameter_recovers_only_exact_virtual_endpoint_pair(self):
+        doc = ezdxf.new()
+        msp = doc.modelspace()
+        msp.add_line((0, 0), (20, 0), dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((20, 0), (20, 10), dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((20, 10), (0, 10), dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((0, 10), (0, 0), dxfattribs={"layer": "VISIBLE"})
+        dimension = self._dimension(
+            "DIAMETER",
+            10.0,
+            points={
+                "defpoint": [30.0, 30.0],
+                "defpoint2": [5.0, 5.0],
+                "defpoint3": [15.0, 5.0],
+                "defpoint4": [0.0, 0.0],
+            },
+        )
+
+        result = DxfStructure2DAnalyzer(msp).analyze_dimension(dimension)
+
+        self.assertEqual(result["association_status"], "RECOVERED_DIMENSION_GEOMETRY")
+        self.assertEqual(result["association_confidence"], 0.9)
+        self.assertEqual(result["recovered_dimension_geometry"]["center"], [10.0, 5.0])
+        self.assertEqual(result["primary_view_id"], "view_001")
+
+    def test_degraded_diameter_does_not_recover_wrong_endpoint_distance(self):
+        doc = ezdxf.new()
+        msp = doc.modelspace()
+        msp.add_line((0, 0), (20, 0), dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((20, 0), (20, 10), dxfattribs={"layer": "VISIBLE"})
+        dimension = self._dimension(
+            "DIAMETER",
+            10.0,
+            points={
+                "defpoint": [30.0, 30.0],
+                "defpoint2": [5.0, 5.0],
+                "defpoint3": [14.0, 5.0],
+                "defpoint4": [0.0, 0.0],
+            },
+        )
+
+        result = DxfStructure2DAnalyzer(msp).analyze_dimension(dimension)
+
+        self.assertEqual(result["association_status"], "NO_ATTACHMENT")
+        self.assertIsNone(result["recovered_dimension_geometry"])
+
+    def test_geometry_inside_insert_block_is_available_for_attachment(self):
+        doc = ezdxf.new()
+        block = doc.blocks.new(name="PART_VIEW")
+        block.add_line((0, 0), (10, 0), dxfattribs={"layer": "VISIBLE"})
+        block.add_line((0, 0), (0, 5), dxfattribs={"layer": "VISIBLE"})
+        block.add_line((10, 0), (10, 5), dxfattribs={"layer": "VISIBLE"})
+        msp = doc.modelspace()
+        msp.add_blockref("PART_VIEW", (100, 50))
+        dimension = self._dimension(
+            "LINEAR",
+            10.0,
+            points={"defpoint2": [100.0, 50.0], "defpoint3": [110.0, 50.0]},
+        )
+
+        result = DxfStructure2DAnalyzer(msp).analyze_dimension(dimension)
+
+        self.assertEqual(result["association_status"], "GEOMETRIC_ATTACHMENT")
+        self.assertEqual(result["primary_view_id"], "view_001")
+        self.assertTrue(result["attached_geometry_handles"])
+
+    def test_recovered_diameter_prefers_local_view_inside_sheet_frame(self):
+        doc = ezdxf.new()
+        msp = doc.modelspace()
+        for start, end in (
+            ((0, 0), (400, 0)),
+            ((400, 0), (400, 400)),
+            ((400, 400), (0, 400)),
+            ((0, 400), (0, 0)),
+        ):
+            msp.add_line(start, end)
+        msp.add_line((190, 195), (210, 195), dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((190, 205), (210, 205), dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((190, 195), (190, 205), dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((210, 195), (210, 205), dxfattribs={"layer": "VISIBLE"})
+        dimension = self._dimension(
+            "DIAMETER",
+            10.0,
+            points={
+                "defpoint": [300.0, 300.0],
+                "defpoint2": [195.0, 200.0],
+                "defpoint3": [205.0, 200.0],
+                "defpoint4": [0.0, 0.0],
+            },
+        )
+
+        result = DxfStructure2DAnalyzer(msp).analyze_dimension(dimension)
+
+        self.assertEqual(result["association_status"], "RECOVERED_DIMENSION_GEOMETRY")
+        selected = next(
+            view for view in DxfStructure2DAnalyzer(msp).view_clusters
+            if view.view_id == result["primary_view_id"]
+        )
+        self.assertLess(selected.width * selected.height, 1000.0)
+
+    def test_long_outline_connects_view_clusters_along_its_path(self):
+        doc = ezdxf.new()
+        msp = doc.modelspace()
+        msp.add_line((0, 0), (90, 0), dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((0, 0), (0, 5), dxfattribs={"layer": "VISIBLE"})
+        msp.add_line((90, 0), (90, 5), dxfattribs={"layer": "VISIBLE"})
+        for start_x in (0, 5, 80, 85):
+            msp.add_line((start_x, 5), (start_x + 5, 5), dxfattribs={"layer": "VISIBLE"})
+
+        analyzer = DxfStructure2DAnalyzer(msp)
+
+        self.assertEqual(len(analyzer.view_clusters), 1)
+        self.assertEqual(len(analyzer.view_clusters[0].primitive_indexes), 7)
+
     def test_cross_view_visible_pair_identifies_shaft_candidate(self):
         doc = ezdxf.new()
         msp = doc.modelspace()
@@ -461,6 +575,47 @@ class CaseRetrievalTests(unittest.TestCase):
             matches[0]["score_breakdown"]["product_family"],
             matches[1]["score_breakdown"]["product_family"],
         )
+
+    def test_retrieval_does_not_mix_linear_and_diameter_cases(self):
+        base = FeatureCaseBase.__new__(FeatureCaseBase)
+        common = dict(
+            part_type="SHAFT",
+            feature_type="shaft_segment",
+            inferred_role="SHAFT_SEGMENT",
+            nominal_dimensions={"diameter": 10.0, "length": 8.0},
+            neighbor_types=[],
+            boundary_position="INTERIOR",
+            tolerance_config={"mode": "CUSTOM_LIMITS", "upper_dev": 0.1, "lower_dev": -0.1},
+            confidence=0.9,
+            description="company case",
+            verification_status="AUTO_VERIFIED",
+        )
+        base.cases = [
+            ToleranceCase(
+                case_id="diameter",
+                evidence_source="diameter.dxf",
+                source_metadata={"dimension_category": "DIAMETER"},
+                **common,
+            ),
+            ToleranceCase(
+                case_id="linear",
+                evidence_source="linear.dxf",
+                source_metadata={"dimension_category": "LINEAR"},
+                **common,
+            ),
+        ]
+        node = FeatureNode(
+            id="shaft-1",
+            feature_type="shaft_segment",
+            nominal={"diameter": 10.0, "length": 8.0},
+            axial_span=[0.0, 8.0],
+            center_axial=4.0,
+        )
+        matches = base.search_similar_cases_detailed(
+            node,
+            dimension_category="DIAMETER",
+        )
+        self.assertEqual([item["case"].case_id for item in matches], ["diameter"])
 
 
 if __name__ == "__main__":

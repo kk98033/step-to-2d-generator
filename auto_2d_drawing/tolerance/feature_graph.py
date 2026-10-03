@@ -117,7 +117,11 @@ class FeatureGraphExtractor:
         graph = FeatureRelationGraph(part_type=part_type, main_axis=main_axis, total_length=total_len)
 
         # 依零件類型調用特化建圖邏輯
-        if part_type == "SHAFT" or "SHAFT" in part_type.upper() or len(feat.shafts) >= 1:
+        # A housing/assembly may contain cylindrical bosses or shafts without
+        # being a shaft part.  Let the shared PartClassifier decide the graph
+        # branch; otherwise every cylinder in FAN_HOUSING was mislabeled as a
+        # shaft segment and could become false historical tolerance evidence.
+        if part_type == "SHAFT" or "SHAFT" in part_type.upper():
             self._build_shaft_graph(feat, graph)
         else:
             self._build_general_graph(feat, graph)
@@ -149,7 +153,15 @@ class FeatureGraphExtractor:
                 nominal={"diameter": c_dia, "length": c_len},
                 axial_span=[round(start_a, 3), round(end_a, 3)],
                 center_axial=round(c_pos, 3),
-                source_info={"type": "cylinder", "area": cyl.get("area", 0.0)}
+                source_info={
+                    "type": "cylinder",
+                    "area": cyl.get("area", 0.0),
+                    "center": list(center),
+                    "axis_dir": list(cyl.get("axis_dir", [0.0, 0.0, 0.0])),
+                    "is_hole": bool(cyl.get("is_hole", False)),
+                    "radius": float(cyl.get("radius", c_dia / 2.0)),
+                    "length": c_len,
+                }
             )
             graph.add_node(node)
 
@@ -168,7 +180,12 @@ class FeatureGraphExtractor:
                 nominal={"groove_diameter": dia, "groove_width": w},
                 axial_span=[round(start_a, 3), round(end_a, 3)],
                 center_axial=round(c_pos, 3),
-                source_info={"type": "torus", "minor_radius": tor.get("minor_radius", 0.0)}
+                source_info={
+                    "type": "torus",
+                    "minor_radius": tor.get("minor_radius", 0.0),
+                    "center": list(center),
+                    "axis_dir": list(tor.get("axis_dir", [0.0, 0.0, 0.0])),
+                }
             )
             graph.add_node(node)
 
@@ -202,7 +219,11 @@ class FeatureGraphExtractor:
                 nominal={"chamfer_height": h, "angle": semi_ang},
                 axial_span=[round(c_pos - h / 2.0, 3), round(c_pos + h / 2.0, 3)],
                 center_axial=round(c_pos, 3),
-                source_info={"type": "cone"}
+                source_info={
+                    "type": "cone",
+                    "center": list(center),
+                    "axis_dir": list(cone.get("axis_dir", [0.0, 0.0, 0.0])),
+                }
             )
             graph.add_node(node)
 
@@ -218,7 +239,7 @@ class FeatureGraphExtractor:
                 nominal={"radius": r},
                 axial_span=[round(c_pos - r, 3), round(c_pos + r, 3)],
                 center_axial=round(c_pos, 3),
-                source_info={"type": "fillet"}
+                source_info={"type": "fillet", "center": list(center)}
             )
             graph.add_node(node)
 
@@ -226,15 +247,32 @@ class FeatureGraphExtractor:
     # 通用幾何特徵圖構建
     # =========================================================================
     def _build_general_graph(self, feat: FeatureExtractor, graph: FeatureRelationGraph):
+        axis_idx = 0 if graph.main_axis == 'x' else (1 if graph.main_axis == 'y' else 2)
         for idx, cyl in enumerate(feat.cylinders_raw):
             c_dia = round(cyl.get("diameter", 0.0), 3)
             c_len = round(cyl.get("length", 0.0), 3)
+            center = list(cyl.get("center", [0.0, 0.0, 0.0]))
+            c_pos = float(center[axis_idx])
+            axis_dir = list(cyl.get("axis_dir", [0.0, 0.0, 0.0]))
+            axis_alignment = abs(float(axis_dir[axis_idx])) if len(axis_dir) > axis_idx else 0.0
+            half_axial_span = c_len / 2.0 if axis_alignment >= 0.7 else 0.0
             node = FeatureNode(
                 id=f"feat_cyl_{idx + 1:02d}",
                 feature_type="shaft_segment" if not cyl.get("is_hole") else "hole",
                 nominal={"diameter": c_dia, "length": c_len},
-                axial_span=[0.0, c_len],
-                center_axial=c_len / 2.0
+                axial_span=[
+                    round(c_pos - half_axial_span, 3),
+                    round(c_pos + half_axial_span, 3),
+                ],
+                center_axial=round(c_pos, 3),
+                source_info={
+                    "type": "cylinder",
+                    "center": center,
+                    "axis_dir": axis_dir,
+                    "is_hole": bool(cyl.get("is_hole", False)),
+                    "radius": float(cyl.get("radius", c_dia / 2.0)),
+                    "length": c_len,
+                },
             )
             graph.add_node(node)
 

@@ -1,0 +1,523 @@
+{
+  "schema_version": 1,
+  "name": "forcecon-tolerance-silver",
+  "created_at": "2026-10-03T10:41:33+00:00",
+  "label_policy": "SILVER labels are derived from exact STEP/DXF evidence or engineer verification; reported accuracy is a proxy until a frozen engineer-signed GOLD set exists.",
+  "records": [
+    {
+      "benchmark_id": "benchmark:HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_36_diameter",
+      "label_tier": "SILVER",
+      "group_id": "part:1FQ6H6000H",
+      "split": "train",
+      "query": {
+        "part_type": "FAN_HOUSING",
+        "product_family": "FQ6H",
+        "feature_type": "hole",
+        "inferred_role": "HOLE_DIAMETER",
+        "nominal_dimensions": {
+          "diameter": 2.3,
+          "length": 1.4
+        },
+        "nominal_value": 2.3,
+        "neighbor_types": [
+          "hole",
+          "shaft_segment"
+        ],
+        "boundary_position": "INTERIOR",
+        "dimension_category": "DIAMETER"
+      },
+      "expected": {
+        "source_case_id": "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_36_diameter",
+        "feature_type": "hole",
+        "inferred_role": "HOLE_DIAMETER",
+        "dimension_category": "DIAMETER",
+        "nominal_value": 2.3,
+        "tolerance_config": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.0,
+          "source": "DXF_DIMSTYLE"
+        }
+      },
+      "source": {
+        "verification_status": "AUTO_VERIFIED",
+        "evidence_source": "1FQ6H6000H-R00.dxf",
+        "drawing_file": "1FQ6H6000H-R00.dxf",
+        "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\1FQ6H6000H-R00.dxf",
+        "step_path": "D:\\School\\力致\\new_data\\Maildir\\FCN\\FAN\\20250605\\FQ6H-雙出風-底座組合(側牆)\\3D圖檔\\housing_assy-1fq6h6000h_r00_asm.stp",
+        "entity_handle": "97632",
+        "matched_feature_id": "feat_cyl_36",
+        "matched_nominal_field": "diameter",
+        "verification_method": "EMBEDDED_PART_EXACT_REVISION_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+        "verification_checks": [
+          "embedded_part_number_match",
+          "exact_revision_designator_match",
+          "unique_unconsumed_step_for_part_revision",
+          "unique_unconsumed_dxf_for_part_revision",
+          "native_dxf_dimension_entity",
+          "explicit_tolerance_present",
+          "dimension_type_matches_feature_type",
+          "nominal_value_matches_step_geometry",
+          "unique_step_feature_candidate",
+          "dxf_dimension_geometry_attachment",
+          "local_2d_feature_semantics",
+          "step_hlr_projection_signature",
+          "drawing_view_step_projection_registration",
+          "dimension_matches_projected_feature_location",
+          "consistent_duplicate_dimension_tolerances"
+        ],
+        "feature_identity_verified": true,
+        "functional_role_verified": false
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1FQ6V8000H-R00_2e9406ff_feat_cyl_313_length",
+      "label_tier": "SILVER",
+      "group_id": "part:1FQ6V8000H",
+      "split": "train",
+      "query": {
+        "part_type": "FAN_HOUSING",
+        "product_family": "FQ6V",
+        "feature_type": "shaft_segment",
+        "inferred_role": "SHAFT_SEGMENT_LENGTH",
+        "nominal_dimensions": {
+          "diameter": 8.0,
+          "length": 3.2
+        },
+        "nominal_value": 3.2,
+        "neighbor_types": [
+          "hole",
+          "shaft_segment"
+        ],
+        "boundary_position": "INTERIOR",
+        "dimension_category": "LINEAR"
+      },
+      "expected": {
+        "source_case_id": "HIST2_1FQ6V8000H-R00_2e9406ff_feat_cyl_313_length",
+        "feature_type": "shaft_segment",
+        "inferred_role": "SHAFT_SEGMENT_LENGTH",
+        "dimension_category": "LINEAR",
+        "nominal_value": 3.2,
+        "tolerance_config": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.1,
+          "source": "DXF_DIMSTYLE"
+        }
+      },
+      "source": {
+        "verification_status": "AUTO_VERIFIED",
+        "evidence_source": "1FQ6V8000H-R00.dxf",
+        "drawing_file": "1FQ6V8000H-R00.dxf",
+        "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\1FQ6V8000H-R00.dxf",
+        "step_path": "D:\\School\\力致\\力致_ref\\00_ref\\給成大資料\\FAN\\FQ6V-單出風-上蓋組合(側牆)\\3D\\1fq6v8000h-R00.stp",
+        "entity_handle": "6F5F9",
+        "matched_feature_id": "feat_cyl_313",
+        "matched_nominal_field": "length",
+        "verification_method": "EXACT_FILENAME_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+        "verification_checks": [
+          "exact_step_dxf_filename",
+          "native_dxf_dimension_entity",
+          "explicit_tolerance_present",
+          "dimension_type_matches_feature_type",
+          "nominal_value_matches_step_geometry",
+          "unique_step_feature_candidate",
+          "dxf_dimension_geometry_attachment",
+          "local_2d_feature_semantics",
+          "step_hlr_projection_signature",
+          "drawing_view_step_projection_registration",
+          "dimension_matches_projected_feature_location",
+          "consistent_duplicate_dimension_tolerances"
+        ],
+        "feature_identity_verified": true,
+        "functional_role_verified": false
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1FQ6V8000H-R00_2e9406ff_feat_cyl_507_length",
+      "label_tier": "SILVER",
+      "group_id": "part:1FQ6V8000H",
+      "split": "train",
+      "query": {
+        "part_type": "FAN_HOUSING",
+        "product_family": "FQ6V",
+        "feature_type": "hole",
+        "inferred_role": "HOLE_LENGTH",
+        "nominal_dimensions": {
+          "diameter": 2.5,
+          "length": 1.3
+        },
+        "nominal_value": 1.3,
+        "neighbor_types": [
+          "hole",
+          "shaft_segment"
+        ],
+        "boundary_position": "INTERIOR",
+        "dimension_category": "LINEAR"
+      },
+      "expected": {
+        "source_case_id": "HIST2_1FQ6V8000H-R00_2e9406ff_feat_cyl_507_length",
+        "feature_type": "hole",
+        "inferred_role": "HOLE_LENGTH",
+        "dimension_category": "LINEAR",
+        "nominal_value": 1.3,
+        "tolerance_config": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.1,
+          "source": "DXF_DIMSTYLE"
+        }
+      },
+      "source": {
+        "verification_status": "AUTO_VERIFIED",
+        "evidence_source": "1FQ6V8000H-R00.dxf",
+        "drawing_file": "1FQ6V8000H-R00.dxf",
+        "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\1FQ6V8000H-R00.dxf",
+        "step_path": "D:\\School\\力致\\力致_ref\\00_ref\\給成大資料\\FAN\\FQ6V-單出風-上蓋組合(側牆)\\3D\\1fq6v8000h-R00.stp",
+        "entity_handle": "6A9A9",
+        "matched_feature_id": "feat_cyl_507",
+        "matched_nominal_field": "length",
+        "verification_method": "EXACT_FILENAME_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+        "verification_checks": [
+          "exact_step_dxf_filename",
+          "native_dxf_dimension_entity",
+          "explicit_tolerance_present",
+          "dimension_type_matches_feature_type",
+          "nominal_value_matches_step_geometry",
+          "unique_step_feature_candidate",
+          "dxf_dimension_geometry_attachment",
+          "local_2d_feature_semantics",
+          "step_hlr_projection_signature",
+          "drawing_view_step_projection_registration",
+          "dimension_matches_projected_feature_location",
+          "consistent_duplicate_dimension_tolerances"
+        ],
+        "feature_identity_verified": true,
+        "functional_role_verified": false
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1FQ766000H-R01_93e3e61f_feat_cyl_21_length",
+      "label_tier": "SILVER",
+      "group_id": "part:1FQ766000H",
+      "split": "train",
+      "query": {
+        "part_type": "FAN_HOUSING",
+        "product_family": "FQ76",
+        "feature_type": "shaft_segment",
+        "inferred_role": "SHAFT_SEGMENT_LENGTH",
+        "nominal_dimensions": {
+          "diameter": 6.2,
+          "length": 2.6
+        },
+        "nominal_value": 2.6,
+        "neighbor_types": [
+          "hole",
+          "shaft_segment"
+        ],
+        "boundary_position": "INTERIOR",
+        "dimension_category": "LINEAR"
+      },
+      "expected": {
+        "source_case_id": "HIST2_1FQ766000H-R01_93e3e61f_feat_cyl_21_length",
+        "feature_type": "shaft_segment",
+        "inferred_role": "SHAFT_SEGMENT_LENGTH",
+        "dimension_category": "LINEAR",
+        "nominal_value": 2.6,
+        "tolerance_config": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.1,
+          "source": "DXF_DIMSTYLE"
+        }
+      },
+      "source": {
+        "verification_status": "AUTO_VERIFIED",
+        "evidence_source": "1FQ766000H-R01.dxf",
+        "drawing_file": "1FQ766000H-R01.dxf",
+        "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\1FQ766000H-R01.dxf",
+        "step_path": "D:\\School\\力致\\力致_ref\\00_ref\\給成大資料\\FAN\\FQ76-單出風-底座組合(側牆)\\3D圖檔\\1FQ766000H-R01.stp",
+        "entity_handle": "7F4D8",
+        "matched_feature_id": "feat_cyl_21",
+        "matched_nominal_field": "length",
+        "verification_method": "EXACT_FILENAME_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+        "verification_checks": [
+          "exact_step_dxf_filename",
+          "native_dxf_dimension_entity",
+          "explicit_tolerance_present",
+          "dimension_type_matches_feature_type",
+          "nominal_value_matches_step_geometry",
+          "unique_step_feature_candidate",
+          "dxf_dimension_geometry_attachment",
+          "local_2d_feature_semantics",
+          "step_hlr_projection_signature",
+          "drawing_view_step_projection_registration",
+          "dimension_matches_projected_feature_location",
+          "consistent_duplicate_dimension_tolerances"
+        ],
+        "feature_identity_verified": true,
+        "functional_role_verified": false
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1FQ766000H-R01_93e3e61f_feat_cyl_22_diameter",
+      "label_tier": "SILVER",
+      "group_id": "part:1FQ766000H",
+      "split": "train",
+      "query": {
+        "part_type": "FAN_HOUSING",
+        "product_family": "FQ76",
+        "feature_type": "hole",
+        "inferred_role": "HOLE_DIAMETER",
+        "nominal_dimensions": {
+          "diameter": 4.6,
+          "length": 0.7
+        },
+        "nominal_value": 4.6,
+        "neighbor_types": [
+          "hole",
+          "shaft_segment"
+        ],
+        "boundary_position": "INTERIOR",
+        "dimension_category": "DIAMETER"
+      },
+      "expected": {
+        "source_case_id": "HIST2_1FQ766000H-R01_93e3e61f_feat_cyl_22_diameter",
+        "feature_type": "hole",
+        "inferred_role": "HOLE_DIAMETER",
+        "dimension_category": "DIAMETER",
+        "nominal_value": 4.6,
+        "tolerance_config": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.0,
+          "source": "DXF_DIMSTYLE"
+        }
+      },
+      "source": {
+        "verification_status": "AUTO_VERIFIED",
+        "evidence_source": "1FQ766000H-R01.dxf",
+        "drawing_file": "1FQ766000H-R01.dxf",
+        "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\1FQ766000H-R01.dxf",
+        "step_path": "D:\\School\\力致\\力致_ref\\00_ref\\給成大資料\\FAN\\FQ76-單出風-底座組合(側牆)\\3D圖檔\\1FQ766000H-R01.stp",
+        "entity_handle": "984E9",
+        "matched_feature_id": "feat_cyl_22",
+        "matched_nominal_field": "diameter",
+        "verification_method": "EXACT_FILENAME_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+        "verification_checks": [
+          "exact_step_dxf_filename",
+          "native_dxf_dimension_entity",
+          "explicit_tolerance_present",
+          "dimension_type_matches_feature_type",
+          "nominal_value_matches_step_geometry",
+          "unique_step_feature_candidate",
+          "dxf_dimension_geometry_attachment",
+          "local_2d_feature_semantics",
+          "step_hlr_projection_signature",
+          "drawing_view_step_projection_registration",
+          "dimension_matches_projected_feature_location",
+          "consistent_duplicate_dimension_tolerances"
+        ],
+        "feature_identity_verified": true,
+        "functional_role_verified": false
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_58_length",
+      "label_tier": "SILVER",
+      "group_id": "part:1FQWY6000H",
+      "split": "validation",
+      "query": {
+        "part_type": "FAN_HOUSING",
+        "product_family": "FQWY",
+        "feature_type": "shaft_segment",
+        "inferred_role": "SHAFT_SEGMENT_LENGTH",
+        "nominal_dimensions": {
+          "diameter": 2.0,
+          "length": 4.0
+        },
+        "nominal_value": 4.0,
+        "neighbor_types": [
+          "hole",
+          "shaft_segment"
+        ],
+        "boundary_position": "INTERIOR",
+        "dimension_category": "LINEAR"
+      },
+      "expected": {
+        "source_case_id": "HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_58_length",
+        "feature_type": "shaft_segment",
+        "inferred_role": "SHAFT_SEGMENT_LENGTH",
+        "dimension_category": "LINEAR",
+        "nominal_value": 4.0,
+        "tolerance_config": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.04,
+          "lower_dev": -0.03,
+          "source": "DXF_DIMSTYLE"
+        }
+      },
+      "source": {
+        "verification_status": "AUTO_VERIFIED",
+        "evidence_source": "1FQWY6000H-R00.dxf",
+        "drawing_file": "1FQWY6000H-R00.dxf",
+        "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\1FQWY6000H-R00.dxf",
+        "step_path": "D:\\School\\力致\\new_data\\Maildir\\FCN\\FAN\\20250605\\FQWY-單出風-底座組合(側牆)_雙胞胎\\3D圖檔\\HOUSING_ASSY_1FQWY6000H_R00.stp",
+        "entity_handle": "1145D5",
+        "matched_feature_id": "feat_cyl_58",
+        "matched_nominal_field": "length",
+        "verification_method": "EMBEDDED_PART_EXACT_REVISION_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+        "verification_checks": [
+          "embedded_part_number_match",
+          "exact_revision_designator_match",
+          "unique_unconsumed_step_for_part_revision",
+          "unique_unconsumed_dxf_for_part_revision",
+          "native_dxf_dimension_entity",
+          "explicit_tolerance_present",
+          "dimension_type_matches_feature_type",
+          "nominal_value_matches_step_geometry",
+          "unique_step_feature_candidate",
+          "dxf_dimension_geometry_attachment",
+          "local_2d_feature_semantics",
+          "step_hlr_projection_signature",
+          "drawing_view_step_projection_registration",
+          "dimension_matches_projected_feature_location",
+          "consistent_duplicate_dimension_tolerances"
+        ],
+        "feature_identity_verified": true,
+        "functional_role_verified": false
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_2AC085010H-R00_5343b2a1_cyl_02_diameter",
+      "label_tier": "SILVER",
+      "group_id": "part:2AC085010H",
+      "split": "train",
+      "query": {
+        "part_type": "SHAFT",
+        "product_family": "AC08",
+        "feature_type": "shaft_segment",
+        "inferred_role": "SHAFT_SEGMENT_DIAMETER",
+        "nominal_dimensions": {
+          "diameter": 2.994,
+          "length": 0.9
+        },
+        "nominal_value": 2.994,
+        "neighbor_types": [
+          "pilot_chamfer",
+          "shaft_segment"
+        ],
+        "boundary_position": "INTERIOR",
+        "dimension_category": "DIAMETER"
+      },
+      "expected": {
+        "source_case_id": "HIST2_2AC085010H-R00_5343b2a1_cyl_02_diameter",
+        "feature_type": "shaft_segment",
+        "inferred_role": "SHAFT_SEGMENT_DIAMETER",
+        "dimension_category": "DIAMETER",
+        "nominal_value": 2.994,
+        "tolerance_config": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.006,
+          "lower_dev": -0.009,
+          "source": "DXF_DIMSTYLE"
+        }
+      },
+      "source": {
+        "verification_status": "AUTO_VERIFIED",
+        "evidence_source": "2AC085010H-R00.dxf",
+        "drawing_file": "2AC085010H-R00.dxf",
+        "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\2AC085010H-R00.dxf",
+        "step_path": "D:\\School\\力致\\new_data\\Maildir\\FCN\\FAN\\20250605\\AJ0A-軸流扇\\3D圖檔\\BLADE_ASSY-1AC085000H-R01.stp",
+        "entity_handle": "22B8",
+        "matched_feature_id": "cyl_02",
+        "matched_nominal_field": "diameter",
+        "verification_method": "XCAF_COMPONENT_UNVERSIONED_LATEST_DXF_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+        "verification_checks": [
+          "xcaf_leaf_component_part_number",
+          "unique_latest_dxf_for_component_part",
+          "unique_component_geometry_fingerprint",
+          "component_revision_absent_requires_projection_v2",
+          "native_dxf_dimension_entity",
+          "explicit_tolerance_present",
+          "dimension_type_matches_feature_type",
+          "nominal_value_matches_step_geometry",
+          "unique_step_feature_candidate",
+          "dxf_dimension_geometry_attachment",
+          "local_2d_feature_semantics",
+          "step_hlr_projection_signature",
+          "drawing_view_step_projection_registration",
+          "dimension_matches_projected_feature_location",
+          "consistent_duplicate_dimension_tolerances"
+        ],
+        "feature_identity_verified": true,
+        "functional_role_verified": false
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_2AL0W5010H-R01_606c943d_groove_01_groove_diameter",
+      "label_tier": "SILVER",
+      "group_id": "part:2AL0W5010H",
+      "split": "test",
+      "query": {
+        "part_type": "SHAFT",
+        "product_family": "AL0W",
+        "feature_type": "retaining_ring_groove",
+        "inferred_role": "RETAINING_RING_GROOVE_GROOVE_DIAMETER",
+        "nominal_dimensions": {
+          "groove_diameter": 2.6,
+          "groove_width": 0.9
+        },
+        "nominal_value": 2.6,
+        "neighbor_types": [
+          "pilot_chamfer",
+          "shaft_segment",
+          "transition_fillet"
+        ],
+        "boundary_position": "INTERIOR",
+        "dimension_category": "DIAMETER"
+      },
+      "expected": {
+        "source_case_id": "HIST2_2AL0W5010H-R01_606c943d_groove_01_groove_diameter",
+        "feature_type": "retaining_ring_groove",
+        "inferred_role": "RETAINING_RING_GROOVE_GROOVE_DIAMETER",
+        "dimension_category": "DIAMETER",
+        "nominal_value": 2.6,
+        "tolerance_config": {
+          "mode": "CUSTOM_SYMMETRIC",
+          "dev": 0.05
+        }
+      },
+      "source": {
+        "verification_status": "AUTO_VERIFIED",
+        "evidence_source": "2AL0W5010H-R01.dxf",
+        "drawing_file": "2AL0W5010H-R01.dxf",
+        "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\2AL0W5010H-R01.dxf",
+        "step_path": "D:\\School\\力致\\new_data\\Maildir\\FCN\\FAN\\20250605\\AN0G-軸流扇\\3D圖檔\\Blade-Assy-1AL0W5000H-R03.stp",
+        "entity_handle": "26F6",
+        "matched_feature_id": "groove_01",
+        "matched_nominal_field": "groove_diameter",
+        "verification_method": "XCAF_COMPONENT_EXACT_REVISION_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+        "verification_checks": [
+          "xcaf_leaf_component_part_number",
+          "unique_latest_dxf_for_component_part",
+          "unique_component_geometry_fingerprint",
+          "exact_component_revision_match",
+          "native_dxf_dimension_entity",
+          "explicit_tolerance_present",
+          "dimension_type_matches_feature_type",
+          "nominal_value_matches_step_geometry",
+          "unique_step_feature_candidate",
+          "dxf_dimension_geometry_attachment",
+          "local_2d_feature_semantics",
+          "step_hlr_projection_signature",
+          "drawing_view_step_projection_registration",
+          "dimension_matches_projected_feature_location",
+          "consistent_duplicate_dimension_tolerances"
+        ],
+        "feature_identity_verified": true,
+        "functional_role_verified": false
+      }
+    }
+  ]
+}

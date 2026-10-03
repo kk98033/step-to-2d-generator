@@ -36,7 +36,7 @@ flowchart TD
 ### 3.1 可參與推薦
 
 - `ENGINEER_VERIFIED`：工程師在 UI 或受控流程確認。
-- `AUTO_VERIFIED`：同名同版 STEP/DXF，且尺寸種類、公稱值與唯一 3D 特徵一致。
+- `AUTO_VERIFIED`：完整同名，或檔名內嵌料號與版本完全一致且配對唯一的 STEP/DXF；此外尺寸種類與公稱值必須只對應一個 3D 特徵，並通過 DXF 尺寸附著、局部 2D 特徵語意、STEP HLR 投影簽名、視圖輪廓配準及 3D feature node 局部位置五項門檻。
 
 ### 3.2 不可直接參與推薦
 
@@ -57,6 +57,9 @@ flowchart TD
 - 至少一個 retrieval-eligible 案例。
 - feature type 與 dimension role 相容。
 - 相似度達採用門檻。
+- 尺寸種類必須一致；LINEAR 與 DIAMETER 即使數值相同也不可互相引用。
+- 單筆強匹配若附近存在不同公差的高相似案例，視為衝突而不採用。
+- 多案例共識目前要求至少三筆一致案例、來自至少兩個獨立料號群組、相似度加權同意率至少 67%，且最高相似案例必須屬於共識結果。
 - 不存在更高優先的安全阻擋條件。
 
 輸出必須指出：
@@ -77,6 +80,8 @@ flowchart TD
 - 尺寸角色與 rule table 可唯一對應。
 
 Tier 2 不是歷史案例命中。UI 與 API 必須標示其來源為標準／規則，不可假裝是公司圖面經驗。
+
+只有具有明確工程規則的功能角色可以進入 Tier 2。`SHAFT_SEGMENT_LENGTH`、`SHAFT_SEGMENT_DIAMETER` 等抽取標籤不是功能角色，不得被轉換成猜測的配合或公差。
 
 ### Tier 3：一般 fallback
 
@@ -166,6 +171,8 @@ API 可能列出多個 `evidence_cases`，但每筆證據還有角色：
 - `recommended_mode`
 - `formatted_display`
 - `confidence`
+- `decision_status`：`RECOMMENDED`、`RULE_SUGGESTION` 或 `REVIEW_REQUIRED`
+- `confidence_basis`：說明信心來自歷史證據、工程規則或 fallback；目前數值尚未由 GOLD benchmark 校準
 - `reasoning`
 - `retrieval_trace.decision_source`
 - `retrieval_trace.adopted_case_id`
@@ -173,6 +180,8 @@ API 可能列出多個 `evidence_cases`，但每筆證據還有角色：
 - `feature_graph`
 
 若 `decision_source` 不是 `HISTORICAL_CASE`，即使 `evidence_cases` 有內容，也不能說「使用了過往案例的公差」。
+
+完整離線評估流程與指標見[公差推薦 Benchmark](tolerance-benchmark.md)。
 
 ## 9. UI 行為
 
@@ -233,10 +242,13 @@ LLM 僅摘要與解釋
 - 掃描 1,744 個 DXF，選出 1,697 個最高版模型。
 - 排除 47 個舊版／重複檔。
 - 1,507 張圖有有效公差資料。
-- 23,516 筆最終公差證據。
-- 14 筆 STEP 核實案例可參與推薦。
-- 37 筆 2D 高信心分類仍不直接進入 RAG。
-- 833 筆待覆核候選。
+- 23,518 筆原始尺寸／公差證據，去重與合併後為 23,517 筆案例。
+- 4 筆通過 DXF 附著、STEP 投影、視圖輪廓配準與特徵位置核實的案例可參與推薦。
+- 16 組可進入自動核實流程的 STEP/DXF 配對：10 組完整同名、6 組內嵌料號與版本唯一配對。
+- 31 筆雖有唯一數值候選，但因尺寸附著、局部語意、投影簽名、視圖配準或 3D 特徵位置不足而維持 `AUTO_EXTRACTED`。
+- 14 組只有同料號但跨版本或缺版本的候選配對，不會自動進入推薦案例。
+- 34 筆 2D 高信心分類仍不直接進入 RAG。
+- 836 筆待覆核候選。
 - 22,648 筆仍無法可靠定位 feature identity。
 
 這表示「公差值提取」已有大量資料，但「公差綁定到可靠 3D 特徵」仍是主要瓶頸。
