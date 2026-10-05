@@ -738,6 +738,13 @@ def get_drawing_details(model_name: str):
             "matched_feature_id": metadata.get("matched_feature_id"),
             "matched_feature_type": case.feature_type,
             "matched_nominal_field": metadata.get("matched_nominal_field"),
+            "pair_method": metadata.get("pair_method"),
+            "component_name": metadata.get("component_name"),
+            "component_fingerprint": metadata.get("component_fingerprint"),
+            "matched_dxf_view_ids": metadata.get("matched_dxf_view_ids", []),
+            "matched_step_view": metadata.get("matched_step_view"),
+            "global_geometry_score": metadata.get("global_geometry_score"),
+            "global_geometry_pair_evidence": metadata.get("global_geometry_pair_evidence"),
             "geometry_verification": metadata.get("geometry_verification"),
             "verification_candidate": metadata.get("verification_candidate"),
         }

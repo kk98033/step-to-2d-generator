@@ -8,7 +8,7 @@ from auto_2d_drawing.tolerance.case_base import FeatureCaseBase, ToleranceCase
 from auto_2d_drawing.tolerance.dxf_tolerance_extractor import DxfToleranceExtractor, ExtractedDimension
 from auto_2d_drawing.tolerance.feature_inference_2d import FeatureInference2DEngine
 from auto_2d_drawing.tolerance.dxf_structure_2d import DxfStructure2DAnalyzer
-from auto_2d_drawing.tolerance.feature_graph import FeatureNode
+from auto_2d_drawing.tolerance.feature_graph import FeatureNode, FeatureRelationGraph
 from auto_2d_drawing.tolerance.feature_graph import candidate_feature_types_for_dimension
 from auto_2d_drawing.tolerance.ingest_historical_data import HistoricalDataIngestor
 from auto_2d_drawing.tolerance.tolerance_decision_service import ToleranceDecisionService
@@ -163,6 +163,33 @@ class FeatureInference2DTests(unittest.TestCase):
         self.assertFalse(result["native_association_available"])
         self.assertEqual(result["association_status"], "GEOMETRIC_ATTACHMENT")
         self.assertIn(line.dxf.handle, result["attached_geometry_handles"])
+
+    def test_split_arc_circle_is_one_geometric_attachment(self):
+        doc = ezdxf.new()
+        msp = doc.modelspace()
+        for start_angle in (0.0, 90.0, 180.0, 270.0):
+            msp.add_arc(
+                center=(20.0, 30.0),
+                radius=5.0,
+                start_angle=start_angle,
+                end_angle=start_angle + 90.0,
+                dxfattribs={"layer": "VISIBLE"},
+            )
+        dimension = self._dimension(
+            "DIAMETER",
+            10.0,
+            points={"defpoint": [25.0, 30.0], "defpoint4": [15.0, 30.0]},
+        )
+
+        result = DxfStructure2DAnalyzer(msp).analyze_dimension(dimension)
+
+        self.assertEqual(result["association_status"], "GEOMETRIC_ATTACHMENT")
+        self.assertEqual(len(result["common_attachment_geometry_groups"]), 1)
+        self.assertEqual(len(result["circular_attachment_profiles"]), 1)
+        profile = result["circular_attachment_profiles"][0]
+        self.assertEqual(profile["definition_point_count"], 2)
+        self.assertTrue(profile["represented_by_split_arcs"])
+        self.assertAlmostEqual(profile["diameter"], 10.0)
 
     def test_degraded_diameter_recovers_only_exact_virtual_endpoint_pair(self):
         doc = ezdxf.new()
@@ -333,6 +360,32 @@ class CaseRetrievalTests(unittest.TestCase):
         self.assertEqual(list(discovery["dxf_map"]), ["2fq6v4030h-r02"])
         self.assertEqual(discovery["revision_selection"]["dxf"]["superseded_or_duplicate_files"], 2)
 
+    def test_revision_selection_collapses_descriptive_a_revisions(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for name in (
+                "烤漆組合-1M242172010H-A01.dxf",
+                "烤漆組合-1M242172010H-A03.dxf",
+                "烤漆組合-1M242172010H-A02.dxf",
+            ):
+                open(os.path.join(temp_dir, name), "w").close()
+
+            discovery = HistoricalDataIngestor().discover_sources([temp_dir])
+
+        self.assertEqual(len(discovery["dxf_map"]), 1)
+        self.assertTrue(next(iter(discovery["dxf_map"])).endswith("-a03"))
+        self.assertEqual(discovery["revision_selection"]["dxf"]["superseded_or_duplicate_files"], 2)
+
+    def test_unversioned_part_number_with_a_and_digits_is_not_a_revision(self):
+        identities = [
+            HistoricalDataIngestor._revision_identity(name)
+            for name in ("0AJ0A00009.dxf", "0AJ0A00010.dxf")
+        ]
+
+        self.assertEqual(identities[0][0], "0aj0a00009")
+        self.assertIsNone(identities[0][1])
+        self.assertEqual(identities[1][0], "0aj0a00010")
+        self.assertIsNone(identities[1][1])
+
     def test_dimension_deduplication_requires_same_geometry(self):
         common = dict(
             dim_type="LINEAR",
@@ -465,6 +518,72 @@ class CaseRetrievalTests(unittest.TestCase):
         self.assertEqual(result["retrieval_trace"]["adopted_case_id"], "adopted-case")
         self.assertTrue(result["evidence_cases"][0]["used_for_decision"])
         self.assertEqual(result["evidence_cases"][0]["evidence_role"], "ADOPTED_HISTORICAL_CASE")
+
+    def test_custom_limits_from_different_nominal_are_context_only(self):
+        case = ToleranceCase(
+            case_id="diameter-35",
+            part_type="FAN_HOUSING",
+            feature_type="shaft_segment",
+            inferred_role="MAIN_SHAFT_BODY",
+            nominal_dimensions={"diameter": 35.0, "length": 16.0},
+            neighbor_types=[],
+            boundary_position="INTERIOR",
+            tolerance_config={"mode": "CUSTOM_LIMITS", "upper_dev": 0.2, "lower_dev": 0.0},
+            confidence=0.97,
+            evidence_source="1AL0W5000H-R03.dxf",
+            description="verified 35 mm case",
+            verification_status="AUTO_VERIFIED",
+        )
+        match = {
+            "case": case,
+            "similarity": 0.92,
+            "score_breakdown": {},
+            "verification_status": "AUTO_VERIFIED",
+            "product_family": "AL0W",
+            "same_product_family": True,
+        }
+
+        class StubCaseBase:
+            cases = [case]
+
+            @staticmethod
+            def search_similar_cases_detailed(*_args, **_kwargs):
+                return [match]
+
+        node = FeatureNode(
+            id="shaft-32",
+            feature_type="shaft_segment",
+            nominal={"diameter": 32.0, "length": 14.5},
+            axial_span=[0.0, 14.5],
+            center_axial=7.25,
+            inferred_role="MAIN_SHAFT_BODY",
+        )
+        result = ToleranceDecisionService(case_base=StubCaseBase())._evaluate_recommendation(
+            "shaft_32", "shaft", True, 32.0, node, "FAN_HOUSING", product_family="AL0W"
+        ).to_dict()
+
+        self.assertEqual(result["decision_status"], "REVIEW_REQUIRED")
+        self.assertEqual(result["retrieval_trace"]["compatible_case_count"], 0)
+        self.assertFalse(result["evidence_cases"][0]["nominal_transfer_compatible"])
+        self.assertFalse(result["evidence_cases"][0]["used_for_decision"])
+
+    def test_hole_rule_matches_hole_feature_node(self):
+        graph = FeatureRelationGraph(part_type="FAN_HOUSING")
+        hole = FeatureNode(
+            id="hole-34",
+            feature_type="hole",
+            nominal={"diameter": 34.25, "length": 3.5},
+            axial_span=[0.0, 0.0],
+            center_axial=0.0,
+        )
+        graph.add_node(hole)
+
+        matched = ToleranceDecisionService(case_base=FeatureCaseBase.__new__(FeatureCaseBase))._match_rule_to_node(
+            {"category": "hole", "nominal_value": 34.25},
+            graph,
+        )
+
+        self.assertIs(matched, hole)
 
     def test_only_verified_or_strictly_auto_verified_cases_are_eligible(self):
         base_kwargs = dict(

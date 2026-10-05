@@ -65,19 +65,21 @@
 - 歷史版次依 `料號-RNN` 僅保留最高 R 版。
 - 完全相同值、公差及量測端點的重複 entity 才會合併。
 - 2D 規則引擎以圓輪廓、尺寸附著、可見／隱藏線與跨視圖證據推定特徵類型。
-- STEP/DXF 同版模型以 3D 幾何唯一匹配核實可推薦案例。
+- 除同名／同版配對外，會展開 STEP/XCAF 所有葉零件，對全部 DXF 獨立視圖做不依賴檔名的全域幾何搜尋。
+- 全域搜尋先以旋轉、鏡射及比例不變描述子取得 Top-K，再以 HLR、ICP／Chamfer、互為最佳與競爭分差核實配對。
+- 配對後仍須通過尺寸附著、局部語意、STEP 投影、視圖輪廓及 3D 特徵位置，才會成為可推薦案例。
 - 未核實案例可以展示與覆核，但不會自動進入 RAG 推薦決策。
 
 目前資料庫重建基準：
 
 | 指標 | 數量 |
 | --- | ---: |
-| 最新版 DXF 圖面 | 1,697 |
-| 含公差圖面 | 1,507 |
-| 有效尺寸／公差證據 | 23,518 |
-| 通過 DXF 附著＋STEP 投影＋特徵位置核實、可參與 RAG | 4 |
-| 2D 高信心推定（不直接進 RAG） | 34 |
-| 2D 待覆核候選 | 836 |
+| 最新版 DXF 圖面（A/R 系列只留最高版） | 786 |
+| 含有效公差案例的圖面 | 742 |
+| 有效尺寸／公差證據 | 7,176 |
+| 通過 DXF 附著＋STEP 投影／局部拓撲＋特徵位置核實、可參與 RAG | 20 |
+| 2D 高信心推定（不直接進 RAG） | 22 |
+| 2D 待覆核候選 | 541 |
 
 完整方法、資格與風險請讀[公差推薦系統](docs/tolerance-recommendation.md)。
 
@@ -143,6 +145,11 @@ step-to-2d-generator/
 │       ├── dxf_tolerance_extractor.py
 │       ├── dxf_structure_2d.py
 │       ├── feature_inference_2d.py
+│       ├── assembly_components.py      # XCAF 葉零件與幾何 fingerprint
+│       ├── global_geometry_search.py   # 全域 3D 元件／DXF 視圖搜尋
+│       ├── projection_registration_v2.py
+│       ├── projection_geometry_verifier.py
+│       ├── topology_feature_mapper.py
 │       └── ingest_historical_data.py
 ├── web_app/
 │   ├── backend/server.py               # FastAPI 與靜態前端

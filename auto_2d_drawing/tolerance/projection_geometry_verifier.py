@@ -24,6 +24,7 @@ from auto_2d_drawing.tolerance.projection_registration_v2 import (
     SimilarityTransform2D,
 )
 from auto_2d_drawing.tolerance.projected_feature_mapper import FeatureFootprintProjector
+from auto_2d_drawing.tolerance.topology_feature_mapper import TopologyFeatureMapper
 from auto_2d_drawing.config import VIEW_CONFIG
 from auto_2d_drawing.view_projector import ViewProjector
 
@@ -31,7 +32,7 @@ from auto_2d_drawing.view_projector import ViewProjector
 class ProjectionGeometryVerifier:
     """Produce explainable 2D/3D evidence for one dimension-feature match."""
 
-    METHOD = "DXF_ATTACHMENT_ADAPTIVE_STEP_HLR_V3"
+    METHOD = "DXF_ATTACHMENT_ADAPTIVE_STEP_HLR_TOPOLOGY_V4"
     MIN_VIEW_SCORE = 0.45
     MIN_CONTOUR_SCORE = 0.08
     MIN_ROBUST_CONTOUR_SCORE = 0.68
@@ -54,6 +55,10 @@ class ProjectionGeometryVerifier:
         self._view_match_cache: Dict[Tuple[str, Tuple[str, ...]], Dict[str, Any]] = {}
         self._shape = shape
         self._feature_nodes = list(feature_nodes or ())
+        try:
+            self.topology_mapper = TopologyFeatureMapper(shape) if shape is not None else None
+        except Exception:
+            self.topology_mapper = None
         self._feature_axis_views_loaded = False
         if step_views is not None:
             self.step_views = step_views
@@ -126,6 +131,45 @@ class ProjectionGeometryVerifier:
             association,
             view_match,
         )
+        topology_mapper = getattr(self, "topology_mapper", None)
+        topology_mapping = (
+            topology_mapper.map_dimension(
+                dimension,
+                node,
+                matched_field,
+                association,
+                view_name=view_match.get("step_view"),
+                view=self.step_views.get(str(view_match.get("step_view") or "")),
+                transform_payload=view_match.get("transform"),
+            )
+            if topology_mapper is not None
+            else {
+                "method": TopologyFeatureMapper.METHOD,
+                "status": "TOPOLOGY_MAPPER_UNAVAILABLE",
+                "passed": False,
+                "score": 0.0,
+            }
+        )
+        local_topology_proof = (
+            bool(topology_mapping.get("passed"))
+            and topology_mapping.get("mode") == "LOCAL_CIRCULAR_PROFILE"
+            and float(association.get("association_confidence", 0.0) or 0.0) >= 0.95
+        )
+        if local_topology_proof:
+            # Assembly drawings frequently rearrange components on the sheet,
+            # so a full-shape registration is intentionally not treated as a
+            # prerequisite when two exact DXF diameter points map to one
+            # unique STEP logical cylindrical surface.
+            localization = {
+                **localization,
+                "passed": True,
+                "score": max(
+                    float(localization.get("score", 0.0) or 0.0),
+                    float(topology_mapping.get("score", 0.0) or 0.0),
+                ),
+                "status": "LOCAL_PROFILE_TOPOLOGY_ALIGNED",
+                "topology_mapping": topology_mapping,
+            }
         contour_score = view_match.get("contour_score")
         registration_confident = self._registration_is_confident(view_match)
         view_match["quality_gate_passed"] = registration_confident
@@ -150,11 +194,15 @@ class ProjectionGeometryVerifier:
             "local_feature_semantics": bool(local.get("passed")),
             "step_projection_signature": bool(projection.get("passed")),
             "drawing_view_matches_step_projection": (
-                float(view_match.get("score", 0.0) or 0.0) >= self.MIN_VIEW_SCORE
-                and (contour_score is None or float(contour_score) >= self.MIN_CONTOUR_SCORE)
-                and registration_confident
+                local_topology_proof
+                or (
+                    float(view_match.get("score", 0.0) or 0.0) >= self.MIN_VIEW_SCORE
+                    and (contour_score is None or float(contour_score) >= self.MIN_CONTOUR_SCORE)
+                    and registration_confident
+                )
             ),
             "dimension_matches_projected_feature_location": bool(localization.get("passed")),
+            "dimension_endpoints_map_to_brep_topology": bool(topology_mapping.get("passed")),
         }
         score = (
             (0.22 if checks["reliable_dimension_attachment"] else 0.0)
@@ -163,7 +211,14 @@ class ProjectionGeometryVerifier:
             + 0.14 * float(view_match.get("score", 0.0) or 0.0)
             + 0.30 * float(localization.get("score", 0.0) or 0.0)
         )
-        passed = all(checks.values()) and score >= self.MIN_VERIFIED_SCORE
+        required_checks = (
+            "reliable_dimension_attachment",
+            "local_feature_semantics",
+            "step_projection_signature",
+            "drawing_view_matches_step_projection",
+            "dimension_matches_projected_feature_location",
+        )
+        passed = all(checks[name] for name in required_checks) and score >= self.MIN_VERIFIED_SCORE
         return {
             "method": self.METHOD,
             "status": "GEOMETRY_VERIFIED" if passed else "INSUFFICIENT_GEOMETRY_EVIDENCE",
@@ -175,6 +230,7 @@ class ProjectionGeometryVerifier:
             "step_projection_evidence": projection,
             "view_registration": view_match,
             "feature_localization": localization,
+            "topology_mapping": topology_mapping,
         }
 
     @classmethod
@@ -256,6 +312,13 @@ class ProjectionGeometryVerifier:
             )
         }
         exact_attached_circle = bool(common_handles & exact_circle_handles)
+        circular_profiles = [
+            profile for profile in association.get("circular_attachment_profiles", [])
+            if int(profile.get("definition_point_count", 0) or 0) >= 2
+            and abs(float(profile.get("diameter", 0.0) or 0.0) - nominal)
+            <= max(0.01, min(0.08, nominal * 0.002))
+        ]
+        exact_attached_circular_profile = len(circular_profiles) == 1
 
         passed = False
         signature = "NONE"
@@ -272,6 +335,11 @@ class ProjectionGeometryVerifier:
                 # from the unique STEP node plus the independent projection
                 # localization check; 2D geometry alone is not promoted.
                 passed, signature = True, "EXACT_ATTACHED_CIRCLE_WITH_3D_CLASSIFICATION"
+            elif feature_type in {"hole", "shaft_segment"} and exact_attached_circular_profile:
+                # A split ARC ring is one geometric profile, not multiple
+                # competing entities.  STEP topology still decides whether
+                # the profile is a hole or an external shaft surface.
+                passed, signature = True, "EXACT_COINCIDENT_ARC_PROFILE_WITH_3D_CLASSIFICATION"
             elif feature_type in {"hole", "shaft_segment", "retaining_ring_groove"} and recovered_diameter_pair:
                 # The endpoint pair proves the local measured diameter.  The
                 # separate STEP projection and node-location checks must still
@@ -304,6 +372,7 @@ class ProjectionGeometryVerifier:
             "outer_visible_pair_count": len(visible_pairs),
             "hidden_pair_count": len(hidden_pairs),
             "exact_attached_circle": exact_attached_circle,
+            "exact_attached_circular_profile": exact_attached_circular_profile,
             "recovered_diameter_endpoint_pair": recovered_diameter_pair,
             "nominal_value": nominal,
         }
