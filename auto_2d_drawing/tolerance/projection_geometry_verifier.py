@@ -18,6 +18,12 @@ import math
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from auto_2d_drawing.tolerance.dxf_structure_2d import DxfStructure2DAnalyzer
+from auto_2d_drawing.tolerance.projection_registration_v2 import (
+    AdaptiveProjectionCandidateGenerator,
+    ProjectionRegistrationEngine,
+    SimilarityTransform2D,
+)
+from auto_2d_drawing.tolerance.projected_feature_mapper import FeatureFootprintProjector
 from auto_2d_drawing.config import VIEW_CONFIG
 from auto_2d_drawing.view_projector import ViewProjector
 
@@ -25,22 +31,51 @@ from auto_2d_drawing.view_projector import ViewProjector
 class ProjectionGeometryVerifier:
     """Produce explainable 2D/3D evidence for one dimension-feature match."""
 
-    METHOD = "DXF_ATTACHMENT_STEP_HLR_V2"
+    METHOD = "DXF_ATTACHMENT_ADAPTIVE_STEP_HLR_V3"
     MIN_VIEW_SCORE = 0.45
     MIN_CONTOUR_SCORE = 0.08
+    MIN_ROBUST_CONTOUR_SCORE = 0.68
+    MIN_ROBUST_INLIER_RATIO = 0.70
+    MAX_ROBUST_CHAMFER = 0.045
+    MAX_RANKED_HAUSDORFF = 0.14
     MIN_VERIFIED_SCORE = 0.80
 
-    def __init__(self, modelspace, shape=None, step_views: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        modelspace,
+        shape=None,
+        step_views: Optional[Dict[str, Any]] = None,
+        feature_nodes: Optional[Iterable[Any]] = None,
+    ):
         self.structure = DxfStructure2DAnalyzer(modelspace)
+        self.registration_engine = ProjectionRegistrationEngine()
+        self._association_cache: Dict[int, Dict[str, Any]] = {}
+        self._projection_cache: Dict[Tuple[str, str, str, float], Dict[str, Any]] = {}
+        self._view_match_cache: Dict[Tuple[str, Tuple[str, ...]], Dict[str, Any]] = {}
+        self._shape = shape
+        self._feature_nodes = list(feature_nodes or ())
+        self._feature_axis_views_loaded = False
         if step_views is not None:
             self.step_views = step_views
         elif shape is not None:
-            self.step_views = ViewProjector().project_all_views(shape)
+            self.step_views = AdaptiveProjectionCandidateGenerator().project_all(
+                shape,
+                feature_nodes=feature_nodes,
+                include_feature_axes=False,
+            )
         else:
             self.step_views = {}
 
     def verify(self, dimension, node, matched_field: str) -> Dict[str, Any]:
-        association = self.structure.analyze_dimension(dimension)
+        dimension_cache_key = id(dimension)
+        association_cache = getattr(self, "_association_cache", None)
+        if association_cache is None:
+            association_cache = {}
+            self._association_cache = association_cache
+        association = association_cache.get(dimension_cache_key)
+        if association is None:
+            association = self.structure.analyze_dimension(dimension)
+            association_cache[dimension_cache_key] = association
         category = str(getattr(dimension, "dimension_category", "") or "").upper()
         nominal = abs(float(getattr(dimension, "nominal_value", 0.0) or 0.0))
         feature_type = str(getattr(node, "feature_type", "") or "")
@@ -52,7 +87,15 @@ class ProjectionGeometryVerifier:
             matched_field,
             nominal,
         )
-        projection = self._step_projection_evidence(feature_type, matched_field, category, nominal)
+        projection_key = (feature_type, matched_field, category, round(nominal, 8))
+        projection_cache = getattr(self, "_projection_cache", None)
+        if projection_cache is None:
+            projection_cache = {}
+            self._projection_cache = projection_cache
+        projection = projection_cache.get(projection_key)
+        if projection is None:
+            projection = self._step_projection_evidence(feature_type, matched_field, category, nominal)
+            projection_cache[projection_key] = projection
         signature_views = {
             str(item.get("view"))
             for item in projection.get("matching_views", [])
@@ -62,6 +105,21 @@ class ProjectionGeometryVerifier:
             association.get("primary_view_id"),
             allowed_step_views=signature_views,
         )
+        if (
+            float(view_match.get("score", 0.0) or 0.0) < self.MIN_VIEW_SCORE
+            and self._ensure_feature_axis_views()
+        ):
+            projection = self._step_projection_evidence(feature_type, matched_field, category, nominal)
+            projection_cache[projection_key] = projection
+            signature_views = {
+                str(item.get("view"))
+                for item in projection.get("matching_views", [])
+                if item.get("view")
+            }
+            view_match = self._best_view_match(
+                association.get("primary_view_id"),
+                allowed_step_views=signature_views,
+            )
         localization = self._node_projection_localization(
             dimension,
             node,
@@ -69,6 +127,15 @@ class ProjectionGeometryVerifier:
             view_match,
         )
         contour_score = view_match.get("contour_score")
+        registration_confident = self._registration_is_confident(view_match)
+        view_match["quality_gate_passed"] = registration_confident
+        if view_match.get("registration_method") == ProjectionRegistrationEngine.METHOD:
+            view_match["quality_thresholds"] = {
+                "minimum_contour_score": self.MIN_ROBUST_CONTOUR_SCORE,
+                "minimum_inlier_ratio": self.MIN_ROBUST_INLIER_RATIO,
+                "maximum_normalized_chamfer": self.MAX_ROBUST_CHAMFER,
+                "maximum_ranked_hausdorff": self.MAX_RANKED_HAUSDORFF,
+            }
 
         checks = {
             "reliable_dimension_attachment": (
@@ -85,6 +152,7 @@ class ProjectionGeometryVerifier:
             "drawing_view_matches_step_projection": (
                 float(view_match.get("score", 0.0) or 0.0) >= self.MIN_VIEW_SCORE
                 and (contour_score is None or float(contour_score) >= self.MIN_CONTOUR_SCORE)
+                and registration_confident
             ),
             "dimension_matches_projected_feature_location": bool(localization.get("passed")),
         }
@@ -108,6 +176,50 @@ class ProjectionGeometryVerifier:
             "view_registration": view_match,
             "feature_localization": localization,
         }
+
+    @classmethod
+    def _registration_is_confident(cls, view_match: Dict[str, Any]) -> bool:
+        """Apply strict gates only to the robust registration implementation.
+
+        Older cached evidence and sparse unit-test fallbacks do not expose the
+        V3 metrics.  New automatic promotions must pass contour, inlier,
+        trimmed Chamfer and ranked-Hausdorff checks together.
+        """
+        if view_match.get("registration_method") != ProjectionRegistrationEngine.METHOD:
+            return True
+        contour = float(view_match.get("contour_score", 0.0) or 0.0)
+        inlier = float(view_match.get("inlier_ratio", 0.0) or 0.0)
+        chamfer = view_match.get("normalized_chamfer")
+        ranked = view_match.get("ranked_hausdorff")
+        if chamfer is None or ranked is None:
+            return False
+        return (
+            contour >= cls.MIN_ROBUST_CONTOUR_SCORE
+            and inlier >= cls.MIN_ROBUST_INLIER_RATIO
+            and float(chamfer) <= cls.MAX_ROBUST_CHAMFER
+            and float(ranked) <= cls.MAX_RANKED_HAUSDORFF
+        )
+
+    def _ensure_feature_axis_views(self) -> bool:
+        if (
+            getattr(self, "_feature_axis_views_loaded", False)
+            or getattr(self, "_shape", None) is None
+            or not getattr(self, "_feature_nodes", None)
+        ):
+            return False
+        self._feature_axis_views_loaded = True
+        extra = AdaptiveProjectionCandidateGenerator(max_views=12).project_all(
+            self._shape,
+            feature_nodes=self._feature_nodes,
+            include_feature_axes=True,
+            exclude_names=self.step_views,
+        )
+        if not extra:
+            return False
+        self.step_views.update(extra)
+        getattr(self, "_projection_cache", {}).clear()
+        getattr(self, "_view_match_cache", {}).clear()
+        return True
 
     def _local_feature_evidence(
         self,
@@ -262,6 +374,10 @@ class ProjectionGeometryVerifier:
         allowed = set(allowed_step_views or ())
         if allowed_step_views is not None and not allowed:
             return best
+        cache_key = (str(dxf_view_id), tuple(sorted(allowed)))
+        cached = getattr(self, "_view_match_cache", {}).get(cache_key)
+        if cached is not None:
+            return cached
         for name, view in self.step_views.items():
             if allowed and name not in allowed:
                 continue
@@ -270,26 +386,56 @@ class ProjectionGeometryVerifier:
             if width <= 0.0 or height <= 0.0:
                 continue
             step_points = self._step_view_points(view)
-            transforms = []
-            for rotation in (0, 90, 180, 270):
+            registration_engine = getattr(self, "registration_engine", None)
+            if registration_engine is None:
+                registration_engine = ProjectionRegistrationEngine()
+                self.registration_engine = registration_engine
+            registration = registration_engine.register(dxf_points, step_points)
+            if registration.get("transform"):
+                rotation = float(registration.get("rotation_degrees", 0.0) or 0.0)
+                mirrored = bool(registration.get("mirrored", False))
+                contour = float(registration.get("contour_score", 0.0) or 0.0)
+                rotated_width, rotated_height = self._rotated_size(width, height, rotation)
                 shape_score = self._shape_score(
                     cluster.width,
                     cluster.height,
-                    width if rotation % 180 == 0 else height,
-                    height if rotation % 180 == 0 else width,
+                    rotated_width,
+                    rotated_height,
                 )
-                for mirrored in (False, True):
-                    contour = self._contour_similarity(
-                        dxf_points,
-                        step_points,
-                        cluster.bbox,
-                        view.get("bbox") or (),
-                        rotation,
-                        mirrored,
+                score = 0.15 * shape_score + 0.85 * contour
+            else:
+                # Sparse legacy tests and severely degraded DXFs may not have
+                # enough curve samples for ICP.  Keep the former cardinal
+                # rotation matcher as a conservative fallback.
+                transforms = []
+                for rotation in (0, 90, 180, 270):
+                    shape_score = self._shape_score(
+                        cluster.width,
+                        cluster.height,
+                        width if rotation % 180 == 0 else height,
+                        height if rotation % 180 == 0 else width,
                     )
-                    score = shape_score if contour is None else 0.45 * shape_score + 0.55 * contour
-                    transforms.append((score, contour, rotation, mirrored))
-            score, contour, rotation, mirrored = max(transforms, key=lambda item: item[0])
+                    for mirrored in (False, True):
+                        contour = self._contour_similarity(
+                            dxf_points,
+                            step_points,
+                            cluster.bbox,
+                            view.get("bbox") or (),
+                            rotation,
+                            mirrored,
+                        )
+                        score = shape_score if contour is None else 0.45 * shape_score + 0.55 * contour
+                        transforms.append((score, contour, rotation, mirrored))
+                score, contour, rotation, mirrored = max(transforms, key=lambda item: item[0])
+                registration = {
+                    "method": "CARDINAL_GRID_FALLBACK_V1",
+                    "status": "FALLBACK",
+                    "score": score,
+                    "contour_score": contour,
+                    "rotation_degrees": rotation,
+                    "mirrored": mirrored,
+                    "transform": None,
+                }
             if score > best["score"]:
                 best = {
                     "score": round(score, 4),
@@ -301,7 +447,20 @@ class ProjectionGeometryVerifier:
                     "dxf_entity_count": len(cluster.primitive_indexes),
                     "dxf_bbox": [round(value, 4) for value in cluster.bbox],
                     "step_bbox": [round(float(value), 4) for value in (view.get("bbox") or ())],
+                    "registration_method": registration.get("method"),
+                    "registration_status": registration.get("status"),
+                    "normalized_chamfer": registration.get("normalized_chamfer"),
+                    "inlier_ratio": registration.get("inlier_ratio"),
+                    "source_coverage": registration.get("source_coverage"),
+                    "target_coverage": registration.get("target_coverage"),
+                    "ranked_hausdorff": registration.get("ranked_hausdorff"),
+                    "score_margin": registration.get("score_margin"),
+                    "scale": registration.get("scale"),
+                    "translation": registration.get("translation"),
+                    "transform": registration.get("transform"),
+                    "projection": dict(view.get("projection") or {}),
                 }
+        getattr(self, "_view_match_cache", {})[cache_key] = best
         return best
 
     def _node_projection_localization(
@@ -339,19 +498,49 @@ class ProjectionGeometryVerifier:
         step_bbox = self.step_views[step_view].get("bbox") or ()
         if len(step_bbox) != 4 or float(step_bbox[2]) <= float(step_bbox[0]) or float(step_bbox[3]) <= float(step_bbox[1]):
             return {"passed": False, "score": 0.0, "status": "STEP_VIEW_BBOX_UNAVAILABLE"}
-        projected = self._project_point_to_view(center, step_view)
-        step_normalized = (
-            (projected[0] - float(step_bbox[0])) / (float(step_bbox[2]) - float(step_bbox[0])),
-            (projected[1] - float(step_bbox[1])) / (float(step_bbox[3]) - float(step_bbox[1])),
-        )
-        expected = self._transform_normalized(
-            step_normalized,
-            int(view_match.get("rotation_degrees", 0) or 0),
-            bool(view_match.get("mirrored", False)),
-        )
+        projected = self._project_point_to_view(center, step_view, self.step_views[step_view])
         anchor = self._dimension_anchor(dimension, association)
         if anchor is None:
             return {"passed": False, "score": 0.0, "status": "DIMENSION_ANCHOR_UNAVAILABLE"}
+        transform_payload = view_match.get("transform")
+        footprint_evidence = None
+        if isinstance(transform_payload, dict):
+            transform = SimilarityTransform2D(
+                scale=float(transform_payload.get("scale", 1.0) or 1.0),
+                rotation_degrees=float(transform_payload.get("rotation_degrees", 0.0) or 0.0),
+                translation=tuple(transform_payload.get("translation") or (0.0, 0.0)),
+                mirrored=bool(transform_payload.get("mirrored", False)),
+            )
+            expected_dxf = transform.apply_point(projected)
+            expected = (
+                (expected_dxf[0] - cluster.bbox[0]) / cluster.width,
+                (expected_dxf[1] - cluster.bbox[1]) / cluster.height,
+            )
+            footprint = FeatureFootprintProjector().project(
+                node,
+                step_view,
+                self.step_views[step_view],
+                transform_payload,
+            )
+            footprint_evidence = FeatureFootprintProjector().evaluate_anchor(
+                anchor,
+                footprint,
+                cluster.bbox,
+            )
+        else:
+            step_normalized = (
+                (projected[0] - float(step_bbox[0])) / (float(step_bbox[2]) - float(step_bbox[0])),
+                (projected[1] - float(step_bbox[1])) / (float(step_bbox[3]) - float(step_bbox[1])),
+            )
+            expected = self._transform_normalized(
+                step_normalized,
+                int(view_match.get("rotation_degrees", 0) or 0),
+                bool(view_match.get("mirrored", False)),
+            )
+            expected_dxf = (
+                cluster.bbox[0] + expected[0] * cluster.width,
+                cluster.bbox[1] + expected[1] * cluster.height,
+            )
         observed = (
             (anchor[0] - cluster.bbox[0]) / cluster.width,
             (anchor[1] - cluster.bbox[1]) / cluster.height,
@@ -372,6 +561,9 @@ class ProjectionGeometryVerifier:
             cross_error = 0.0
             passed = distance <= 0.16
             score = math.exp(-distance / 0.10)
+        if footprint_evidence is not None and footprint_evidence.get("status") != "MISSING_SPATIAL_PROVENANCE":
+            passed = bool(footprint_evidence.get("passed"))
+            score = float(footprint_evidence.get("score", 0.0) or 0.0)
         return {
             "passed": passed,
             "score": round(score, 4),
@@ -379,11 +571,13 @@ class ProjectionGeometryVerifier:
             "step_view": step_view,
             "node_center_3d": [round(float(value), 4) for value in center[:3]],
             "projected_step_point": [round(value, 4) for value in projected],
+            "expected_dxf_point": [round(value, 4) for value in expected_dxf],
             "expected_normalized_point": [round(value, 4) for value in expected],
             "observed_normalized_anchor": [round(value, 4) for value in observed],
             "normalized_distance": round(distance, 4),
             "along_axis_error": round(along_error, 4),
             "cross_axis_error": round(cross_error, 4),
+            "projected_feature_footprint": footprint_evidence,
         }
 
     @staticmethod
@@ -395,6 +589,12 @@ class ProjectionGeometryVerifier:
         step_aspect = step_width / step_height
         aspect_score = math.exp(-abs(math.log(max(dxf_aspect, 1e-9) / max(step_aspect, 1e-9))))
         return 0.65 * scale_consistency + 0.35 * aspect_score
+
+    @staticmethod
+    def _rotated_size(width: float, height: float, angle_degrees: float) -> Tuple[float, float]:
+        radians = math.radians(angle_degrees)
+        cosine, sine = abs(math.cos(radians)), abs(math.sin(radians))
+        return width * cosine + height * sine, width * sine + height * cosine
 
     def _dxf_cluster_points(self, cluster) -> List[Tuple[float, float]]:
         primitives = getattr(self.structure, "primitives", [])
@@ -514,8 +714,13 @@ class ProjectionGeometryVerifier:
         return x, y
 
     @staticmethod
-    def _project_point_to_view(point, view_name: str) -> Tuple[float, float]:
-        cfg = VIEW_CONFIG[view_name]
+    def _project_point_to_view(
+        point,
+        view_name: str,
+        view: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[float, float]:
+        projection = dict((view or {}).get("projection") or {})
+        cfg = projection if projection.get("direction") and projection.get("up") else VIEW_CONFIG[view_name]
         direction = tuple(float(value) for value in cfg["direction"])
         up = tuple(float(value) for value in cfg["up"])
         y_axis = (

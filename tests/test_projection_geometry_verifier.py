@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from auto_2d_drawing.tolerance.feature_graph import FeatureGraphExtractor
 from auto_2d_drawing.tolerance.projection_geometry_verifier import ProjectionGeometryVerifier
+from auto_2d_drawing.tolerance.projection_registration_v2 import ProjectionRegistrationEngine
 
 
 class _StructureStub:
@@ -315,6 +316,26 @@ class ProjectionGeometryVerifierTests(unittest.TestCase):
 
         self.assertFalse(result["passed"])
         self.assertFalse(result["checks"]["dimension_matches_projected_feature_location"])
+
+    def test_v3_registration_quality_gate_rejects_weak_overlap(self):
+        evidence = {
+            "registration_method": ProjectionRegistrationEngine.METHOD,
+            "contour_score": 0.66,
+            "inlier_ratio": 0.74,
+            "normalized_chamfer": 0.028,
+            "ranked_hausdorff": 0.09,
+        }
+        self.assertFalse(ProjectionGeometryVerifier._registration_is_confident(evidence))
+
+    def test_v3_registration_quality_gate_accepts_balanced_evidence(self):
+        evidence = {
+            "registration_method": ProjectionRegistrationEngine.METHOD,
+            "contour_score": 0.82,
+            "inlier_ratio": 0.86,
+            "normalized_chamfer": 0.018,
+            "ranked_hausdorff": 0.07,
+        }
+        self.assertTrue(ProjectionGeometryVerifier._registration_is_confident(evidence))
 
 
 if __name__ == "__main__":
