@@ -523,7 +523,14 @@ Response：
       "formatted_tolerance": "(+0.500 / -0.500 mm)",
       "entity_handle": "31F88",
       "validation_status": "AUTO_VALIDATED",
-      "feature_inference_2d": {}
+      "feature_inference_2d": {},
+      "pair_method": "GLOBAL_COMPONENT_DXF_GEOMETRY_SEARCH_V1",
+      "component_name": "SHAFT-2XXXX",
+      "component_fingerprint": "40c9b222a1aea47b4",
+      "matched_dxf_view_ids": ["view_004"],
+      "matched_step_view": "front",
+      "global_geometry_score": 0.91,
+      "global_geometry_pair_evidence": {}
     }
   ],
   "drawing_defaults": [],
@@ -531,6 +538,18 @@ Response：
   "all_dimensions": []
 }
 ```
+
+配對欄位語意：
+
+| 欄位 | 說明 |
+| --- | --- |
+| `pair_method` | STEP/DXF 關係的建立方法；`GLOBAL_COMPONENT_DXF_GEOMETRY_SEARCH_V1` 表示不依賴檔名的全域幾何搜尋 |
+| `component_name` | STEP/XCAF 葉零件名稱；可能與 DXF 檔名不同 |
+| `component_fingerprint` | 與 placement 無關的 B-Rep 去重鍵，不是料號 |
+| `matched_dxf_view_ids` | 全域搜尋實際命中的 DXF 視圖；幾何配對不授權同張圖的其他視圖 |
+| `matched_step_view` | 命中的 STEP HLR 投影方向 |
+| `global_geometry_score` | 配對候選的輪廓註冊分數；不能單獨作為公差可採用條件 |
+| `global_geometry_pair_evidence` | 描述子、ICP／Chamfer、inlier、競爭者分差與 reciprocal-best checks |
 
 `AUTO_VERIFIED` 案例的 `source_metadata.geometry_verification` 會提供可機器判讀的核實證據：
 

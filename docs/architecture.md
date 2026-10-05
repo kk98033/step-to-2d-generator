@@ -169,6 +169,11 @@ flowchart LR
 | `dxf_tolerance_extractor.py` | 解析 DXF dimension、文字、公差模式與驗證狀態 |
 | `dxf_structure_2d.py` | 尺寸點到 2D 幾何附著、視圖群與跨視圖線對 |
 | `feature_inference_2d.py` | 可解釋的 2D 特徵候選與信心，不宣稱 3D identity |
+| `assembly_components.py` | 展開 XCAF 葉零件、計算與 placement 無關的 B-Rep fingerprint |
+| `global_geometry_search.py` | 不依賴檔名的全域 3D 子零件／DXF 視圖兩階段搜尋 |
+| `projection_registration_v2.py` | HLR 候選投影、similarity transform、ICP／Chamfer 配準 |
+| `projection_geometry_verifier.py` | 尺寸附著、局部語意、投影、視圖、3D 位置與 B-Rep 拓撲證據整合 |
+| `topology_feature_mapper.py` | DXF 尺寸端點反投影至 STEP face／boundary edge；支援註解重排組立圖的局部圓輪廓證明 |
 | `ingest_historical_data.py` | 最新版篩選、去重、STEP 核實、重建案例庫 |
 | `case_base.py` | 案例 schema、資格過濾、相似案例排名 |
 | `tolerance_decision_service.py` | Tier 1～3 決策、相容性 gate、證據 trace |
@@ -204,9 +209,14 @@ flowchart LR
     Native --> Plausible[明確公差與合理範圍 gate]
     Plausible --> Dedupe[同值 + 同公差 + 同端點去重]
     Dedupe --> Infer[2D 可解釋推定]
-    Dedupe --> Pair{同名同版 STEP?}
+    Dedupe --> Pair{同名同版或 XCAF 料號?}
     Pair -->|是| Verify[3D 唯一幾何匹配]
-    Pair -->|否| Display[僅展示／待核實]
+    Pair -->|否| Global[全域葉零件 × DXF 視圖搜尋]
+    Global --> Fingerprint[旋轉／比例不變幾何描述子 Top-K]
+    Fingerprint --> Register[HLR + ICP／Chamfer 精配準]
+    Register --> Reciprocal{互為最佳且無近似衝突?}
+    Reciprocal -->|是| Verify
+    Reciprocal -->|否| Display[僅展示／待核實]
     Verify --> Eligible[可參與 RAG]
     Infer --> Display
 ```
@@ -232,6 +242,12 @@ flowchart LR
 ### ToleranceCase
 
 歷史證據單位，包含來源圖面、公差設定、特徵類型、驗證狀態、信心與 `source_metadata`。只有 `ENGINEER_VERIFIED` 或符合嚴格規則的 `AUTO_VERIFIED` 可預設進入推薦。
+
+### 尺寸端點到 B-Rep 拓撲
+
+`DXF_ATTACHMENT_ADAPTIVE_STEP_HLR_TOPOLOGY_V4` 先把 DXF 轉檔後重疊的 ARC/CIRCLE 合併成「邏輯幾何輪廓」，再使用兩條互補路徑定位 STEP 拓撲：有可靠全圖 similarity transform 時，以正投影射線和 B-Rep face 求交；組立工程圖若把零件重新排版，直徑尺寸則以兩個精確附著端點、唯一公稱直徑及唯一 STEP 圓柱邏輯面建立局部證明。
+
+OpenCASCADE 可能把同一圓柱面切成多個 trimmed face patches，且正投影會讓前後 boundary edges 重疊。系統會分別回傳 `logical_surface_id`、`face_candidates`、`edge_candidates` 與 `edge_mapping_status`；只有單一 edge 時才設定 `edge_identity_verified=true`，不會把重疊邊界偽裝成唯一 edge。
 
 ## 7. 持久化與狀態
 

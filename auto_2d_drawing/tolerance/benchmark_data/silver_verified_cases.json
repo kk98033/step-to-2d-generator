@@ -1,9 +1,329 @@
 {
   "schema_version": 1,
   "name": "forcecon-tolerance-silver",
-  "created_at": "2026-10-05T09:47:23+00:00",
+  "created_at": "2026-10-05T15:15:24+00:00",
   "label_policy": "SILVER labels are derived from exact STEP/DXF evidence or engineer verification; reported accuracy is a proxy until a frozen engineer-signed GOLD set exists.",
   "records": [
+    {
+      "benchmark_id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_01_diameter",
+      "label_tier": "SILVER",
+      "group_id": "part:1AL0W5000H",
+      "split": "train",
+      "query": {
+        "part_type": "FAN_HOUSING",
+        "product_family": "AL0W",
+        "feature_type": "shaft_segment",
+        "inferred_role": "SHAFT_SEGMENT_DIAMETER",
+        "nominal_dimensions": {
+          "diameter": 35.0,
+          "length": 15.965
+        },
+        "nominal_value": 35.0,
+        "neighbor_types": [
+          "hole",
+          "shaft_segment"
+        ],
+        "boundary_position": "INTERIOR",
+        "dimension_category": "DIAMETER"
+      },
+      "expected": {
+        "source_case_id": "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_01_diameter",
+        "feature_type": "shaft_segment",
+        "inferred_role": "SHAFT_SEGMENT_DIAMETER",
+        "dimension_category": "DIAMETER",
+        "nominal_value": 35.0,
+        "tolerance_config": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.2,
+          "lower_dev": -0.0,
+          "source": "DXF_DIMSTYLE"
+        }
+      },
+      "source": {
+        "verification_status": "AUTO_VERIFIED",
+        "evidence_source": "1AL0W5000H-R03.dxf",
+        "drawing_file": "1AL0W5000H-R03.dxf",
+        "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\1AL0W5000H-R03.dxf",
+        "step_path": "D:\\School\\力致\\力致_ref\\00_ref\\給成大資料\\FAN\\AN0G-軸流扇\\3D圖檔\\1AL0W5000H-R03.stp",
+        "entity_handle": "7ADD",
+        "matched_feature_id": "feat_cyl_01",
+        "matched_nominal_field": "diameter",
+        "verification_method": "EXACT_FILENAME_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+        "verification_checks": [
+          "exact_step_dxf_filename",
+          "native_dxf_dimension_entity",
+          "explicit_tolerance_present",
+          "dimension_type_matches_feature_type",
+          "nominal_value_matches_step_geometry",
+          "unique_step_feature_candidate",
+          "dxf_dimension_geometry_attachment",
+          "local_2d_feature_semantics",
+          "step_hlr_projection_signature",
+          "drawing_view_step_projection_registration",
+          "dimension_matches_projected_feature_location",
+          "dxf_dimension_endpoints_to_brep_topology",
+          "consistent_duplicate_dimension_tolerances"
+        ],
+        "feature_identity_verified": true,
+        "functional_role_verified": false
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_09_diameter",
+      "label_tier": "SILVER",
+      "group_id": "part:1AL0W5000H",
+      "split": "train",
+      "query": {
+        "part_type": "FAN_HOUSING",
+        "product_family": "AL0W",
+        "feature_type": "shaft_segment",
+        "inferred_role": "SHAFT_SEGMENT_DIAMETER",
+        "nominal_dimensions": {
+          "diameter": 32.75,
+          "length": 3.5
+        },
+        "nominal_value": 32.75,
+        "neighbor_types": [
+          "hole",
+          "shaft_segment"
+        ],
+        "boundary_position": "INTERIOR",
+        "dimension_category": "DIAMETER"
+      },
+      "expected": {
+        "source_case_id": "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_09_diameter",
+        "feature_type": "shaft_segment",
+        "inferred_role": "SHAFT_SEGMENT_DIAMETER",
+        "dimension_category": "DIAMETER",
+        "nominal_value": 32.75,
+        "tolerance_config": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.1,
+          "source": "DXF_DIMSTYLE"
+        }
+      },
+      "source": {
+        "verification_status": "AUTO_VERIFIED",
+        "evidence_source": "1AL0W5000H-R03.dxf",
+        "drawing_file": "1AL0W5000H-R03.dxf",
+        "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\1AL0W5000H-R03.dxf",
+        "step_path": "D:\\School\\力致\\力致_ref\\00_ref\\給成大資料\\FAN\\AN0G-軸流扇\\3D圖檔\\1AL0W5000H-R03.stp",
+        "entity_handle": "7ADB",
+        "matched_feature_id": "feat_cyl_09",
+        "matched_nominal_field": "diameter",
+        "verification_method": "EXACT_FILENAME_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+        "verification_checks": [
+          "exact_step_dxf_filename",
+          "native_dxf_dimension_entity",
+          "explicit_tolerance_present",
+          "dimension_type_matches_feature_type",
+          "nominal_value_matches_step_geometry",
+          "unique_step_feature_candidate",
+          "dxf_dimension_geometry_attachment",
+          "local_2d_feature_semantics",
+          "step_hlr_projection_signature",
+          "drawing_view_step_projection_registration",
+          "dimension_matches_projected_feature_location",
+          "dxf_dimension_endpoints_to_brep_topology",
+          "consistent_duplicate_dimension_tolerances"
+        ],
+        "feature_identity_verified": true,
+        "functional_role_verified": false
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_10_diameter",
+      "label_tier": "SILVER",
+      "group_id": "part:1AL0W5000H",
+      "split": "train",
+      "query": {
+        "part_type": "FAN_HOUSING",
+        "product_family": "AL0W",
+        "feature_type": "hole",
+        "inferred_role": "HOLE_DIAMETER",
+        "nominal_dimensions": {
+          "diameter": 34.25,
+          "length": 3.5
+        },
+        "nominal_value": 34.25,
+        "neighbor_types": [
+          "hole",
+          "shaft_segment"
+        ],
+        "boundary_position": "INTERIOR",
+        "dimension_category": "DIAMETER"
+      },
+      "expected": {
+        "source_case_id": "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_10_diameter",
+        "feature_type": "hole",
+        "inferred_role": "HOLE_DIAMETER",
+        "dimension_category": "DIAMETER",
+        "nominal_value": 34.25,
+        "tolerance_config": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.1,
+          "source": "DXF_DIMSTYLE"
+        }
+      },
+      "source": {
+        "verification_status": "AUTO_VERIFIED",
+        "evidence_source": "1AL0W5000H-R03.dxf",
+        "drawing_file": "1AL0W5000H-R03.dxf",
+        "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\1AL0W5000H-R03.dxf",
+        "step_path": "D:\\School\\力致\\力致_ref\\00_ref\\給成大資料\\FAN\\AN0G-軸流扇\\3D圖檔\\1AL0W5000H-R03.stp",
+        "entity_handle": "7ADC",
+        "matched_feature_id": "feat_cyl_10",
+        "matched_nominal_field": "diameter",
+        "verification_method": "EXACT_FILENAME_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+        "verification_checks": [
+          "exact_step_dxf_filename",
+          "native_dxf_dimension_entity",
+          "explicit_tolerance_present",
+          "dimension_type_matches_feature_type",
+          "nominal_value_matches_step_geometry",
+          "unique_step_feature_candidate",
+          "dxf_dimension_geometry_attachment",
+          "local_2d_feature_semantics",
+          "step_hlr_projection_signature",
+          "drawing_view_step_projection_registration",
+          "dimension_matches_projected_feature_location",
+          "dxf_dimension_endpoints_to_brep_topology",
+          "consistent_duplicate_dimension_tolerances"
+        ],
+        "feature_identity_verified": true,
+        "functional_role_verified": false
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_14_diameter",
+      "label_tier": "SILVER",
+      "group_id": "part:1AL0W5000H",
+      "split": "train",
+      "query": {
+        "part_type": "FAN_HOUSING",
+        "product_family": "AL0W",
+        "feature_type": "shaft_segment",
+        "inferred_role": "SHAFT_SEGMENT_DIAMETER",
+        "nominal_dimensions": {
+          "diameter": 21.0,
+          "length": 0.75
+        },
+        "nominal_value": 21.0,
+        "neighbor_types": [
+          "hole",
+          "shaft_segment"
+        ],
+        "boundary_position": "INTERIOR",
+        "dimension_category": "DIAMETER"
+      },
+      "expected": {
+        "source_case_id": "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_14_diameter",
+        "feature_type": "shaft_segment",
+        "inferred_role": "SHAFT_SEGMENT_DIAMETER",
+        "dimension_category": "DIAMETER",
+        "nominal_value": 21.0,
+        "tolerance_config": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.1,
+          "source": "DXF_DIMSTYLE"
+        }
+      },
+      "source": {
+        "verification_status": "AUTO_VERIFIED",
+        "evidence_source": "1AL0W5000H-R03.dxf",
+        "drawing_file": "1AL0W5000H-R03.dxf",
+        "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\1AL0W5000H-R03.dxf",
+        "step_path": "D:\\School\\力致\\力致_ref\\00_ref\\給成大資料\\FAN\\AN0G-軸流扇\\3D圖檔\\1AL0W5000H-R03.stp",
+        "entity_handle": "7ADA",
+        "matched_feature_id": "feat_cyl_14",
+        "matched_nominal_field": "diameter",
+        "verification_method": "EXACT_FILENAME_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+        "verification_checks": [
+          "exact_step_dxf_filename",
+          "native_dxf_dimension_entity",
+          "explicit_tolerance_present",
+          "dimension_type_matches_feature_type",
+          "nominal_value_matches_step_geometry",
+          "unique_step_feature_candidate",
+          "dxf_dimension_geometry_attachment",
+          "local_2d_feature_semantics",
+          "step_hlr_projection_signature",
+          "drawing_view_step_projection_registration",
+          "dimension_matches_projected_feature_location",
+          "dxf_dimension_endpoints_to_brep_topology",
+          "consistent_duplicate_dimension_tolerances"
+        ],
+        "feature_identity_verified": true,
+        "functional_role_verified": false
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_15_diameter",
+      "label_tier": "SILVER",
+      "group_id": "part:1AL0W5000H",
+      "split": "train",
+      "query": {
+        "part_type": "FAN_HOUSING",
+        "product_family": "AL0W",
+        "feature_type": "hole",
+        "inferred_role": "HOLE_DIAMETER",
+        "nominal_dimensions": {
+          "diameter": 27.0,
+          "length": 0.75
+        },
+        "nominal_value": 27.0,
+        "neighbor_types": [
+          "hole",
+          "shaft_segment"
+        ],
+        "boundary_position": "INTERIOR",
+        "dimension_category": "DIAMETER"
+      },
+      "expected": {
+        "source_case_id": "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_15_diameter",
+        "feature_type": "hole",
+        "inferred_role": "HOLE_DIAMETER",
+        "dimension_category": "DIAMETER",
+        "nominal_value": 27.0,
+        "tolerance_config": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.1,
+          "source": "DXF_DIMSTYLE"
+        }
+      },
+      "source": {
+        "verification_status": "AUTO_VERIFIED",
+        "evidence_source": "1AL0W5000H-R03.dxf",
+        "drawing_file": "1AL0W5000H-R03.dxf",
+        "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\1AL0W5000H-R03.dxf",
+        "step_path": "D:\\School\\力致\\力致_ref\\00_ref\\給成大資料\\FAN\\AN0G-軸流扇\\3D圖檔\\1AL0W5000H-R03.stp",
+        "entity_handle": "7AD9",
+        "matched_feature_id": "feat_cyl_15",
+        "matched_nominal_field": "diameter",
+        "verification_method": "EXACT_FILENAME_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+        "verification_checks": [
+          "exact_step_dxf_filename",
+          "native_dxf_dimension_entity",
+          "explicit_tolerance_present",
+          "dimension_type_matches_feature_type",
+          "nominal_value_matches_step_geometry",
+          "unique_step_feature_candidate",
+          "dxf_dimension_geometry_attachment",
+          "local_2d_feature_semantics",
+          "step_hlr_projection_signature",
+          "drawing_view_step_projection_registration",
+          "dimension_matches_projected_feature_location",
+          "dxf_dimension_endpoints_to_brep_topology",
+          "consistent_duplicate_dimension_tolerances"
+        ],
+        "feature_identity_verified": true,
+        "functional_role_verified": false
+      }
+    },
     {
       "benchmark_id": "benchmark:HIST2_1FP3D6000H-R01_875d11ec_cyl_60_diameter",
       "label_tier": "SILVER",
@@ -601,7 +921,7 @@
       "benchmark_id": "benchmark:HIST2_2AL0W3050H-R00_5611f1af_cyl_03_diameter",
       "label_tier": "SILVER",
       "group_id": "part:2AL0W3050H",
-      "split": "validation",
+      "split": "train",
       "query": {
         "part_type": "SHAFT",
         "product_family": "AL0W",
@@ -668,7 +988,7 @@
       "benchmark_id": "benchmark:HIST2_2AL0W3050H-R00_5611f1af_cyl_04_diameter",
       "label_tier": "SILVER",
       "group_id": "part:2AL0W3050H",
-      "split": "validation",
+      "split": "train",
       "query": {
         "part_type": "SHAFT",
         "product_family": "AL0W",
@@ -735,7 +1055,7 @@
       "benchmark_id": "benchmark:HIST2_2AL0W3050H-R00_5611f1af_cyl_05_diameter",
       "label_tier": "SILVER",
       "group_id": "part:2AL0W3050H",
-      "split": "validation",
+      "split": "train",
       "query": {
         "part_type": "SHAFT",
         "product_family": "AL0W",
@@ -910,6 +1230,75 @@
         "verification_method": "EXACT_FILENAME_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
         "verification_checks": [
           "exact_step_dxf_filename",
+          "native_dxf_dimension_entity",
+          "explicit_tolerance_present",
+          "dimension_type_matches_feature_type",
+          "nominal_value_matches_step_geometry",
+          "unique_step_feature_candidate",
+          "dxf_dimension_geometry_attachment",
+          "local_2d_feature_semantics",
+          "step_hlr_projection_signature",
+          "drawing_view_step_projection_registration",
+          "dimension_matches_projected_feature_location",
+          "consistent_duplicate_dimension_tolerances"
+        ],
+        "feature_identity_verified": true,
+        "functional_role_verified": false
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_2FQ6V3010H-R00_a79a2e6e_feat_cyl_05_length",
+      "label_tier": "SILVER",
+      "group_id": "part:2FQ6V3010H",
+      "split": "validation",
+      "query": {
+        "part_type": "FAN_HOUSING",
+        "product_family": "FQ6V",
+        "feature_type": "hole",
+        "inferred_role": "HOLE_LENGTH",
+        "nominal_dimensions": {
+          "diameter": 14.8,
+          "length": 0.5
+        },
+        "nominal_value": 0.5,
+        "neighbor_types": [
+          "shaft_end",
+          "shaft_segment"
+        ],
+        "boundary_position": "RIGHT_END",
+        "dimension_category": "LINEAR"
+      },
+      "expected": {
+        "source_case_id": "HIST2_2FQ6V3010H-R00_a79a2e6e_feat_cyl_05_length",
+        "feature_type": "hole",
+        "inferred_role": "HOLE_LENGTH",
+        "dimension_category": "LINEAR",
+        "nominal_value": 0.5,
+        "tolerance_config": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.05,
+          "lower_dev": -0.02,
+          "source": "DXF_DIMSTYLE"
+        }
+      },
+      "source": {
+        "verification_status": "AUTO_VERIFIED",
+        "evidence_source": "2FQ6V3010H-R00.dxf",
+        "drawing_file": "2FQ6V3010H-R00.dxf",
+        "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\2FQ6V3010H-R00.dxf",
+        "step_path": "D:\\School\\力致\\new_data\\Maildir\\FCN\\FAN\\20260625\\QS1K\\DISH-2QS1K3010H-R00.stp",
+        "entity_handle": "6EDBE",
+        "matched_feature_id": "feat_cyl_05",
+        "matched_nominal_field": "length",
+        "verification_method": "GLOBAL_COMPONENT_DXF_GEOMETRY_SEARCH_V1_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
+        "verification_checks": [
+          "global_descriptor_retrieval",
+          "robust_projection_registration",
+          "registration_inlier_ratio",
+          "registration_chamfer",
+          "registration_ranked_hausdorff",
+          "reciprocal_best_component",
+          "unambiguous_component_margin",
           "native_dxf_dimension_entity",
           "explicit_tolerance_present",
           "dimension_type_matches_feature_type",

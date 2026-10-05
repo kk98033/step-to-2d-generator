@@ -150,14 +150,38 @@ class DxfStructure2DAnalyzer:
         common_exact_handles = (
             sorted(set.intersection(*exact_handle_sets)) if len(exact_handle_sets) >= 2 else []
         )
+        # A DWG-to-DXF conversion often represents one logical circle as four
+        # coincident ARC entities.  Counting those handles as four different
+        # attachments creates a false ambiguity even though both definition
+        # points lie on exactly the same geometric profile.  Resolve identity
+        # from geometry first; retain the raw handles for auditability.
+        exact_group_sets = []
+        for items in exact_by_reference:
+            groups = {
+                self._primitive_geometry_group(
+                    self.primitives[self.handle_index[item["handle"]]],
+                    exact_tolerance,
+                )
+                for item in items
+                if item.get("handle") in self.handle_index
+            }
+            if groups:
+                exact_group_sets.append(groups)
+        common_exact_groups = (
+            sorted(set.intersection(*exact_group_sets)) if len(exact_group_sets) >= 2 else []
+        )
+        circular_profiles = self._circular_attachment_profiles(
+            exact_by_reference,
+            exact_tolerance,
+        )
         references_with_exact = sum(bool(items) for items in exact_by_reference)
-        ambiguous_exact = sum(len(items) > 1 for items in exact_by_reference)
+        ambiguous_exact = sum(len(groups) > 1 for groups in exact_group_sets)
         if native_indexes:
             association_status = "NATIVE_ASSOCIATIVE"
             confidence = 0.99
-        elif len(common_exact_handles) == 1:
+        elif len(common_exact_groups) == 1:
             association_status = "GEOMETRIC_ATTACHMENT"
-            confidence = 0.95
+            confidence = 0.96
         elif references_with_exact and not ambiguous_exact:
             association_status = "GEOMETRIC_ATTACHMENT"
             confidence = 0.92 if references_with_exact >= 2 else 0.82
@@ -213,12 +237,91 @@ class DxfStructure2DAnalyzer:
             "definition_point_links": reference_results,
             "attached_geometry_handles": sorted({self.primitives[index].handle for index in attached_indexes if self.primitives[index].handle}),
             "common_attachment_handles": common_exact_handles,
+            "common_attachment_geometry_groups": common_exact_groups,
+            "circular_attachment_profiles": circular_profiles,
             "view_ids": view_ids,
             "primary_view_id": primary_view,
             "recovered_dimension_geometry": recovered_geometry,
             "cross_view_evidence": cross_view,
             "view_cluster_count": len(self.view_clusters),
         }
+
+    def _primitive_geometry_group(self, primitive: CadPrimitive2D, tolerance: float) -> str:
+        """Return a stable local identity for coincident DXF geometry.
+
+        Entity handles describe storage, not geometry.  Quarter arcs emitted
+        by a converter can therefore have four handles while representing one
+        circle.  Quantisation uses the same tight tolerance as the dimension
+        attachment test and never merges merely nearby profiles.
+        """
+
+        quantum = max(float(tolerance), 1e-6)
+
+        def bucket(value: float) -> int:
+            return int(round(float(value) / quantum))
+
+        if primitive.center is not None and primitive.radius > 0.0:
+            return "CIRCULAR:{}:{}:{}".format(
+                bucket(primitive.center[0]),
+                bucket(primitive.center[1]),
+                bucket(primitive.radius),
+            )
+        if len(primitive.points) >= 2:
+            endpoints = sorted((primitive.points[0], primitive.points[-1]))
+            return "SEGMENT:{}:{}:{}:{}".format(
+                bucket(endpoints[0][0]),
+                bucket(endpoints[0][1]),
+                bucket(endpoints[1][0]),
+                bucket(endpoints[1][1]),
+            )
+        return f"HANDLE:{primitive.handle}"
+
+    def _circular_attachment_profiles(
+        self,
+        exact_by_reference: Sequence[Sequence[Dict[str, Any]]],
+        tolerance: float,
+    ) -> List[Dict[str, Any]]:
+        """Summarise logical circular profiles touched by dimension points."""
+
+        grouped: Dict[str, Dict[str, Any]] = {}
+        for reference_index, items in enumerate(exact_by_reference):
+            for item in items:
+                handle = item.get("handle")
+                primitive_index = self.handle_index.get(handle)
+                if primitive_index is None:
+                    continue
+                primitive = self.primitives[primitive_index]
+                if primitive.center is None or primitive.radius <= 0.0:
+                    continue
+                key = self._primitive_geometry_group(primitive, tolerance)
+                profile = grouped.setdefault(key, {
+                    "geometry_group": key,
+                    "center": [round(float(value), 6) for value in primitive.center],
+                    "radius": round(float(primitive.radius), 6),
+                    "diameter": round(float(primitive.radius) * 2.0, 6),
+                    "handles": set(),
+                    "entity_types": set(),
+                    "reference_indexes": set(),
+                })
+                profile["handles"].add(primitive.handle)
+                profile["entity_types"].add(primitive.entity_type)
+                profile["reference_indexes"].add(reference_index)
+
+        result = []
+        for profile in grouped.values():
+            result.append({
+                "geometry_group": profile["geometry_group"],
+                "center": profile["center"],
+                "radius": profile["radius"],
+                "diameter": profile["diameter"],
+                "handles": sorted(profile["handles"]),
+                "entity_types": sorted(profile["entity_types"]),
+                "definition_point_count": len(profile["reference_indexes"]),
+                "represented_by_split_arcs": (
+                    len(profile["handles"]) > 1 and "ARC" in profile["entity_types"]
+                ),
+            })
+        return sorted(result, key=lambda item: (-item["definition_point_count"], item["geometry_group"]))
 
     def view_summaries(self) -> List[Dict[str, Any]]:
         summaries = []

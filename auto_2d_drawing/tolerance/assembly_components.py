@@ -38,7 +38,7 @@ class NamedComponent:
     step_path: str
     label_entry: str
     name: str
-    identity: PartIdentity
+    identity: Optional[PartIdentity]
     shape: Any
     fingerprint: str
 
@@ -82,8 +82,18 @@ def shape_fingerprint(shape) -> str:
     return hashlib.sha1(serialized.encode("utf-8")).hexdigest()[:16]
 
 
-def extract_named_components(step_path: str) -> List[NamedComponent]:
-    """Read unique leaf definition shapes carrying a company part number."""
+def extract_leaf_components(
+    step_path: str,
+    require_part_identity: bool = False,
+) -> List[NamedComponent]:
+    """Read unique leaf definition shapes from one STEP assembly.
+
+    The filename-based pairing path historically discarded leaf components
+    whose XCAF label did not contain a company part number.  Geometry search
+    must retain those anonymous/reusable parts because their drawing can live
+    under an unrelated filename.  ``extract_named_components`` remains the
+    conservative compatibility wrapper used by the old manifest builder.
+    """
     app = XCAFApp_Application.GetApplication()
     document = TDocStd_Document("MDTV-XCAF")
     app.NewDocument("MDTV-XCAF", document)
@@ -117,9 +127,9 @@ def extract_named_components(step_path: str) -> List[NamedComponent]:
         if entry in visited_definitions:
             return
         visited_definitions.add(entry)
-        name = get_label_name(label)
+        name = get_label_name(label) or f"component_{entry}"
         identity = parse_part_identity(name)
-        if identity is None:
+        if require_part_identity and identity is None:
             return
         shape = shape_tool.GetShape(label)
         if shape.IsNull():
@@ -138,9 +148,14 @@ def extract_named_components(step_path: str) -> List[NamedComponent]:
     return components
 
 
+def extract_named_components(step_path: str) -> List[NamedComponent]:
+    """Read unique leaf definition shapes carrying a company part number."""
+    return extract_leaf_components(step_path, require_part_identity=True)
+
+
 def load_component_shape(step_path: str, label_entry: str):
     """Reload one component definition by its stable XCAF label entry."""
-    for component in extract_named_components(step_path):
+    for component in extract_leaf_components(step_path):
         if component.label_entry == label_entry:
             return component.shape
     return None
@@ -165,8 +180,15 @@ def _pair_record(component: NamedComponent, dxf_path: str, method: str, checks: 
     }
 
 
-def build_component_pair_manifest(step_paths: Iterable[str], dxf_paths: Iterable[str]) -> Dict[str, Any]:
+def build_component_pair_manifest(
+    step_paths: Iterable[str],
+    dxf_paths: Iterable[str],
+    pre_extracted_components: Optional[Iterable[NamedComponent]] = None,
+) -> Dict[str, Any]:
     """Discover uniquely shaped XCAF components with one latest DXF target."""
+    normalized_step_paths = {
+        os.path.normcase(os.path.abspath(path)) for path in step_paths
+    }
     dxfs_by_part: Dict[str, List[str]] = defaultdict(list)
     for path in sorted({os.path.abspath(value) for value in dxf_paths}, key=str.lower):
         identity = parse_part_identity(path)
@@ -175,14 +197,21 @@ def build_component_pair_manifest(step_paths: Iterable[str], dxf_paths: Iterable
 
     components_by_part: Dict[str, List[NamedComponent]] = defaultdict(list)
     errors: List[Dict[str, str]] = []
-    scanned_steps = 0
-    for step_path in sorted({os.path.abspath(value) for value in step_paths}, key=str.lower):
-        scanned_steps += 1
-        try:
-            for component in extract_named_components(step_path):
+    scanned_steps = len(normalized_step_paths)
+    if pre_extracted_components is not None:
+        for component in pre_extracted_components:
+            if (
+                component.identity is not None
+                and os.path.normcase(os.path.abspath(component.step_path)) in normalized_step_paths
+            ):
                 components_by_part[component.identity.part_number].append(component)
-        except Exception as exc:
-            errors.append({"step_path": step_path, "error": str(exc)})
+    else:
+        for step_path in sorted(normalized_step_paths, key=str.lower):
+            try:
+                for component in extract_named_components(step_path):
+                    components_by_part[component.identity.part_number].append(component)
+            except Exception as exc:
+                errors.append({"step_path": step_path, "error": str(exc)})
 
     verified_pairs: List[Dict[str, Any]] = []
     candidates: List[Dict[str, Any]] = []

@@ -170,6 +170,9 @@ class ToleranceDecisionService:
             elif r_cat == "shaft" and node.feature_type == "shaft_segment":
                 if abs(n_dia - r_val) < 0.08:
                     return node
+            elif r_cat in {"hole", "bore"} and node.feature_type == "hole":
+                if abs(n_dia - r_val) < 0.08:
+                    return node
             elif r_cat == "chamfer" and node.feature_type == "pilot_chamfer":
                 if abs(n_len - r_val) < 0.2:
                     return node
@@ -244,11 +247,17 @@ class ToleranceDecisionService:
                 if self._case_is_dimension_compatible(
                     match["case"], category, is_diameter, query_dimension_category
                 )
+                and self._case_nominal_is_transferable(
+                    match["case"], nominal_val, is_diameter
+                )
             ]
             for match in display_matches:
                 item = self._serialize_evidence_match(match)
                 item["dimension_compatible"] = self._case_is_dimension_compatible(
                     match["case"], category, is_diameter, query_dimension_category
+                )
+                item["nominal_transfer_compatible"] = self._case_nominal_is_transferable(
+                    match["case"], nominal_val, is_diameter
                 )
                 item["decision_eligible"] = match["case"].is_retrieval_eligible()
                 item["used_for_decision"] = False
@@ -600,6 +609,48 @@ class ToleranceDecisionService:
                 return mode in {"GROOVE", "CUSTOM_LIMITS", "CUSTOM_SYMMETRIC"}
             return mode in {"FIT", "CUSTOM_LIMITS", "CUSTOM_SYMMETRIC"}
         return mode in {"CUSTOM_LIMITS", "CUSTOM_SYMMETRIC"}
+
+    @staticmethod
+    def _case_nominal_is_transferable(
+        case: ToleranceCase,
+        query_nominal: float,
+        is_diameter: bool,
+    ) -> bool:
+        """Prevent a real but differently-sized case from being auto-adopted.
+
+        A provenance check answers whether a case is genuine; it does not make
+        a custom deviation transferable to every nearby diameter.  Custom
+        limits therefore require near-equal nominal geometry.  ISO fit classes
+        may span a wider size range because exact deviations are recomputed by
+        the ISO table for the query size.
+        """
+
+        nominal = case.nominal_dimensions or {}
+        if is_diameter:
+            case_value = float(
+                nominal.get(
+                    "diameter",
+                    nominal.get("groove_diameter", float(nominal.get("radius", 0.0) or 0.0) * 2.0),
+                )
+                or 0.0
+            )
+        else:
+            case_value = float(
+                nominal.get(
+                    "length",
+                    nominal.get("groove_width", nominal.get("chamfer_height", 0.0)),
+                )
+                or 0.0
+            )
+        query_value = abs(float(query_nominal or 0.0))
+        if case_value <= 0.0 or query_value <= 0.0:
+            return False
+        difference = abs(case_value - query_value)
+        mode = str((case.tolerance_config or {}).get("mode") or "NONE").upper()
+        if mode == "FIT" and (case.tolerance_config or {}).get("fit_class"):
+            return difference <= max(0.20, query_value * 0.10)
+        limit = max(0.05, query_value * 0.005)
+        return difference <= limit
 
     @staticmethod
     def _serialize_evidence_match(match: Dict[str, Any]) -> Dict[str, Any]:

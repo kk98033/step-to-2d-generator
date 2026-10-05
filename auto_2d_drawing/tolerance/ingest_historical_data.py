@@ -48,9 +48,11 @@ from auto_2d_drawing.tolerance.feature_graph import (
 from auto_2d_drawing.tolerance.feature_inference_2d import FeatureInference2DEngine
 from auto_2d_drawing.tolerance.assembly_components import (
     build_component_pair_manifest,
+    extract_leaf_components,
     load_component_shape,
 )
 from auto_2d_drawing.tolerance.historical_manifest import build_pair_manifest
+from auto_2d_drawing.tolerance.global_geometry_search import GlobalGeometryPairSearcher
 from auto_2d_drawing.tolerance.projection_geometry_verifier import ProjectionGeometryVerifier
 from auto_2d_drawing.tolerance.projected_feature_mapper import GlobalFeatureAssignmentResolver
 
@@ -128,9 +130,18 @@ class HistoricalDataIngestor:
 
     @classmethod
     def _revision_identity(cls, filename: str) -> Tuple[str, Optional[int], str]:
-        """Return (part identity, revision, normalized full stem)."""
+        """Return (document identity, revision number, normalized full stem).
+
+        Both ``RNN`` part revisions and ``ANN`` assembly/process drawing
+        revisions are company conventions.  The identity deliberately keeps
+        any descriptive prefix, so ``烤漆組合-1M...-A01/A02`` collapses to the
+        same document lineage while unrelated drawings do not.
+        """
         stem = cls._normalise_stem(filename)
-        match = re.match(r"^(.*?)(?:[-_]?r)(\d+)$", stem, re.IGNORECASE)
+        # The separator is mandatory.  Company part numbers themselves can
+        # contain ``A`` followed by digits (for example ``0AJ0A00009``); an
+        # optional separator would collapse unrelated unversioned parts.
+        match = re.match(r"^(.*?)[-_][ra](\d+)$", stem, re.IGNORECASE)
         if not match:
             return stem, None, stem
         identity = match.group(1).rstrip("-_")
@@ -203,10 +214,20 @@ class HistoricalDataIngestor:
 
         pair_keys = sorted(set(step_map) & set(dxf_map))
         pair_manifest = build_pair_manifest(step_map.values(), dxf_map.values())
+        leaf_components = []
+        leaf_component_errors = []
+        for step_path in sorted(step_map.values(), key=str.lower):
+            try:
+                leaf_components.extend(extract_leaf_components(step_path))
+            except Exception as exc:
+                leaf_component_errors.append({"step_path": step_path, "error": str(exc)})
         component_manifest = build_component_pair_manifest(
             pair_manifest["unpaired_step_paths"],
             pair_manifest["unpaired_dxf_paths"],
+            pre_extracted_components=leaf_components,
         )
+        component_manifest["errors"].extend(leaf_component_errors)
+        component_manifest["statistics"]["read_error_count"] = len(component_manifest["errors"])
         pair_manifest["component_manifest"] = component_manifest
         pair_manifest["verified_pairs"].extend(component_manifest["verified_pairs"])
         pair_manifest["statistics"]["component_pair_count"] = len(component_manifest["verified_pairs"])
@@ -217,6 +238,7 @@ class HistoricalDataIngestor:
             "pair_keys": pair_keys,
             "verified_pairs": pair_manifest["verified_pairs"],
             "pair_manifest": pair_manifest,
+            "leaf_components": leaf_components,
             "duplicate_steps": sum(max(0, count - 1) for count in step_name_counts.values()),
             "duplicate_dxfs": sum(max(0, count - 1) for count in dxf_name_counts.values()),
             "revision_selection": {
@@ -409,6 +431,23 @@ class HistoricalDataIngestor:
         except Exception:
             return [], {"projection_verifier_failures": 1}
 
+        allowed_dxf_views = {
+            str(value)
+            for value in ((pair_evidence or {}).get("matched_dxf_view_ids") or [])
+            if value
+        }
+        view_filtered_dimensions = 0
+        if allowed_dxf_views:
+            retained_dimensions = []
+            for dim in dimensions:
+                association = geometry_verifier.structure.analyze_dimension(dim)
+                geometry_verifier._association_cache[id(dim)] = association
+                if association.get("primary_view_id") in allowed_dxf_views:
+                    retained_dimensions.append(dim)
+                else:
+                    view_filtered_dimensions += 1
+            dimensions = retained_dimensions
+
         unique_matches: List[Tuple[ExtractedDimension, FeatureNode, str, float, float]] = []
         ambiguous_candidates: List[Dict[str, Any]] = []
         geometry_cache: Dict[Tuple[Tuple[str, str], str, str], Dict[str, Any]] = {}
@@ -536,14 +575,16 @@ class HistoricalDataIngestor:
                 "EMBEDDED_PART_EXACT_REVISION": 0.96,
                 "XCAF_COMPONENT_EXACT_REVISION": 0.96,
                 "XCAF_COMPONENT_UNVERSIONED_LATEST_DXF": 0.93,
+                GlobalGeometryPairSearcher.METHOD: 0.94,
             }
             maximum_confidence = confidence_ceiling.get(pair_method, 0.92)
             confidence = max(0.90, min(maximum_confidence, maximum_confidence - (difference / max(threshold, 1e-9)) * 0.06))
-            evidence_label = (
-                "Exact-name STEP/DXF"
-                if pair_method == "EXACT_FILENAME"
-                else "Same-part same-revision STEP/DXF"
-            )
+            if pair_method == "EXACT_FILENAME":
+                evidence_label = "Exact-name STEP/DXF"
+            elif pair_method == GlobalGeometryPairSearcher.METHOD:
+                evidence_label = "Global geometry-matched component/DXF"
+            else:
+                evidence_label = "Same-part same-revision STEP/DXF"
             case = ToleranceCase(
                 case_id=self._case_id("HIST2", dxf_path, f"{node.id}_{field_name}"),
                 part_type=graph.part_type,
@@ -587,6 +628,10 @@ class HistoricalDataIngestor:
                     "component_revision": (pair_evidence or {}).get("component_revision"),
                     "component_label_entry": (pair_evidence or {}).get("component_label_entry"),
                     "component_fingerprint": (pair_evidence or {}).get("component_fingerprint"),
+                    "matched_dxf_view_ids": (pair_evidence or {}).get("matched_dxf_view_ids", []),
+                    "matched_step_view": (pair_evidence or {}).get("matched_step_view"),
+                    "global_geometry_score": (pair_evidence or {}).get("global_geometry_score"),
+                    "global_geometry_pair_evidence": (pair_evidence or {}).get("geometry_search_evidence"),
                     "verification_method": f"{pair_method}_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
                     "geometry_verification": geometry_evidence,
                     "feature_taxonomy": "FeatureGraphExtractor",
@@ -602,6 +647,7 @@ class HistoricalDataIngestor:
                         "step_hlr_projection_signature",
                         "drawing_view_step_projection_registration",
                         "dimension_matches_projected_feature_location",
+                        "dxf_dimension_endpoints_to_brep_topology",
                         "consistent_duplicate_dimension_tolerances",
                     ],
                     "feature_identity_verified": True,
@@ -617,6 +663,7 @@ class HistoricalDataIngestor:
             "unmatched_dimensions": no_match,
             "conflicting_tolerance_matches": conflicts,
             "insufficient_geometry_evidence": insufficient_geometry,
+            "global_view_filtered_dimensions": view_filtered_dimensions,
             "_rejected_evidence": rejected_evidence,
         }
 
@@ -640,14 +687,16 @@ class HistoricalDataIngestor:
         max_pairs: Optional[int] = None,
         max_dxf_files: Optional[int] = None,
         workers: int = 4,
+        enable_global_geometry: bool = True,
+        global_max_components: Optional[int] = None,
+        global_retrieval_top_k: int = 12,
+        global_refine_top_drawings: int = 8,
         dry_run: bool = False,
     ) -> Dict[str, Any]:
         discovery = self.discover_sources(search_dirs)
         dxf_map: Dict[str, str] = discovery["dxf_map"]
         step_map: Dict[str, str] = discovery["step_map"]
-        verified_pairs: List[Dict[str, Any]] = discovery["verified_pairs"]
-        if max_pairs is not None:
-            verified_pairs = verified_pairs[:max_pairs]
+        verified_pairs: List[Dict[str, Any]] = list(discovery["verified_pairs"])
 
         dimensions_by_path: Dict[str, List[ExtractedDimension]] = {}
         raw_cases: Dict[Tuple[str, str], ToleranceCase] = {}
@@ -697,6 +746,67 @@ class HistoricalDataIngestor:
                 if index % 200 == 0:
                     print(f"Parsed {index}/{len(dxf_paths)} DXF drawings...", flush=True)
 
+        global_geometry_manifest: Dict[str, Any] = {
+            "schema_version": 1,
+            "method": GlobalGeometryPairSearcher.METHOD,
+            "verified_pairs": [],
+            "candidates": [],
+            "statistics": {"status": "DISABLED"},
+        }
+        if enable_global_geometry:
+            excluded_pairs = [
+                (
+                    pair.get("step_path", ""),
+                    pair.get("component_label_entry", ""),
+                    pair.get("dxf_path", ""),
+                )
+                for pair in verified_pairs
+                if pair.get("component_label_entry")
+            ]
+            searcher = GlobalGeometryPairSearcher(
+                retrieval_top_k=global_retrieval_top_k,
+                refine_top_drawings=global_refine_top_drawings,
+            )
+            global_geometry_manifest = searcher.search(
+                list(step_map.values()),
+                dxf_paths,
+                max_components=global_max_components,
+                excluded_pairs=excluded_pairs,
+                pre_extracted_components=discovery.get("leaf_components"),
+            )
+            known_pair_keys = {
+                (
+                    os.path.normcase(os.path.abspath(pair.get("step_path", ""))),
+                    str(pair.get("component_label_entry") or ""),
+                    os.path.normcase(os.path.abspath(pair.get("dxf_path", ""))),
+                )
+                for pair in verified_pairs
+            }
+            for pair in global_geometry_manifest.get("verified_pairs", []):
+                pair_key = (
+                    os.path.normcase(os.path.abspath(pair.get("step_path", ""))),
+                    str(pair.get("component_label_entry") or ""),
+                    os.path.normcase(os.path.abspath(pair.get("dxf_path", ""))),
+                )
+                if pair_key not in known_pair_keys:
+                    verified_pairs.append(pair)
+                    known_pair_keys.add(pair_key)
+            discovery["pair_manifest"]["global_geometry_manifest"] = global_geometry_manifest
+            discovery["pair_manifest"]["statistics"]["global_geometry_pair_count"] = len(
+                global_geometry_manifest.get("verified_pairs", [])
+            )
+            discovery["pair_manifest"]["statistics"]["total_verification_pair_count"] = len(verified_pairs)
+            print(
+                "Global geometry search: "
+                f"{len(global_geometry_manifest.get('verified_pairs', []))} verified, "
+                f"{len(global_geometry_manifest.get('candidates', []))} candidates",
+                flush=True,
+            )
+
+        total_verification_pair_count = len(verified_pairs)
+        if max_pairs is not None:
+            verified_pairs = verified_pairs[:max_pairs]
+
         linked_cases: List[ToleranceCase] = []
         consumed_evidence: set[Tuple[str, str]] = set()
         pair_stats: Counter[str] = Counter()
@@ -739,6 +849,18 @@ class HistoricalDataIngestor:
 
         verification_counts = Counter(case.effective_verification_status() for case in final_cases)
         feature_counts = Counter(case.feature_type for case in final_cases)
+        def global_pair_summary(pair: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+                "pair_id": pair.get("pair_id"),
+                "status": pair.get("status"),
+                "component_name": pair.get("component_name"),
+                "component_fingerprint": pair.get("component_fingerprint"),
+                "drawing_file": os.path.basename(str(pair.get("dxf_path") or "")),
+                "matched_dxf_view_ids": pair.get("matched_dxf_view_ids", []),
+                "matched_step_view": pair.get("matched_step_view"),
+                "global_geometry_score": pair.get("global_geometry_score"),
+                "reciprocal_margin": pair.get("reciprocal_margin"),
+            }
         report: Dict[str, Any] = {
             "schema_version": 2,
             "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -750,8 +872,18 @@ class HistoricalDataIngestor:
                 "unique_dxf_files": len(dxf_map),
                 "processed_dxf_files": len(dxf_paths),
                 "exact_name_pairs": len(discovery["pair_keys"]),
-                "auto_verification_pairs": len(discovery["verified_pairs"]),
+                "conservative_name_pairs": len(discovery["verified_pairs"]),
+                "auto_verification_pairs": total_verification_pair_count,
                 "processed_pairs": len(verified_pairs),
+                "global_geometry_search": global_geometry_manifest.get("statistics", {}),
+                "global_geometry_verified_examples": [
+                    global_pair_summary(pair)
+                    for pair in global_geometry_manifest.get("verified_pairs", [])[:20]
+                ],
+                "global_geometry_candidate_examples": [
+                    global_pair_summary(pair)
+                    for pair in global_geometry_manifest.get("candidates", [])[:20]
+                ],
                 "pair_manifest_statistics": discovery["pair_manifest"]["statistics"],
                 "duplicate_step_names": discovery["duplicate_steps"],
                 "duplicate_dxf_names": discovery["duplicate_dxfs"],
@@ -806,6 +938,10 @@ def main() -> int:
     parser.add_argument("--max-pairs", type=int, default=None)
     parser.add_argument("--max-dxf-files", type=int, default=None)
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--skip-global-geometry", action="store_true")
+    parser.add_argument("--global-max-components", type=int, default=None)
+    parser.add_argument("--global-retrieval-top-k", type=int, default=12)
+    parser.add_argument("--global-refine-top-drawings", type=int, default=8)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -818,6 +954,10 @@ def main() -> int:
         max_pairs=args.max_pairs,
         max_dxf_files=args.max_dxf_files,
         workers=args.workers,
+        enable_global_geometry=not args.skip_global_geometry,
+        global_max_components=args.global_max_components,
+        global_retrieval_top_k=args.global_retrieval_top_k,
+        global_refine_top_drawings=args.global_refine_top_drawings,
         dry_run=args.dry_run,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))

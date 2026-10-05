@@ -36,7 +36,13 @@ flowchart TD
 ### 3.1 可參與推薦
 
 - `ENGINEER_VERIFIED`：工程師在 UI 或受控流程確認。
-- `AUTO_VERIFIED`：完整同名，或檔名內嵌料號與版本完全一致且配對唯一的 STEP/DXF；此外尺寸種類與公稱值必須只對應一個 3D 特徵，並通過 DXF 尺寸附著、局部 2D 特徵語意、STEP HLR 投影簽名、視圖輪廓配準及 3D feature node 局部位置五項門檻。
+- `AUTO_VERIFIED`：來源配對可由完整同名、檔名內嵌料號／版本、XCAF 子零件料號，或全域幾何搜尋建立。全域搜尋會展開所有 STEP 葉零件與 DXF 獨立視圖，先用旋轉／鏡射／比例不變描述子取得 Top-K，再用 HLR、ICP、雙向 Chamfer、inlier ratio、ranked Hausdorff、互為最佳與競爭者分差過濾。無論來源如何，尺寸種類與公稱值仍須對應唯一 3D 特徵，並通過 DXF 尺寸附著、局部 2D 特徵語意、STEP HLR 投影簽名、視圖輪廓配準及 3D feature node 局部位置五項門檻。
+
+V4 額外保留 DXF 端點到 STEP B-Rep 的拓撲證據。對轉檔後由多段 ARC 組成的同一圓，不再以 entity handle 數量判定歧義；必須先證明兩個尺寸端點屬於同一圓輪廓，再匹配唯一公稱直徑、位置、軸向、長度與內／外表面方向的 STEP 邏輯圓柱面。若圓柱被切成多個 face patches 或前後 edges 在正投影重疊，案例只宣告 logical surface 已定位，edge 保持候選集合。
+
+歷史案例來源真實不代表公差可直接跨尺寸套用。`CUSTOM_LIMITS`、`CUSTOM_SYMMETRIC` 與 `GROOVE` 只有在公稱尺寸差不超過 `max(0.05 mm, 0.5%)` 時才可成為採用案例；超出者仍可顯示為檢索背景，但 `nominal_transfer_compatible=false` 且不得產生 Tier 1 推薦。`FIT` 可在較寬範圍轉用 fit class，實際上下偏差仍由 ISO 表依查詢尺寸重算。
+
+全域幾何搜尋命中的圖面只授權檢查命中的 `matched_dxf_view_ids`；同一張 DXF 內其他主視圖、剖視圖或小零件圖的尺寸不會因為其中一個視圖相似而一併升級。近似零件分數接近、配準品質不足或不是 reciprocal best 的結果保留為候選，不會成為 RAG 證據。
 
 ### 3.2 不可直接參與推薦
 

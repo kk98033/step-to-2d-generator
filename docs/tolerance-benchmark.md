@@ -10,6 +10,14 @@
 .\pyoccenv\python.exe tools\run_tolerance_benchmark.py --mode all
 ```
 
+每次公差管線驗收還必須執行真實模型階段；預設模型為 `1AL0W5000H-R03`：
+
+```powershell
+.\pyoccenv\python.exe tools\run_real_model_acceptance.py
+```
+
+此階段實際輸出 DXF/PDF/PNG、重跑歷史 DXF 到 B-Rep 拓撲驗證、執行公差推薦，並逐筆確認推薦 `case_id` 在案例庫中存在且 `source_metadata.dxf_path` 指向可讀取的原始 DXF。報告輸出於 `auto_2d_drawing/output/acceptance/1AL0W5000H-R03/acceptance_report.json`。版面超出圖框會回報 `PASSED_WITH_WARNINGS`，不能只用「檔案存在」當作繪圖品質通過。
+
 輸出：
 
 - Dataset：`auto_2d_drawing/tolerance/benchmark_data/silver_verified_cases.json`
@@ -96,6 +104,25 @@ CI 可加上 `--fail-on-gate`。只要發生料號群組洩漏、來源 entity�
 5. 正式模型的資料切分不得讓同料號或不同 revision 跨 split。
 
 Benchmark report 會保留逐筆 `records`，包含使用的訓練案例數、相關案例數、Top-K 案例 ID、第一個正確排名與實際推薦結果，便於追查失敗原因。
+
+## 全域 3D／2D 幾何搜尋結果（2026-10-05）
+
+本次先將 A/R 版本系列收斂到最高版，再展開所有 STEP/XCAF 葉零件，對全部 DXF 獨立視圖執行描述子 Top-K 與 HLR/ICP 精配準。全域配對仍只是一個候選來源；尺寸必須另外通過完整五項 3D 定位證明才會成為 `AUTO_VERIFIED`。
+
+| 指標 | 結果 |
+| --- | ---: |
+| 最新 STEP / DXF | 181 / 786 |
+| 排除的舊版／重複 DXF | 958 |
+| 唯一 3D 元件幾何 | 418 |
+| DXF 獨立視圖 | 7,016 |
+| STEP 投影視圖 | 2,478 |
+| 全域精配準候選 | 1,656 |
+| 通過配對層門檻 | 210 |
+| 保留為不確定候選 | 1,446 |
+| 最終 `AUTO_VERIFIED` 公差案例 | 20 |
+| 其中由全域搜尋新增 | 1 |
+
+Silver benchmark 目前共 20 筆：來源 entity 找回率、尺寸種類與公差精確重播均為 100%；retrieval evaluable coverage 為 55%，MRR 為 0.9091，Recall@1 與 Precision@1 均為 81.82%。加入嚴格公稱尺寸轉用門檻後，leave-one-part-group-out 推薦對 20/20 筆 abstain，代表目前跨零件泛化覆蓋率仍為 0%，但也避免把真實、不同尺寸的 CUSTOM_LIMITS 案例直接套用。這仍不是工程師簽核 GOLD accuracy，不能以 20 筆 Silver 樣本宣稱已達量產準確率。
 
 ## 料號配對階段結果（2026-10-03）
 

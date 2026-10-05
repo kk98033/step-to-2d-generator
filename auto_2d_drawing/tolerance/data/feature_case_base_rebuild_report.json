@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at_utc": "2026-10-05T05:04:53.321911+00:00",
+  "generated_at_utc": "2026-10-05T13:48:11.565319+00:00",
   "source_directories": [
     "D:\\School\\力致\\力致_ref",
     "D:\\School\\力致\\new_data"
@@ -8,17 +8,555 @@
   "output_path": "D:\\School\\力致\\app\\step-to-2d-generator\\auto_2d_drawing\\tolerance\\data\\feature_case_base.json",
   "dry_run": false,
   "discovery": {
-    "unique_step_files": 223,
-    "unique_dxf_files": 1697,
-    "processed_dxf_files": 1697,
+    "unique_step_files": 181,
+    "unique_dxf_files": 786,
+    "processed_dxf_files": 786,
     "exact_name_pairs": 10,
-    "auto_verification_pairs": 25,
-    "processed_pairs": 25,
+    "conservative_name_pairs": 25,
+    "auto_verification_pairs": 235,
+    "processed_pairs": 235,
+    "global_geometry_search": {
+      "verified_pair_count": 210,
+      "candidate_pair_count": 1446,
+      "statuses": {
+        "GEOMETRY_PAIR_CANDIDATE": 1446,
+        "GEOMETRY_PAIR_VERIFIED": 210
+      },
+      "scanned_step_files": 181,
+      "unique_component_geometries": 418,
+      "indexed_dxf_views": 7016,
+      "projected_component_views": 2478,
+      "refined_component_drawing_candidates": 1656
+    },
+    "global_geometry_verified_examples": [
+      {
+        "pair_id": "GLOBAL_GEOMETRY:0260e7d2be19f699:散熱片-2M240281030H-A04.dxf:view_008",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "DISH-2FS0R3010H-A00_1",
+        "component_fingerprint": "0260e7d2be19f699",
+        "drawing_file": "散熱片-2M240281030H-A04.dxf",
+        "matched_dxf_view_ids": [
+          "view_008"
+        ],
+        "matched_step_view": "left",
+        "global_geometry_score": 0.8773,
+        "reciprocal_margin": 0.8773
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:0260e7d2be19f699:2M240281030H-R00.dxf:view_005",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "DISH-2FS0R3010H-A00_1",
+        "component_fingerprint": "0260e7d2be19f699",
+        "drawing_file": "2M240281030H-R00.dxf",
+        "matched_dxf_view_ids": [
+          "view_005"
+        ],
+        "matched_step_view": "left",
+        "global_geometry_score": 0.8804,
+        "reciprocal_margin": 0.8804
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:0260e7d2be19f699:0FP3D0000H-R01.dxf:view_008",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "DISH-2FS0R3010H-A00_1",
+        "component_fingerprint": "0260e7d2be19f699",
+        "drawing_file": "0FP3D0000H-R01.dxf",
+        "matched_dxf_view_ids": [
+          "view_008"
+        ],
+        "matched_step_view": "left",
+        "global_geometry_score": 0.8765,
+        "reciprocal_margin": 0.237
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:0438565cdd594831:1FLBN3000H-R00.dxf:view_010",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "PLASTIC-QS19_1_1_1HOUSING_ASSY-1QS196000H-A002_HOUSING_ASSY-1QS196000H-A00",
+        "component_fingerprint": "0438565cdd594831",
+        "drawing_file": "1FLBN3000H-R00.dxf",
+        "matched_dxf_view_ids": [
+          "view_010"
+        ],
+        "matched_step_view": "right",
+        "global_geometry_score": 0.8407,
+        "reciprocal_margin": 0.8407
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:0438565cdd594831:彈片-2M240281040H-A02.dxf:view_011",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "PLASTIC-QS19_1_1_1HOUSING_ASSY-1QS196000H-A002_HOUSING_ASSY-1QS196000H-A00",
+        "component_fingerprint": "0438565cdd594831",
+        "drawing_file": "彈片-2M240281040H-A02.dxf",
+        "matched_dxf_view_ids": [
+          "view_011"
+        ],
+        "matched_step_view": "back",
+        "global_geometry_score": 0.8006,
+        "reciprocal_margin": 0.8006
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:06a0442fd51a71c6:2MQCG1260H-R00.dxf:view_007",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "SOLID",
+        "component_fingerprint": "06a0442fd51a71c6",
+        "drawing_file": "2MQCG1260H-R00.dxf",
+        "matched_dxf_view_ids": [
+          "view_007"
+        ],
+        "matched_step_view": "right",
+        "global_geometry_score": 0.9415,
+        "reciprocal_margin": 0.2043
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:06a0442fd51a71c6:泡棉-棉貼片-2MQCG1260H-A01.dxf:view_003",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "SOLID",
+        "component_fingerprint": "06a0442fd51a71c6",
+        "drawing_file": "泡棉-棉貼片-2MQCG1260H-A01.dxf",
+        "matched_dxf_view_ids": [
+          "view_003"
+        ],
+        "matched_step_view": "right",
+        "global_geometry_score": 0.9416,
+        "reciprocal_margin": 0.9416
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:06a0442fd51a71c6:2MQCG1250H-R00.dxf:view_007",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "SOLID",
+        "component_fingerprint": "06a0442fd51a71c6",
+        "drawing_file": "2MQCG1250H-R00.dxf",
+        "matched_dxf_view_ids": [
+          "view_007"
+        ],
+        "matched_step_view": "right",
+        "global_geometry_score": 0.9416,
+        "reciprocal_margin": 0.9416
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:06a0442fd51a71c6:泡棉-棉貼片-2MQCG1250H-A02.dxf:view_003",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "SOLID",
+        "component_fingerprint": "06a0442fd51a71c6",
+        "drawing_file": "泡棉-棉貼片-2MQCG1250H-A02.dxf",
+        "matched_dxf_view_ids": [
+          "view_003"
+        ],
+        "matched_step_view": "right",
+        "global_geometry_score": 0.9416,
+        "reciprocal_margin": 0.9416
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:09a59ac6199118cd:鉚合組合-1MQCG2010H-A03.dxf:view_002",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "5S9101380H_1_1",
+        "component_fingerprint": "09a59ac6199118cd",
+        "drawing_file": "鉚合組合-1MQCG2010H-A03.dxf",
+        "matched_dxf_view_ids": [
+          "view_002"
+        ],
+        "matched_step_view": "front",
+        "global_geometry_score": 0.9002,
+        "reciprocal_margin": 0.9002
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:09a59ac6199118cd:1MQCG2010H-R00.dxf:view_002",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "5S9101380H_1_1",
+        "component_fingerprint": "09a59ac6199118cd",
+        "drawing_file": "1MQCG2010H-R00.dxf",
+        "matched_dxf_view_ids": [
+          "view_002"
+        ],
+        "matched_step_view": "front",
+        "global_geometry_score": 0.9002,
+        "reciprocal_margin": 0.9002
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:0bf25f151db7e06b:鉚合組合-1M241222010H-A04.dxf:view_001",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "COMPOUND",
+        "component_fingerprint": "0bf25f151db7e06b",
+        "drawing_file": "鉚合組合-1M241222010H-A04.dxf",
+        "matched_dxf_view_ids": [
+          "view_001"
+        ],
+        "matched_step_view": "right",
+        "global_geometry_score": 0.812,
+        "reciprocal_margin": 0.812
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:0fb6ae6758acaad4:保護蓋-2DS7D1190H-A00.dxf:view_005",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "2DS7D1190H_1_1",
+        "component_fingerprint": "0fb6ae6758acaad4",
+        "drawing_file": "保護蓋-2DS7D1190H-A00.dxf",
+        "matched_dxf_view_ids": [
+          "view_005"
+        ],
+        "matched_step_view": "back",
+        "global_geometry_score": 0.9364,
+        "reciprocal_margin": 0.9364
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:1034e899c0ec987a:導熱管-0HQCG1070H-A02.dxf:view_001",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "2M242481070H_POWER_PLATE_1_1__2",
+        "component_fingerprint": "1034e899c0ec987a",
+        "drawing_file": "導熱管-0HQCG1070H-A02.dxf",
+        "matched_dxf_view_ids": [
+          "view_001"
+        ],
+        "matched_step_view": "front",
+        "global_geometry_score": 0.9049,
+        "reciprocal_margin": 0.9049
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:1034e899c0ec987a:0HQCG1070H-R00.dxf:view_001",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "2M242481070H_POWER_PLATE_1_1__2",
+        "component_fingerprint": "1034e899c0ec987a",
+        "drawing_file": "0HQCG1070H-R00.dxf",
+        "matched_dxf_view_ids": [
+          "view_001"
+        ],
+        "matched_step_view": "front",
+        "global_geometry_score": 0.9049,
+        "reciprocal_margin": 0.9049
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:1034e899c0ec987a:導熱管-1H24295115MH-A00.dxf:view_001",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "2M242481070H_POWER_PLATE_1_1__2",
+        "component_fingerprint": "1034e899c0ec987a",
+        "drawing_file": "導熱管-1H24295115MH-A00.dxf",
+        "matched_dxf_view_ids": [
+          "view_001"
+        ],
+        "matched_step_view": "front",
+        "global_geometry_score": 0.9049,
+        "reciprocal_margin": 0.9049
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:11ab19e030be1e18:2AN0G3070H-R00.dxf:view_003",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "MOTOR_CASING-2FLA54010H-A02_2_1",
+        "component_fingerprint": "11ab19e030be1e18",
+        "drawing_file": "2AN0G3070H-R00.dxf",
+        "matched_dxf_view_ids": [
+          "view_003"
+        ],
+        "matched_step_view": "bottom",
+        "global_geometry_score": 0.8311,
+        "reciprocal_margin": 0.8311
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:15356d98712ce46d:散熱器組合_2-0M242480000H-A15.dxf:view_005",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "PRT0532_1",
+        "component_fingerprint": "15356d98712ce46d",
+        "drawing_file": "散熱器組合_2-0M242480000H-A15.dxf",
+        "matched_dxf_view_ids": [
+          "view_005"
+        ],
+        "matched_step_view": "bottom",
+        "global_geometry_score": 0.84,
+        "reciprocal_margin": 0.84
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:16cac42409918c89:烤漆組合-1M240282030H-A07.dxf:view_002",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "HSOUGIN_AL0W_H-R00",
+        "component_fingerprint": "16cac42409918c89",
+        "drawing_file": "烤漆組合-1M240282030H-A07.dxf",
+        "matched_dxf_view_ids": [
+          "view_002"
+        ],
+        "matched_step_view": "right",
+        "global_geometry_score": 0.7849,
+        "reciprocal_margin": 0.7849
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:16cac42409918c89:1M240282030H-R00.dxf:view_002",
+        "status": "GEOMETRY_PAIR_VERIFIED",
+        "component_name": "HSOUGIN_AL0W_H-R00",
+        "component_fingerprint": "16cac42409918c89",
+        "drawing_file": "1M240282030H-R00.dxf",
+        "matched_dxf_view_ids": [
+          "view_002"
+        ],
+        "matched_step_view": "right",
+        "global_geometry_score": 0.7849,
+        "reciprocal_margin": 0.7849
+      }
+    ],
+    "global_geometry_candidate_examples": [
+      {
+        "pair_id": "GLOBAL_GEOMETRY:004f01f17a48ae8e:散熱器組合_2-0M241580000H-A11.dxf:view_021",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "2M241611120H-GASKET2_1_1_1_1_1_",
+        "component_fingerprint": "004f01f17a48ae8e",
+        "drawing_file": "散熱器組合_2-0M241580000H-A11.dxf",
+        "matched_dxf_view_ids": [
+          "view_021"
+        ],
+        "matched_step_view": "front",
+        "global_geometry_score": 0.6495,
+        "reciprocal_margin": 0.6495
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:004f01f17a48ae8e:聚酯薄膜-2M242171090H-A00.dxf:view_002",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "2M241611120H-GASKET2_1_1_1_1_1_",
+        "component_fingerprint": "004f01f17a48ae8e",
+        "drawing_file": "聚酯薄膜-2M242171090H-A00.dxf",
+        "matched_dxf_view_ids": [
+          "view_002"
+        ],
+        "matched_step_view": "front",
+        "global_geometry_score": 0.702,
+        "reciprocal_margin": -0.0821
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:004f01f17a48ae8e:導熱管-2M242951130H-A02.dxf:view_005",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "2M241611120H-GASKET2_1_1_1_1_1_",
+        "component_fingerprint": "004f01f17a48ae8e",
+        "drawing_file": "導熱管-2M242951130H-A02.dxf",
+        "matched_dxf_view_ids": [
+          "view_005"
+        ],
+        "matched_step_view": "front",
+        "global_geometry_score": 0.6864,
+        "reciprocal_margin": 0.6864
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:004f01f17a48ae8e:烤漆組合-1M241582020H-A02.dxf:view_003",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "2M241611120H-GASKET2_1_1_1_1_1_",
+        "component_fingerprint": "004f01f17a48ae8e",
+        "drawing_file": "烤漆組合-1M241582020H-A02.dxf",
+        "matched_dxf_view_ids": [
+          "view_003"
+        ],
+        "matched_step_view": "front",
+        "global_geometry_score": 0.5199,
+        "reciprocal_margin": 0.5199
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:00c2aca9175b9caa:銅鰭片-2M241581140H-A00.dxf:view_003",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "PRT0048_1_2_2_1_1_1_1_2_1_1_1",
+        "component_fingerprint": "00c2aca9175b9caa",
+        "drawing_file": "銅鰭片-2M241581140H-A00.dxf",
+        "matched_dxf_view_ids": [
+          "view_003"
+        ],
+        "matched_step_view": "front",
+        "global_geometry_score": 0.8894,
+        "reciprocal_margin": -0.0084
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:00c2aca9175b9caa:0FQ6H0000H-R01.dxf:view_009",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "PRT0048_1_2_2_1_1_1_1_2_1_1_1",
+        "component_fingerprint": "00c2aca9175b9caa",
+        "drawing_file": "0FQ6H0000H-R01.dxf",
+        "matched_dxf_view_ids": [
+          "view_009"
+        ],
+        "matched_step_view": "left",
+        "global_geometry_score": 0.8598,
+        "reciprocal_margin": 0.0184
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:00c2aca9175b9caa:1FNKW8000H-R01.dxf:view_006",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "PRT0048_1_2_2_1_1_1_1_2_1_1_1",
+        "component_fingerprint": "00c2aca9175b9caa",
+        "drawing_file": "1FNKW8000H-R01.dxf",
+        "matched_dxf_view_ids": [
+          "view_006"
+        ],
+        "matched_step_view": "right",
+        "global_geometry_score": 0.8831,
+        "reciprocal_margin": -0.0076
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:00c2aca9175b9caa:2DS7D1040H-R00.dxf:view_006",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "PRT0048_1_2_2_1_1_1_1_2_1_1_1",
+        "component_fingerprint": "00c2aca9175b9caa",
+        "drawing_file": "2DS7D1040H-R00.dxf",
+        "matched_dxf_view_ids": [
+          "view_006"
+        ],
+        "matched_step_view": "front",
+        "global_geometry_score": 0.846,
+        "reciprocal_margin": -0.0162
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:013e23cbde6af4a8:2FP3D3070H-R00.dxf:view_007",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "_2Q240124010H0001_1",
+        "component_fingerprint": "013e23cbde6af4a8",
+        "drawing_file": "2FP3D3070H-R00.dxf",
+        "matched_dxf_view_ids": [
+          "view_007"
+        ],
+        "matched_step_view": "left",
+        "global_geometry_score": 0.7865,
+        "reciprocal_margin": -0.025
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:013e23cbde6af4a8:1FP3D3000H-R00.dxf:view_017",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "_2Q240124010H0001_1",
+        "component_fingerprint": "013e23cbde6af4a8",
+        "drawing_file": "1FP3D3000H-R00.dxf",
+        "matched_dxf_view_ids": [
+          "view_017"
+        ],
+        "matched_step_view": "left",
+        "global_geometry_score": 0.7865,
+        "reciprocal_margin": -0.025
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:013e23cbde6af4a8:散熱器組合_2-0M242490000H-A13.dxf:view_012",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "_2Q240124010H0001_1",
+        "component_fingerprint": "013e23cbde6af4a8",
+        "drawing_file": "散熱器組合_2-0M242490000H-A13.dxf",
+        "matched_dxf_view_ids": [
+          "view_012"
+        ],
+        "matched_step_view": "bottom",
+        "global_geometry_score": 0.7657,
+        "reciprocal_margin": 0.7657
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:013e23cbde6af4a8:散熱器組合_2-0M240260000H-A13.dxf:view_056",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "_2Q240124010H0001_1",
+        "component_fingerprint": "013e23cbde6af4a8",
+        "drawing_file": "散熱器組合_2-0M240260000H-A13.dxf",
+        "matched_dxf_view_ids": [
+          "view_056"
+        ],
+        "matched_step_view": "top",
+        "global_geometry_score": 0.7774,
+        "reciprocal_margin": -0.0313
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:014afb3145f7a290:2FQ6H2010H-R00.dxf:view_002",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "FQ6V-PIN-2-S01_1_1_1_1_1_1_1_1_",
+        "component_fingerprint": "014afb3145f7a290",
+        "drawing_file": "2FQ6H2010H-R00.dxf",
+        "matched_dxf_view_ids": [
+          "view_002"
+        ],
+        "matched_step_view": "back",
+        "global_geometry_score": 0.5071,
+        "reciprocal_margin": 0.5071
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:014afb3145f7a290:1AN0G2010H-R00.dxf:view_003",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "FQ6V-PIN-2-S01_1_1_1_1_1_1_1_1_",
+        "component_fingerprint": "014afb3145f7a290",
+        "drawing_file": "1AN0G2010H-R00.dxf",
+        "matched_dxf_view_ids": [
+          "view_003"
+        ],
+        "matched_step_view": "front",
+        "global_geometry_score": 0.4543,
+        "reciprocal_margin": 0.4543
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:014afb3145f7a290:2FLBN3010H-R00.dxf:view_003",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "FQ6V-PIN-2-S01_1_1_1_1_1_1_1_1_",
+        "component_fingerprint": "014afb3145f7a290",
+        "drawing_file": "2FLBN3010H-R00.dxf",
+        "matched_dxf_view_ids": [
+          "view_003"
+        ],
+        "matched_step_view": "right",
+        "global_geometry_score": 0.5693,
+        "reciprocal_margin": 0.5693
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:014afb3145f7a290:散熱片-2MQCG1080H-A03.dxf:view_009",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "FQ6V-PIN-2-S01_1_1_1_1_1_1_1_1_",
+        "component_fingerprint": "014afb3145f7a290",
+        "drawing_file": "散熱片-2MQCG1080H-A03.dxf",
+        "matched_dxf_view_ids": [
+          "view_009"
+        ],
+        "matched_step_view": "right",
+        "global_geometry_score": 0.504,
+        "reciprocal_margin": 0.504
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:01bc47dfce6d4499:0PQ3U2000H-R00.dxf:view_003",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "SHAFT-3D_1_1",
+        "component_fingerprint": "01bc47dfce6d4499",
+        "drawing_file": "0PQ3U2000H-R00.dxf",
+        "matched_dxf_view_ids": [
+          "view_003"
+        ],
+        "matched_step_view": "front",
+        "global_geometry_score": 0.621,
+        "reciprocal_margin": -0.0002
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:01bc47dfce6d4499:0PQVW2000H-R00.dxf:view_012",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "SHAFT-3D_1_1",
+        "component_fingerprint": "01bc47dfce6d4499",
+        "drawing_file": "0PQVW2000H-R00.dxf",
+        "matched_dxf_view_ids": [
+          "view_012"
+        ],
+        "matched_step_view": "front",
+        "global_geometry_score": 0.621,
+        "reciprocal_margin": -0.0002
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:01bc47dfce6d4499:0PQ3H2000H-R02.dxf:view_007",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "SHAFT-3D_1_1",
+        "component_fingerprint": "01bc47dfce6d4499",
+        "drawing_file": "0PQ3H2000H-R02.dxf",
+        "matched_dxf_view_ids": [
+          "view_007"
+        ],
+        "matched_step_view": "front",
+        "global_geometry_score": 0.621,
+        "reciprocal_margin": -0.0002
+      },
+      {
+        "pair_id": "GLOBAL_GEOMETRY:01bc47dfce6d4499:0PJNL2000H-R04.dxf:view_006",
+        "status": "GEOMETRY_PAIR_CANDIDATE",
+        "component_name": "SHAFT-3D_1_1",
+        "component_fingerprint": "01bc47dfce6d4499",
+        "drawing_file": "0PJNL2000H-R04.dxf",
+        "matched_dxf_view_ids": [
+          "view_006"
+        ],
+        "matched_step_view": "front",
+        "global_geometry_score": 0.621,
+        "reciprocal_margin": -0.0002
+      }
+    ],
     "pair_manifest_statistics": {
-      "step_files": 223,
-      "dxf_files": 1697,
+      "step_files": 181,
+      "dxf_files": 786,
       "parsed_step_identities": 147,
-      "parsed_dxf_identities": 775,
+      "parsed_dxf_identities": 519,
       "verified_pair_count": 16,
       "verified_pair_methods": {
         "EXACT_FILENAME": 10,
@@ -28,49 +566,50 @@
       "candidate_statuses": {
         "CROSS_REVISION_OR_MISSING_REVISION": 14
       },
-      "unpaired_step_count": 207,
-      "unpaired_dxf_count": 1681,
+      "unpaired_step_count": 165,
+      "unpaired_dxf_count": 770,
       "component_pair_count": 9,
-      "total_verification_pair_count": 25
+      "total_verification_pair_count": 235,
+      "global_geometry_pair_count": 210
     },
     "duplicate_step_names": 36,
     "duplicate_dxf_names": 0,
     "revision_selection": {
       "step": {
         "discovered_files": 259,
-        "selected_latest_files": 223,
-        "superseded_or_duplicate_files": 36,
-        "multi_revision_groups": 0,
-        "duplicate_latest_revision_files": 36
+        "selected_latest_files": 181,
+        "superseded_or_duplicate_files": 78,
+        "multi_revision_groups": 6,
+        "duplicate_latest_revision_files": 31
       },
       "dxf": {
         "discovered_files": 1744,
-        "selected_latest_files": 1697,
-        "superseded_or_duplicate_files": 47,
-        "multi_revision_groups": 25,
-        "duplicate_latest_revision_files": 0
+        "selected_latest_files": 786,
+        "superseded_or_duplicate_files": 958,
+        "multi_revision_groups": 242,
+        "duplicate_latest_revision_files": 2
       }
     }
   },
   "extraction": {
     "all_candidate_statuses": {
-      "AUTO_VALIDATED": 23526,
-      "NO_TOLERANCE": 10786,
-      "REVIEW_REQUIRED": 73
+      "AUTO_VALIDATED": 7183,
+      "NO_TOLERANCE": 4080,
+      "REVIEW_REQUIRED": 17
     },
     "parse_errors": 0,
-    "duplicate_dimension_entities_suppressed": 241,
-    "native_tolerance_entities": 23518,
-    "consumed_by_feature_links": 14,
+    "duplicate_dimension_entities_suppressed": 68,
+    "native_tolerance_entities": 7176,
+    "consumed_by_feature_links": 15,
     "feature_inference_2d": {
       "method": "DXF_2D_RULES_V2",
       "status_counts": {
-        "UNRESOLVED": 22623,
-        "REVIEW_CANDIDATE": 858,
-        "AUTO_INFERRED_2D": 37
+        "UNRESOLVED": 6613,
+        "REVIEW_CANDIDATE": 541,
+        "AUTO_INFERRED_2D": 22
       },
       "auto_inferred_feature_counts": {
-        "shaft_segment": 36,
+        "shaft_segment": 21,
         "hole": 1
       },
       "auto_inferred_examples": [
@@ -804,8 +1343,8 @@
           }
         },
         {
-          "drawing_file": "彈簧螺絲組合-1DS7D2050H-A00.dxf",
-          "entity_handle": "12789",
+          "drawing_file": "彈簧螺絲組合-1DS7D2050H-A05.dxf",
+          "entity_handle": "15040",
           "dimension_category": "DIAMETER",
           "nominal_value": 8.0,
           "feature_type": "shaft_segment",
@@ -817,7 +1356,65 @@
           ],
           "association_status": "GEOMETRIC_ATTACHMENT",
           "attached_geometry_handles": [
-            "12755"
+            "15011"
+          ],
+          "cross_view_evidence": {
+            "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_007"
+                ],
+                "handles": [
+                  "15010",
+                  "15061"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              },
+              {
+                "view_ids": [
+                  "view_007"
+                ],
+                "handles": [
+                  "1507B",
+                  "15061"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              },
+              {
+                "view_ids": [
+                  "view_012"
+                ],
+                "handles": [
+                  "150C7",
+                  "150F4"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              }
+            ],
+            "matching_hidden_pairs": []
+          }
+        },
+        {
+          "drawing_file": "彈簧螺絲組合-1MQCG2040H-A03.dxf",
+          "entity_handle": "1656C",
+          "dimension_category": "DIAMETER",
+          "nominal_value": 5.0,
+          "feature_type": "shaft_segment",
+          "confidence": 0.93,
+          "evidence": [
+            "DIAMETER 尺寸允許此 FeatureGraph 類型",
+            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
+            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
+          ],
+          "association_status": "GEOMETRIC_ATTACHMENT",
+          "attached_geometry_handles": [
+            "16569"
           ],
           "cross_view_evidence": {
             "matching_visible_pairs": [
@@ -826,11 +1423,11 @@
                   "view_005"
                 ],
                 "handles": [
-                  "1273F",
-                  "12754"
+                  "16558",
+                  "16564"
                 ],
                 "orientation": "HORIZONTAL",
-                "separation": 8.0,
+                "separation": 5.0,
                 "outer_silhouette": true
               }
             ],
@@ -838,8 +1435,8 @@
           }
         },
         {
-          "drawing_file": "彈簧螺絲組合-1DS7D2050H-A01.dxf",
-          "entity_handle": "12789",
+          "drawing_file": "螺絲-2DS7D1220H-A03.dxf",
+          "entity_handle": "18D4",
           "dimension_category": "DIAMETER",
           "nominal_value": 8.0,
           "feature_type": "shaft_segment",
@@ -851,17 +1448,41 @@
           ],
           "association_status": "GEOMETRIC_ATTACHMENT",
           "attached_geometry_handles": [
-            "12755"
+            "155E"
           ],
           "cross_view_evidence": {
             "matching_visible_pairs": [
+              {
+                "view_ids": [
+                  "view_003"
+                ],
+                "handles": [
+                  "1525",
+                  "389A"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              },
+              {
+                "view_ids": [
+                  "view_003"
+                ],
+                "handles": [
+                  "38C7",
+                  "389A"
+                ],
+                "orientation": "HORIZONTAL",
+                "separation": 8.0,
+                "outer_silhouette": true
+              },
               {
                 "view_ids": [
                   "view_006"
                 ],
                 "handles": [
-                  "1273F",
-                  "12754"
+                  "3CD2",
+                  "3CFF"
                 ],
                 "orientation": "HORIZONTAL",
                 "separation": 8.0,
@@ -872,10 +1493,10 @@
           }
         },
         {
-          "drawing_file": "彈簧螺絲組合-1DS7D2050H-A02.dxf",
-          "entity_handle": "142BC",
+          "drawing_file": "螺絲-2MQCG25805-A03.dxf",
+          "entity_handle": "137E9",
           "dimension_category": "DIAMETER",
-          "nominal_value": 8.0,
+          "nominal_value": 5.0,
           "feature_type": "shaft_segment",
           "confidence": 0.93,
           "evidence": [
@@ -885,20 +1506,20 @@
           ],
           "association_status": "GEOMETRIC_ATTACHMENT",
           "attached_geometry_handles": [
-            "14285"
+            "137E6"
           ],
           "cross_view_evidence": {
             "matching_visible_pairs": [
               {
                 "view_ids": [
-                  "view_006"
+                  "view_003"
                 ],
                 "handles": [
-                  "1424A",
-                  "14259"
+                  "137D5",
+                  "137E1"
                 ],
                 "orientation": "HORIZONTAL",
-                "separation": 8.0,
+                "separation": 5.0,
                 "outer_silhouette": true
               }
             ],
@@ -906,10 +1527,10 @@
           }
         },
         {
-          "drawing_file": "彈簧螺絲組合-1DS7D2050H-A03.dxf",
-          "entity_handle": "142BC",
+          "drawing_file": "螺絲-T型-3S10003082-A00.dxf",
+          "entity_handle": "168FE",
           "dimension_category": "DIAMETER",
-          "nominal_value": 8.0,
+          "nominal_value": 6.0,
           "feature_type": "shaft_segment",
           "confidence": 0.93,
           "evidence": [
@@ -919,54 +1540,20 @@
           ],
           "association_status": "GEOMETRIC_ATTACHMENT",
           "attached_geometry_handles": [
-            "14285"
+            "168BD"
           ],
           "cross_view_evidence": {
             "matching_visible_pairs": [
               {
                 "view_ids": [
-                  "view_010"
+                  "view_002"
                 ],
                 "handles": [
-                  "1424A",
-                  "14259"
+                  "168AE",
+                  "168BC"
                 ],
                 "orientation": "HORIZONTAL",
-                "separation": 8.0,
-                "outer_silhouette": true
-              }
-            ],
-            "matching_hidden_pairs": []
-          }
-        },
-        {
-          "drawing_file": "彈簧螺絲組合-1DS7D2050H-A04.dxf",
-          "entity_handle": "149B1",
-          "dimension_category": "DIAMETER",
-          "nominal_value": 8.0,
-          "feature_type": "shaft_segment",
-          "confidence": 0.93,
-          "evidence": [
-            "DIAMETER 尺寸允許此 FeatureGraph 類型",
-            "找到相符直徑的封閉圓，但無外部輪廓可證明內外關係",
-            "尺寸已連到圓輪廓，對齊的另一視圖存在相同直徑可見線對"
-          ],
-          "association_status": "GEOMETRIC_ATTACHMENT",
-          "attached_geometry_handles": [
-            "1496A"
-          ],
-          "cross_view_evidence": {
-            "matching_visible_pairs": [
-              {
-                "view_ids": [
-                  "view_009"
-                ],
-                "handles": [
-                  "14931",
-                  "1495F"
-                ],
-                "orientation": "HORIZONTAL",
-                "separation": 8.0,
+                "separation": 6.0,
                 "outer_silhouette": true
               }
             ],
@@ -979,27 +1566,65 @@
   },
   "verification": {
     "counts": {
-      "AUTO_EXTRACTED": 23504,
-      "AUTO_VERIFIED": 14
+      "AUTO_EXTRACTED": 7156,
+      "AUTO_VERIFIED": 20
     },
     "pair_match_stats": {
-      "unique_dimension_matches": 56,
-      "ambiguous_dimension_matches": 80,
-      "geometry_resolved_ambiguous_matches": 11,
-      "unmatched_dimensions": 316,
-      "conflicting_tolerance_matches": 0,
-      "insufficient_geometry_evidence": 42,
-      "pair_load_failures": 2
+      "unique_dimension_matches": 58,
+      "ambiguous_dimension_matches": 86,
+      "geometry_resolved_ambiguous_matches": 12,
+      "unmatched_dimensions": 404,
+      "conflicting_tolerance_matches": 2,
+      "insufficient_geometry_evidence": 41,
+      "global_view_filtered_dimensions": 1853,
+      "pair_load_failures": 64
     },
     "pair_errors": []
   },
   "database": {
-    "total_cases": 23518,
+    "total_cases": 7176,
     "feature_counts": {
-      "unresolved_feature": 23504,
-      "shaft_segment": 7,
-      "hole": 7
+      "unresolved_feature": 7156,
+      "shaft_segment": 10,
+      "hole": 10
     },
     "seed_cases": 0
-  }
+  },
+  "incremental_topology_updates": [
+    {
+      "updated_at_utc": "2026-10-05T15:04:19.475041+00:00",
+      "model": "1AL0W5000H-R03",
+      "pair_id": "EXACT_FILENAME:1al0w5000h-r03",
+      "algorithm": "DXF_ATTACHMENT_ADAPTIVE_STEP_HLR_TOPOLOGY_V4",
+      "plausible_dimension_count": 17,
+      "duplicate_dimensions_suppressed": 0,
+      "removed_case_count": 5,
+      "added_auto_verified_count": 5,
+      "consumed_entity_handles": [
+        "7AD9",
+        "7ADA",
+        "7ADB",
+        "7ADC",
+        "7ADD"
+      ],
+      "rejected_candidate_count": 0,
+      "verification_statistics": {
+        "unique_dimension_matches": 5,
+        "ambiguous_dimension_matches": 1,
+        "geometry_resolved_ambiguous_matches": 0,
+        "unmatched_dimensions": 11,
+        "conflicting_tolerance_matches": 0,
+        "insufficient_geometry_evidence": 0,
+        "global_view_filtered_dimensions": 0
+      },
+      "added_case_ids": [
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_15_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_14_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_09_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_10_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_01_diameter"
+      ]
+    }
+  ],
+  "last_incremental_update_utc": "2026-10-05T15:04:19.475041+00:00"
 }
