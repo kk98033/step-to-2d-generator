@@ -5,10 +5,11 @@ import os
 
 # === 路徑設定 ===
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODELS_DIR = os.path.join(os.path.dirname(BASE_DIR), "models")
-OUTPUT_DIR = os.path.join(BASE_DIR, "output")
-REFERENCE_DIR = os.path.join(BASE_DIR, "reference")
-TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+PROJECT_DIR = os.path.dirname(BASE_DIR)
+MODELS_DIR = os.path.abspath(os.environ.get("CAD_MODELS_DIR", os.path.join(PROJECT_DIR, "models")))
+OUTPUT_DIR = os.path.abspath(os.environ.get("CAD_OUTPUT_DIR", os.path.join(BASE_DIR, "output")))
+REFERENCE_DIR = os.path.abspath(os.environ.get("CAD_REFERENCE_DIR", os.path.join(BASE_DIR, "reference")))
+TEMPLATES_DIR = os.path.abspath(os.environ.get("CAD_TEMPLATES_DIR", os.path.join(BASE_DIR, "templates")))
 
 # === 圖面尺寸 (mm) ===
 PAPER_SIZES = {
@@ -84,7 +85,7 @@ HLR_DEFLECTION = 0.1       # HLR 投影精度
 MESH_DEFLECTION = 0.05     # 網格化精度
 
 # === 中文字型 ===
-CN_FONT_PATH = r"C:\Windows\Fonts\msjh.ttc"
+CN_FONT_PATH = os.environ.get("CAD_CN_FONT_PATH", r"C:\Windows\Fonts\msjh.ttc")
 CN_FONT_NAME = "Microsoft JhengHei"
 DXF_FONT_NAME = "msjh.ttc"
 

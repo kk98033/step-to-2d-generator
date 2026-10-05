@@ -38,6 +38,19 @@ def get_label_id(label):
 def get_label_name(label):
     """嘗試從 TDF_Label 取得名稱"""
     fallback = f"Node_{get_label_id(label).replace(':', '_')}"
+    # pythonocc exposes the transferred STEP product name directly on the
+    # label.  Prefer it: iterating attributes alone returned no name for many
+    # AP203/AP214 company assemblies and made every component look like
+    # ``Node_0_1_...`` even though PRODUCT names were present in the file.
+    try:
+        direct_name = str(label.GetLabelName() or "").strip()
+        if direct_name:
+            return "".join(
+                char for char in direct_name
+                if char.isalnum() or char in (' ', '_', '-')
+            ).rstrip()
+    except Exception:
+        pass
     try:
         it = TDF_AttributeIterator(label)
         while it.More():
