@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at_utc": "2026-10-03T10:41:19.990743+00:00",
+  "generated_at_utc": "2026-10-05T05:04:53.321911+00:00",
   "source_directories": [
     "D:\\School\\力致\\力致_ref",
     "D:\\School\\力致\\new_data"
@@ -61,7 +61,7 @@
     "parse_errors": 0,
     "duplicate_dimension_entities_suppressed": 241,
     "native_tolerance_entities": 23518,
-    "consumed_by_feature_links": 9,
+    "consumed_by_feature_links": 14,
     "feature_inference_2d": {
       "method": "DXF_2D_RULES_V2",
       "status_counts": {
@@ -979,26 +979,26 @@
   },
   "verification": {
     "counts": {
-      "AUTO_EXTRACTED": 23509,
-      "AUTO_VERIFIED": 8
+      "AUTO_EXTRACTED": 23504,
+      "AUTO_VERIFIED": 14
     },
     "pair_match_stats": {
-      "unique_dimension_matches": 45,
-      "ambiguous_dimension_matches": 91,
+      "unique_dimension_matches": 56,
+      "ambiguous_dimension_matches": 80,
+      "geometry_resolved_ambiguous_matches": 11,
       "unmatched_dimensions": 316,
       "conflicting_tolerance_matches": 0,
-      "insufficient_geometry_evidence": 36,
+      "insufficient_geometry_evidence": 42,
       "pair_load_failures": 2
     },
     "pair_errors": []
   },
   "database": {
-    "total_cases": 23517,
+    "total_cases": 23518,
     "feature_counts": {
-      "unresolved_feature": 23509,
-      "hole": 3,
-      "shaft_segment": 4,
-      "retaining_ring_groove": 1
+      "unresolved_feature": 23504,
+      "shaft_segment": 7,
+      "hole": 7
     },
     "seed_cases": 0
   }
