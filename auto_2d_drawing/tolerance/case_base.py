@@ -54,6 +54,23 @@ class ToleranceCase:
             "AUTO_VERIFIED",
         }
 
+    def is_verified_extraction(self) -> bool:
+        """Return whether the extracted tolerance is tied to a verified feature.
+
+        Automatic cases require both a passed 2D/3D geometry verification and
+        an explicit feature identity.  A manually verified case is accepted
+        when its feature identity was recorded, because the engineer decision
+        is the authoritative geometry check for that case.
+        """
+        metadata = self.source_metadata or {}
+        if not bool(metadata.get("feature_identity_verified")):
+            return False
+        status = self.effective_verification_status()
+        if status == "ENGINEER_VERIFIED":
+            return True
+        geometry = metadata.get("geometry_verification") or {}
+        return status == "AUTO_VERIFIED" and bool(geometry.get("passed"))
+
 
 class FeatureCaseBase:
     """

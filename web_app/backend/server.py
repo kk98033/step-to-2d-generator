@@ -465,6 +465,7 @@ def get_tolerance_stats():
             "verification": dict(verification.most_common()),
             "feature_linkage": dict(feature_linkage),
             "retrieval_eligible_cases": sum(1 for c in case_base.cases if c.is_retrieval_eligible()),
+            "verified_extraction_cases": sum(1 for c in case_base.cases if c.is_verified_extraction()),
             "top_series": dict(series_cnt.most_common(20))
         }
     except Exception as e:
@@ -473,6 +474,7 @@ def get_tolerance_stats():
 @app.get("/api/tolerance/cases")
 def list_tolerance_cases(
     category: Optional[str] = None,
+    quality: Optional[str] = None,
     search: Optional[str] = None,
     page: int = 1,
     page_size: int = 36,
@@ -509,10 +511,20 @@ def list_tolerance_cases(
                     if cat_u not in (p_u, r_u, f_u):
                         continue
 
+            quality_u = str(quality or "ALL").strip().upper()
+            verified_extraction = c.is_verified_extraction()
+            if quality_u in {"VERIFIED", "CORRECT", "VERIFIED_EXTRACTION"}:
+                if not verified_extraction:
+                    continue
+            elif quality_u in {"UNVERIFIED", "NEEDS_REVIEW"}:
+                if verified_extraction:
+                    continue
+
             d = c.to_dict()
             d["verification_status"] = c.effective_verification_status()
             d["retrieval_eligible"] = c.is_retrieval_eligible()
             d["feature_identity_verified"] = bool((c.source_metadata or {}).get("feature_identity_verified"))
+            d["verified_extraction"] = verified_extraction
             d["candidate_feature_types"] = list((c.source_metadata or {}).get("candidate_feature_types") or [])
             d["feature_inference_2d"] = dict((c.source_metadata or {}).get("feature_inference_2d") or {})
 
@@ -609,12 +621,14 @@ def list_tolerance_cases(
                     representative["drawing_case_count"] = 0
                     representative["drawing_verified_count"] = 0
                     representative["drawing_eligible_count"] = 0
+                    representative["drawing_verified_extraction_count"] = 0
                     representative["drawing_feature_types"] = []
                     grouped[key] = representative
                 aggregate = grouped[key]
                 aggregate["drawing_case_count"] += 1
                 aggregate["drawing_verified_count"] += int(bool(item.get("feature_identity_verified")))
                 aggregate["drawing_eligible_count"] += int(bool(item.get("retrieval_eligible")))
+                aggregate["drawing_verified_extraction_count"] += int(bool(item.get("verified_extraction")))
                 feature_types = aggregate["drawing_feature_types"]
                 for feature_type in ([item.get("feature_type")] if item.get("feature_identity_verified") else item.get("candidate_feature_types", [])):
                     if feature_type and feature_type not in feature_types:

@@ -223,6 +223,10 @@ class FeatureGraphExtractor:
                     "type": "cone",
                     "center": list(center),
                     "axis_dir": list(cone.get("axis_dir", [0.0, 0.0, 0.0])),
+                    "min_radius": float(cone.get("min_radius", 0.0)),
+                    "max_radius": float(cone.get("max_radius", 0.0)),
+                    "height": float(cone.get("height", h)),
+                    "is_hole": bool(cone.get("is_hole", False)),
                 }
             )
             graph.add_node(node)

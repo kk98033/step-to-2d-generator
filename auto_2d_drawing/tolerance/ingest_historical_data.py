@@ -52,6 +52,7 @@ from auto_2d_drawing.tolerance.assembly_components import (
 )
 from auto_2d_drawing.tolerance.historical_manifest import build_pair_manifest
 from auto_2d_drawing.tolerance.projection_geometry_verifier import ProjectionGeometryVerifier
+from auto_2d_drawing.tolerance.projected_feature_mapper import GlobalFeatureAssignmentResolver
 
 
 DEFAULT_SOURCE_DIRS = (
@@ -400,12 +401,19 @@ class HistoricalDataIngestor:
             return [], {"pair_load_failures": 1}
         try:
             modelspace = ezdxf.readfile(dxf_path).modelspace()
-            geometry_verifier = ProjectionGeometryVerifier(modelspace, shape=shape)
+            geometry_verifier = ProjectionGeometryVerifier(
+                modelspace,
+                shape=shape,
+                feature_nodes=graph.nodes,
+            )
         except Exception:
             return [], {"projection_verifier_failures": 1}
 
         unique_matches: List[Tuple[ExtractedDimension, FeatureNode, str, float, float]] = []
+        ambiguous_candidates: List[Dict[str, Any]] = []
+        geometry_cache: Dict[Tuple[Tuple[str, str], str, str], Dict[str, Any]] = {}
         ambiguous = 0
+        geometry_resolved_ambiguous = 0
         no_match = 0
         for dim in dimensions:
             candidates: List[Tuple[FeatureNode, str, float, float]] = []
@@ -423,8 +431,53 @@ class HistoricalDataIngestor:
                 unique_matches.append((dim, node, field_name, difference, threshold))
             elif candidate_keys:
                 ambiguous += 1
+                best_by_key: Dict[Tuple[str, str], Tuple[FeatureNode, str, float, float]] = {}
+                for candidate in candidates:
+                    key = (candidate[0].id, candidate[1])
+                    if key not in best_by_key or candidate[2] < best_by_key[key][2]:
+                        best_by_key[key] = candidate
+                dimension_key = self._evidence_key(dxf_path, dim)
+                for node, field_name, difference, threshold in best_by_key.values():
+                    evidence = geometry_verifier.verify(dim, node, field_name)
+                    cache_key = (dimension_key, node.id, field_name)
+                    geometry_cache[cache_key] = evidence
+                    primary_view = str((evidence.get("association") or {}).get("primary_view_id") or "NONE")
+                    registration_score = float(
+                        (evidence.get("view_registration") or {}).get("score", 0.0) or 0.0
+                    )
+                    localization_score = float(
+                        (evidence.get("feature_localization") or {}).get("score", 0.0) or 0.0
+                    )
+                    overall_score = float(evidence.get("score", 0.0) or 0.0)
+                    # Candidate identity is primarily a spatial question.  A
+                    # high overall verification score must not hide a weak
+                    # feature location merely because the nominal value and
+                    # local dimension syntax agree.
+                    assignment_score = (
+                        0.68 * localization_score
+                        + 0.22 * registration_score
+                        + 0.10 * overall_score
+                    )
+                    ambiguous_candidates.append({
+                        "dimension_key": "|".join(dimension_key),
+                        "feature_key": f"{node.id}|{field_name}|{primary_view}",
+                        "score": round(assignment_score, 6),
+                        "score_components": {
+                            "feature_localization": round(localization_score, 6),
+                            "view_registration": round(registration_score, 6),
+                            "overall_verification": round(overall_score, 6),
+                        },
+                        "passed": bool(evidence.get("passed")),
+                        "payload": (dim, node, field_name, difference, threshold),
+                    })
             else:
                 no_match += 1
+
+        assignment = GlobalFeatureAssignmentResolver().resolve(ambiguous_candidates)
+        for selected in assignment["selected"]:
+            unique_matches.append(selected["payload"])
+            geometry_resolved_ambiguous += 1
+        ambiguous = max(0, ambiguous - geometry_resolved_ambiguous)
 
         grouped: Dict[Tuple[str, str], List[Tuple[ExtractedDimension, FeatureNode, float, float]]] = defaultdict(list)
         for dim, node, field_name, difference, threshold in unique_matches:
@@ -442,7 +495,12 @@ class HistoricalDataIngestor:
 
             matches.sort(key=lambda item: item[2])
             geometry_results = [
-                (match, geometry_verifier.verify(match[0], match[1], field_name))
+                (
+                    match,
+                    geometry_cache.get(
+                        (self._evidence_key(dxf_path, match[0]), match[1].id, field_name)
+                    ) or geometry_verifier.verify(match[0], match[1], field_name),
+                )
                 for match in matches
             ]
             accepted_geometry = [item for item in geometry_results if item[1].get("passed")]
@@ -555,6 +613,7 @@ class HistoricalDataIngestor:
         return verified, {
             "unique_dimension_matches": len(unique_matches),
             "ambiguous_dimension_matches": ambiguous,
+            "geometry_resolved_ambiguous_matches": geometry_resolved_ambiguous,
             "unmatched_dimensions": no_match,
             "conflicting_tolerance_matches": conflicts,
             "insufficient_geometry_evidence": insufficient_geometry,

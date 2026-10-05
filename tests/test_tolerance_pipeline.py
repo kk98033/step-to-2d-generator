@@ -14,6 +14,42 @@ from auto_2d_drawing.tolerance.ingest_historical_data import HistoricalDataInges
 from auto_2d_drawing.tolerance.tolerance_decision_service import ToleranceDecisionService
 
 
+class ToleranceCaseQualityTests(unittest.TestCase):
+    @staticmethod
+    def _case(status="AUTO_VERIFIED", feature_verified=True, geometry_passed=True):
+        return ToleranceCase(
+            case_id="quality-case",
+            part_type="GENERAL",
+            feature_type="hole",
+            inferred_role="HOLE_DIAMETER",
+            nominal_dimensions={"diameter": 5.0},
+            neighbor_types=[],
+            boundary_position="INTERIOR",
+            tolerance_config={"mode": "CUSTOM_SYMMETRIC", "dev": 0.02},
+            confidence=0.95,
+            evidence_source="company.dxf",
+            description="quality test",
+            verification_status=status,
+            source_metadata={
+                "feature_identity_verified": feature_verified,
+                "geometry_verification": {"passed": geometry_passed},
+            },
+        )
+
+    def test_auto_verified_extraction_requires_feature_and_geometry(self):
+        self.assertTrue(self._case().is_verified_extraction())
+        self.assertFalse(self._case(feature_verified=False).is_verified_extraction())
+        self.assertFalse(self._case(geometry_passed=False).is_verified_extraction())
+
+    def test_engineer_verified_feature_is_a_verified_extraction(self):
+        self.assertTrue(
+            self._case(status="ENGINEER_VERIFIED", geometry_passed=False).is_verified_extraction()
+        )
+
+    def test_auto_extracted_case_is_not_a_verified_extraction(self):
+        self.assertFalse(self._case(status="AUTO_EXTRACTED").is_verified_extraction())
+
+
 class DxfToleranceExtractorTests(unittest.TestCase):
     def setUp(self):
         self.extractor = DxfToleranceExtractor()
