@@ -16,6 +16,7 @@ import ezdxf
 from auto_2d_drawing.dimension_task import DimensionTask
 from auto_2d_drawing.layout_engine import LayoutEngine
 from auto_2d_drawing.feature_extractor import FeatureExtractor
+from auto_2d_drawing.canonical_features import extract_canonical_features
 from auto_2d_drawing.part_classifier import PartClassifier
 from auto_2d_drawing.extractors.base_extractor import BaseExtractor
 from auto_2d_drawing.title_block import TitleBlock, setup_document
@@ -39,17 +40,10 @@ class SmartRuleExtractor(BaseExtractor):
         掃描 3D 實體與所有投影視圖，產生結構化的候選標註規則列表。
         完全繼承 3D 特徵圖層中的所有 3D 特徵幾何定義 (38~44項特徵)，保證 3D 高亮與 2D 尺寸規則 100% 同步。
         """
-        feat = FeatureExtractor(shape)
-        if not part_type:
-            classifier = PartClassifier()
-            part_type = classifier.classify(feat, None)
-
-        try:
-            from auto_2d_drawing.feature_layer import build_feature_records
-        except ImportError:
-            from feature_layer import build_feature_records
-
-        raw_3d_records = build_feature_records(feat, part_type)
+        feature_set = extract_canonical_features(shape, part_type=part_type)
+        feat = feature_set.feature_extractor
+        part_type = feature_set.part_type
+        raw_3d_records = feature_set.records
         rules: List[Dict[str, Any]] = []
 
         vd_front = view_data.get('front', {})
@@ -73,6 +67,8 @@ class SmartRuleExtractor(BaseExtractor):
         for rec in raw_3d_records:
             r_copy = dict(rec)
             rec_id = rec.get("id", "")
+            r_copy["canonical_feature_id"] = rec_id
+            r_copy["feature_id"] = rec_id
             rec_type = rec.get("type", "")
             rec_name = rec.get("name", "")
             rec_role = str(rec.get("role", ""))
@@ -91,6 +87,7 @@ class SmartRuleExtractor(BaseExtractor):
             rank = 1
             baseline = "NONE"
             geom_payload = {}
+            canonical_nominal_field = None
 
             # 1. 軸整體包絡 (overall_size)
             if rec_type in ("overall_size", "overall_bounds", "overall") or "overall" in rec_id:
@@ -100,6 +97,7 @@ class SmartRuleExtractor(BaseExtractor):
                 side = "BOTTOM"
                 baseline = "NONE"
                 nominal_val = round(rec_nom.get("length", rec_nom.get("height", overall_len)), 2)
+                canonical_nominal_field = "length" if "length" in rec_nom else ("height" if "height" in rec_nom else None)
                 default_tol = "±0.10"
                 default_prefix = ""
                 bottom_rim_y = -h_real / 2.0 if is_horizontal else -w_real / 2.0
@@ -134,6 +132,7 @@ class SmartRuleExtractor(BaseExtractor):
                 rank = 1
                 side = "BOTTOM"
                 nominal_val = round(rec_nom.get("length", rec_nom.get("depth", 1.0)), 2)
+                canonical_nominal_field = "length" if "length" in rec_nom else "depth"
                 default_tol = "±0.05"
                 default_prefix = ""
                 step_pos_3d = float(c_3d[1] if is_horizontal else c_3d[2])
@@ -154,6 +153,7 @@ class SmartRuleExtractor(BaseExtractor):
                 dim_type = "DIAMETER"
                 rank = 1
                 nominal_val = round(rec_nom.get("diameter", 3.0), 2)
+                canonical_nominal_field = "diameter"
                 is_main_journal = "journal" in rec_role or "bearing" in rec_name or "main" in rec_id
                 default_tol = "±0.005" if is_main_journal else "±0.02"
                 default_prefix = "Φ"
@@ -181,6 +181,7 @@ class SmartRuleExtractor(BaseExtractor):
                     extra_rule = copy.deepcopy(r_copy)
                     extra_rule["id"] = f"{rec_id}_len"
                     extra_rule["rule_id"] = f"{rec_id}_len"
+                    extra_rule["canonical_nominal_field"] = "length"
                     extra_rule["category"] = "step"
                     extra_rule["name"] = f"主軸承配合段長度 L{seg_len:.2f}mm"
                     extra_rule["dim_type"] = "LINEAR"
@@ -207,6 +208,10 @@ class SmartRuleExtractor(BaseExtractor):
                 dim_type = "DIAMETER"
                 rank = 1
                 nominal_val = round(rec_nom.get("diameter", rec_nom.get("groove_diameter", rec_nom.get("major_diameter", 2.5))), 2)
+                canonical_nominal_field = next(
+                    (field for field in ("diameter", "groove_diameter", "major_diameter") if field in rec_nom),
+                    None,
+                )
                 default_tol = "H13"
                 default_prefix = "Φ"
                 axial_pos = float(c_3d[1] if is_horizontal else c_3d[2])
@@ -233,6 +238,7 @@ class SmartRuleExtractor(BaseExtractor):
                     extra_rule = copy.deepcopy(r_copy)
                     extra_rule["id"] = f"{rec_id}_width"
                     extra_rule["rule_id"] = f"{rec_id}_width"
+                    extra_rule["canonical_nominal_field"] = "groove_width"
                     extra_rule["category"] = "step"
                     extra_rule["name"] = f"卡簧/退刀槽寬度 W{groove_w:.2f}mm"
                     extra_rule["dim_type"] = "LINEAR"
@@ -260,6 +266,7 @@ class SmartRuleExtractor(BaseExtractor):
                 rank = 1
                 side = "TOP"
                 nominal_val = round(rec_nom.get("chamfer", rec_nom.get("height", 0.5)), 2)
+                canonical_nominal_field = "chamfer" if "chamfer" in rec_nom else ("height" if "height" in rec_nom else None)
                 default_tol = ""
                 default_prefix = "C"
                 chamfer_pos_3d = float(c_3d[1] if is_horizontal else c_3d[2])
@@ -286,6 +293,7 @@ class SmartRuleExtractor(BaseExtractor):
                 rank = 1
                 side = "TOP"
                 nominal_val = round(rec_nom.get("radius", rec_nom.get("R", 0.5)), 2)
+                canonical_nominal_field = "radius" if "radius" in rec_nom else ("R" if "R" in rec_nom else None)
                 default_tol = ""
                 default_prefix = "R"
                 fillet_pos_3d = float(c_3d[1] if is_horizontal else c_3d[2])
@@ -311,6 +319,7 @@ class SmartRuleExtractor(BaseExtractor):
                 rank = 1
                 side = "LEFT"
                 nominal_val = round(rec_nom.get("diameter", 3.0), 2)
+                canonical_nominal_field = "diameter"
                 default_tol = "H7"
                 default_prefix = "Φ"
                 geom_payload = {
@@ -327,6 +336,7 @@ class SmartRuleExtractor(BaseExtractor):
                 side = "RIGHT"
                 preferred_view = "right"
                 nominal_val = round(rec_nom.get("thickness", 1.0), 2)
+                canonical_nominal_field = "thickness"
                 default_tol = "±0.05"
                 default_prefix = "T="
                 geom_payload = {
@@ -343,6 +353,7 @@ class SmartRuleExtractor(BaseExtractor):
                 side = "TOP"
                 preferred_view = "top"
                 nominal_val = round(rec_nom.get("pcd", 20.0), 2)
+                canonical_nominal_field = "pcd"
                 default_tol = "±0.05"
                 count = rec_nom.get("count", 4)
                 default_prefix = f"{count}-M3 PCD "
@@ -383,6 +394,8 @@ class SmartRuleExtractor(BaseExtractor):
             r_copy["category"] = category
             r_copy["dim_type"] = dim_type
             r_copy["nominal_value"] = nominal_val
+            if canonical_nominal_field:
+                r_copy["canonical_nominal_field"] = canonical_nominal_field
             r_copy["default_tolerance"] = default_tol
             r_copy["default_prefix"] = default_prefix
             r_copy["preferred_view"] = preferred_view

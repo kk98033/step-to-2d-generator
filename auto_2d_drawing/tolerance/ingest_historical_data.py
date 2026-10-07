@@ -41,10 +41,10 @@ from auto_2d_drawing.tolerance.dxf_tolerance_extractor import (
 )
 from auto_2d_drawing.tolerance.feature_graph import (
     CANONICAL_FEATURE_TYPES,
-    FeatureGraphExtractor,
     FeatureNode,
     candidate_feature_types_for_dimension,
 )
+from auto_2d_drawing.tolerance.canonical_feature_graph import CanonicalFeatureGraphExtractor
 from auto_2d_drawing.tolerance.feature_inference_2d import FeatureInference2DEngine
 from auto_2d_drawing.tolerance.assembly_components import (
     build_component_pair_manifest,
@@ -120,7 +120,7 @@ class HistoricalDataIngestor:
 
     def __init__(self, case_base: Optional[FeatureCaseBase] = None):
         self.case_base = case_base or FeatureCaseBase()
-        self.frg_extractor = FeatureGraphExtractor()
+        self.frg_extractor = CanonicalFeatureGraphExtractor()
         self.dxf_extractor = DxfToleranceExtractor()
 
     @staticmethod
@@ -383,7 +383,7 @@ class HistoricalDataIngestor:
         elif node.feature_type == "transition_fillet":
             yield "radius", float(nominal.get("radius", 0.0) or 0.0), ("RADIUS",)
         elif node.feature_type == "locating_shoulder":
-            yield "step_height", float(nominal.get("step_height", 0.0) or 0.0), ("LINEAR",)
+            yield "step_height", float(nominal.get("step_height", nominal.get("length", 0.0)) or 0.0), ("LINEAR",)
 
     @staticmethod
     def _match_threshold(value: float) -> float:
@@ -634,7 +634,8 @@ class HistoricalDataIngestor:
                     "global_geometry_pair_evidence": (pair_evidence or {}).get("geometry_search_evidence"),
                     "verification_method": f"{pair_method}_UNIQUE_STEP_DXF_VALUE_TYPE_MATCH",
                     "geometry_verification": geometry_evidence,
-                    "feature_taxonomy": "FeatureGraphExtractor",
+                    "feature_taxonomy": "web_feature_records_v1",
+                    "canonical_feature_id": node.id,
                     "verification_checks": [
                         *pair_checks,
                         "native_dxf_dimension_entity",

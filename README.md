@@ -276,6 +276,9 @@ docker compose up -d
 curl http://localhost:8000/api/health
 ```
 
+帳號、權限、私人作品、個人化公差與尺寸位置偏好的完整設計，請見
+[工程師帳號與個人化推薦系統](docs/account-and-personalization-system.md)。
+
 ## 授權與資料注意事項
 
 程式庫不應提交客戶 STEP、DWG、DXF、PDF、產圖輸出或本機快取。公司圖面應以受控 Volume 掛載；對外分享映像前，需確認 `feature_case_base.json` 等衍生資料是否符合公司的資料治理與保密政策。

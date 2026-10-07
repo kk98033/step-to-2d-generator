@@ -23,7 +23,8 @@ _ws_root = os.path.abspath(os.path.join(_current_dir, "..", ".."))
 if _ws_root not in sys.path:
     sys.path.insert(0, _ws_root)
 
-from auto_2d_drawing.tolerance.feature_graph import FeatureGraphExtractor, FeatureRelationGraph, FeatureNode
+from auto_2d_drawing.tolerance.feature_graph import FeatureRelationGraph, FeatureNode
+from auto_2d_drawing.tolerance.canonical_feature_graph import CanonicalFeatureGraphExtractor
 from auto_2d_drawing.tolerance.case_base import FeatureCaseBase, ToleranceCase
 from auto_2d_drawing.tolerance.iso_tolerance_table import (
     lookup_iso_fit_deviation, format_tolerance_dimension
@@ -96,7 +97,7 @@ class ToleranceDecisionService:
     獨立外掛式公差推薦與決策服務
     """
     def __init__(self, case_base: Optional[FeatureCaseBase] = None):
-        self.frg_extractor = FeatureGraphExtractor()
+        self.frg_extractor = CanonicalFeatureGraphExtractor()
         self.case_base = case_base or FeatureCaseBase()
 
     def recommend_for_rules(
@@ -155,6 +156,14 @@ class ToleranceDecisionService:
     # 規則與特徵節點空間映射 (Rule-to-Node Matcher)
     # =========================================================================
     def _match_rule_to_node(self, rule: Dict[str, Any], graph: FeatureRelationGraph) -> Optional[FeatureNode]:
+        canonical_feature_id = str(
+            rule.get("canonical_feature_id") or rule.get("feature_id") or ""
+        )
+        if canonical_feature_id:
+            exact_node = graph.get_node(canonical_feature_id)
+            if exact_node is not None:
+                return exact_node
+
         r_cat = rule.get("category", "")
         r_val = float(rule.get("nominal_value", 0.0))
         r_payload = rule.get("geometry_payload", {})
