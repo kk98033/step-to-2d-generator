@@ -4,7 +4,12 @@ from pathlib import Path
 import ezdxf
 
 from auto_2d_drawing.tolerance.audit_visual_assets import _feature_box
-from web_app.backend.server import _modelspace_render_box, list_tolerance_cases
+from web_app.backend.server import (
+    _modelspace_render_box,
+    get_drawing_details,
+    list_tolerance_cases,
+    list_tolerance_debug_cases,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -41,6 +46,8 @@ class ToleranceAuditVisualTests(unittest.TestCase):
         self.assertIn('data-browse="folders"', page)
         self.assertIn("group_by_family", page)
         self.assertIn("product_family", page)
+        self.assertIn('data-quality="DEBUG"', page)
+        self.assertIn("/api/tolerance/debug/cases", page)
 
     def test_modelspace_render_box_uses_real_dxf_geometry(self):
         document = ezdxf.new()
@@ -70,6 +77,26 @@ class ToleranceAuditVisualTests(unittest.TestCase):
         )
         self.assertTrue(drawings["cases"])
         self.assertTrue(all(item["product_family"] == selected for item in drawings["cases"]))
+
+    def test_debug_category_reads_isolated_latest_canonical_snapshot(self):
+        payload = list_tolerance_debug_cases()
+        self.assertTrue(payload["debug_snapshot"])
+        self.assertEqual(payload["algorithm"], "CANONICAL_FEATURE_REPLAY")
+        self.assertEqual(payload["evidence_count"], 5)
+        self.assertEqual(len(payload["cases"]), 1)
+        drawing = payload["cases"][0]
+        self.assertEqual(drawing["model_name"], "1AL0W5000H-R03")
+        self.assertEqual(drawing["drawing_verified_extraction_count"], 5)
+        details = get_drawing_details(drawing["model_name"], debug=True)
+        linked = [
+            item for item in details["tolerances"]
+            if item.get("case_id") and (item.get("geometry_verification") or {}).get("passed")
+        ]
+        self.assertEqual(len(linked), 5)
+        self.assertEqual(
+            {item["matched_feature_id"] for item in linked},
+            {"hole_04", "shaft_04", "shaft_02", "hole_01", "shaft_01"},
+        )
 
 
 if __name__ == "__main__":
