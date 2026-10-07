@@ -31,6 +31,10 @@ class ToleranceAuditVisualTests(unittest.TestCase):
         self.assertIn('id="rightSplitter"', page)
         self.assertIn('id="viewerSplitter"', page)
         self.assertIn("toleranceAuditLayout", page)
+        self.assertIn('id="drawingCanvas"', page)
+        self.assertIn("zoomDrawingAt", page)
+        self.assertIn("addEventListener('wheel'", page)
+        self.assertIn("setPointerCapture", page)
 
 
 if __name__ == "__main__":
