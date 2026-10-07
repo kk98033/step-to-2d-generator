@@ -365,10 +365,44 @@ AUDIT_MODEL_CACHE_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "auto_2d_drawing", "tolerance", "data", "audit_model_cache"
 )
+TOLERANCE_DEBUG_MANIFEST_PATH = os.path.abspath(os.environ.get(
+    "CAD_TOLERANCE_DEBUG_MANIFEST",
+    os.path.join(
+        PROJECT_ROOT,
+        "experimental_lab", "tolerance_extraction_audit", "experiments",
+        "2026-10-07", "canonical_feature_audit", "visual_review",
+        "visual_manifest.json",
+    ),
+))
 os.makedirs(SVG_CACHE_DIR, exist_ok=True)
 os.makedirs(PDF_CACHE_DIR, exist_ok=True)
 os.makedirs(AUDIT_MODEL_CACHE_DIR, exist_ok=True)
 TOLERANCE_VISUAL_CACHE_VERSION = "v2"
+_tolerance_debug_cache: Dict[str, Any] = {
+    "mtime": None,
+    "manifest": {},
+    "cases": [],
+}
+
+
+def _load_tolerance_debug_snapshot() -> tuple[Dict[str, Any], List[ToleranceCase]]:
+    """Load the isolated latest experiment snapshot without mutating the case base."""
+    if not os.path.isfile(TOLERANCE_DEBUG_MANIFEST_PATH):
+        return {}, []
+    mtime = os.path.getmtime(TOLERANCE_DEBUG_MANIFEST_PATH)
+    if _tolerance_debug_cache["mtime"] != mtime:
+        with open(TOLERANCE_DEBUG_MANIFEST_PATH, "r", encoding="utf-8") as handle:
+            manifest = json.load(handle)
+        cases = []
+        for board in manifest.get("boards") or []:
+            for item in board.get("cases") or []:
+                cases.append(ToleranceCase(**item))
+        _tolerance_debug_cache.update({
+            "mtime": mtime,
+            "manifest": manifest,
+            "cases": cases,
+        })
+    return _tolerance_debug_cache["manifest"], _tolerance_debug_cache["cases"]
 
 dwg_index = {}
 if os.path.exists(DWG_INDEX_PATH):
@@ -855,8 +889,67 @@ def list_tolerance_cases(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/tolerance/debug/cases")
+def list_tolerance_debug_cases(search: Optional[str] = None):
+    """Return only the newest isolated Canonical experiment results."""
+    manifest, debug_cases = _load_tolerance_debug_snapshot()
+    cases_by_drawing: Dict[str, List[ToleranceCase]] = {}
+    for case in debug_cases:
+        metadata = case.source_metadata or {}
+        drawing = str(metadata.get("drawing_file") or case.evidence_source or "")
+        model_name = os.path.splitext(os.path.basename(drawing))[0]
+        if not model_name:
+            continue
+        if search:
+            search_blob = " ".join([
+                model_name,
+                case.case_id,
+                str(metadata.get("matched_feature_id") or ""),
+                case.feature_type,
+                case.inferred_role,
+            ]).lower()
+            if search.strip().lower() not in search_blob:
+                continue
+        cases_by_drawing.setdefault(model_name, []).append(case)
+
+    rows = []
+    for model_name, cases in sorted(cases_by_drawing.items()):
+        rows.append({
+            "model_name": model_name,
+            "product_family": FeatureCaseBase.infer_product_family(model_name) or "DEBUG",
+            "drawing_case_count": len(cases),
+            "drawing_verified_extraction_count": sum(
+                1 for case in cases if case.is_verified_extraction()
+            ),
+            "verified_extraction": all(case.is_verified_extraction() for case in cases),
+            "preview_image_url": f"/api/tolerance/drawing-svg/{model_name}",
+            "svg_url": f"/api/tolerance/drawing-svg/{model_name}",
+            "pdf_url": f"/api/tolerance/drawing-pdf/{model_name}",
+            "details_url": f"/api/tolerance/drawing-details/{model_name}?debug=true",
+            "debug_snapshot": True,
+            "debug_algorithm": manifest.get("algorithm"),
+            "debug_generated_at": manifest.get("generated_at"),
+        })
+    return {
+        "status": "ok",
+        "debug_snapshot": True,
+        "algorithm": manifest.get("algorithm"),
+        "generated_at": manifest.get("generated_at"),
+        "total_count": len(rows),
+        "evidence_count": len(debug_cases),
+        "page": 1,
+        "page_size": len(rows),
+        "total_pages": 1,
+        "cases": rows,
+    }
+
+
 def _find_tolerance_case(case_id: str) -> Optional[ToleranceCase]:
-    return next((case for case in case_base.cases if case.case_id == case_id), None)
+    case = next((case for case in case_base.cases if case.case_id == case_id), None)
+    if case is not None:
+        return case
+    _manifest, debug_cases = _load_tolerance_debug_snapshot()
+    return next((case for case in debug_cases if case.case_id == case_id), None)
 
 
 def _audit_model_links(case: ToleranceCase) -> Dict[str, Any]:
@@ -994,14 +1087,16 @@ def get_drawing_pdf(model_name: str):
 
 
 @app.get("/api/tolerance/drawing-details/{model_name}")
-def get_drawing_details(model_name: str):
+def get_drawing_details(model_name: str, debug: bool = False):
     """
     取得該 DWG/DXF 圖紙的完整資訊，包含所有讀取到的尺寸標註與公差細節
     """
     clean_name = os.path.splitext(model_name)[0]
     normalized_name = clean_name.lower().replace("-", "").replace("_", "")
     case_evidence_by_handle = {}
-    for case in case_base.cases:
+    _manifest, debug_cases = _load_tolerance_debug_snapshot() if debug else ({}, [])
+    source_cases = debug_cases if debug else case_base.cases
+    for case in source_cases:
         metadata = case.source_metadata or {}
         drawing_name = os.path.splitext(
             str(metadata.get("drawing_file") or case.evidence_source or "")
@@ -1116,6 +1211,9 @@ def get_drawing_details(model_name: str):
     return {
         "status": "ok",
         "model_name": clean_name,
+        "debug_snapshot": debug,
+        "debug_algorithm": _manifest.get("algorithm") if debug else None,
+        "debug_generated_at": _manifest.get("generated_at") if debug else None,
         "dwg_path": dwg_p,
         "dxf_path": dxf_p,
         "has_dwg": bool(dwg_p and os.path.exists(dwg_p)),
