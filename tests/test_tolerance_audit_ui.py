@@ -27,6 +27,10 @@ class ToleranceAuditVisualTests(unittest.TestCase):
         self.assertIn("loading=\"lazy\"", page)
         self.assertNotIn("<iframe", page.lower())
         self.assertIn("另開 PDF", page)
+        self.assertIn('id="leftSplitter"', page)
+        self.assertIn('id="rightSplitter"', page)
+        self.assertIn('id="viewerSplitter"', page)
+        self.assertIn("toleranceAuditLayout", page)
 
 
 if __name__ == "__main__":
