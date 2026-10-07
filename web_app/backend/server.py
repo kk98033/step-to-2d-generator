@@ -60,9 +60,16 @@ app.include_router(account_router)
 @app.middleware("http")
 async def add_no_cache_header(request, call_next):
     response = await call_next(request)
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
+    cacheable_visual = (
+        request.url.path.startswith("/api/tolerance/drawing-svg/")
+        or request.url.path.startswith("/api/tolerance/audit/model-preview/")
+    )
+    if cacheable_visual:
+        response.headers["Cache-Control"] = "private, max-age=86400"
+    else:
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     return response
 
 # Serve output files statically
@@ -205,6 +212,7 @@ from auto_2d_drawing.tolerance.engineer_case_ingestion import (
     EngineerCaseValidationError,
     EngineerConfirmedCaseService,
 )
+from auto_2d_drawing.tolerance.audit_visual_assets import ensure_model_preview
 
 template_manager = TemplateManager()
 case_base = FeatureCaseBase()
@@ -353,8 +361,13 @@ PDF_CACHE_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "auto_2d_drawing", "tolerance", "data", "pdf_cache"
 )
+AUDIT_MODEL_CACHE_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "auto_2d_drawing", "tolerance", "data", "audit_model_cache"
+)
 os.makedirs(SVG_CACHE_DIR, exist_ok=True)
 os.makedirs(PDF_CACHE_DIR, exist_ok=True)
+os.makedirs(AUDIT_MODEL_CACHE_DIR, exist_ok=True)
 
 dwg_index = {}
 if os.path.exists(DWG_INDEX_PATH):
@@ -381,7 +394,12 @@ def lookup_drawing_paths(name: str):
         resolved["dxf"] = mounted_dxf
     return resolved or None
 
-def _add_tolerance_highlight(doc, msp, entity_handle: Optional[str]):
+def _add_tolerance_highlight(
+    doc,
+    msp,
+    entity_handle: Optional[str],
+    supporting_handles: Optional[List[str]] = None,
+):
     if not entity_handle:
         return
     entity = doc.entitydb.get(entity_handle)
@@ -406,11 +424,68 @@ def _add_tolerance_highlight(doc, msp, entity_handle: Optional[str]):
     )
     marker.set_location((point.x + marker_size, point.y + marker_size))
 
+    for handle in supporting_handles or []:
+        supporting = doc.entitydb.get(str(handle))
+        if supporting is None:
+            continue
+        try:
+            supporting.dxf.color = 30
+            supporting.dxf.lineweight = 70
+        except Exception:
+            pass
+
+
+def _focus_box_for_highlight(doc, msp, handles: List[str], points: List[List[float]]):
+    """Build a useful zoom window around the selected tolerance and geometry."""
+    try:
+        from ezdxf import bbox as ezdxf_bbox
+        from ezdxf.math import BoundingBox2d
+
+        coordinates = [
+            (float(point[0]), float(point[1]))
+            for point in points
+            if isinstance(point, (list, tuple)) and len(point) >= 2
+        ]
+        if any(abs(x) > 1e-9 or abs(y) > 1e-9 for x, y in coordinates):
+            # Many native diameter/radius dimensions store unused definition
+            # points as (0, 0).  Including those placeholders would zoom out to
+            # the drawing origin instead of the actual tolerance.
+            coordinates = [(x, y) for x, y in coordinates if abs(x) > 1e-9 or abs(y) > 1e-9]
+        entities = [doc.entitydb.get(str(handle)) for handle in handles]
+        entities = [
+            entity for entity in entities
+            if entity is not None and entity.dxftype() not in {"DIMENSION", "LEADER", "MLEADER"}
+        ]
+        if entities:
+            target_extents = ezdxf_bbox.extents(entities)
+            if target_extents.has_data:
+                coordinates.extend([
+                    (float(target_extents.extmin.x), float(target_extents.extmin.y)),
+                    (float(target_extents.extmax.x), float(target_extents.extmax.y)),
+                ])
+        if not coordinates:
+            return None
+        drawing_extents = ezdxf_bbox.extents(msp)
+        drawing_span = max(float(drawing_extents.size.x), float(drawing_extents.size.y), 1.0)
+        xs = [point[0] for point in coordinates]
+        ys = [point[1] for point in coordinates]
+        target_span = max(max(xs) - min(xs), max(ys) - min(ys), drawing_span * 0.035)
+        padding = max(target_span * 0.8, drawing_span * 0.025)
+        return BoundingBox2d([
+            (min(xs) - padding, min(ys) - padding),
+            (max(xs) + padding, max(ys) + padding),
+        ])
+    except Exception:
+        return None
+
 
 def render_dxf_to_svg_cached(
     dxf_path: str,
     model_name: str,
     highlight_handle: Optional[str] = None,
+    supporting_handles: Optional[List[str]] = None,
+    focus_points: Optional[List[List[float]]] = None,
+    focus: bool = False,
 ) -> Optional[str]:
     if not dxf_path or not os.path.exists(dxf_path):
         return None
@@ -424,13 +499,21 @@ def render_dxf_to_svg_cached(
     try:
         doc = ezdxf.readfile(dxf_path)
         msp = doc.modelspace()
-        _add_tolerance_highlight(doc, msp, highlight_handle)
+        _add_tolerance_highlight(doc, msp, highlight_handle, supporting_handles)
         ctx = RenderContext(doc)
         backend = SVGBackend()
         frontend = Frontend(ctx, backend)
         frontend.draw_layout(msp)
         page = Page.from_dxf_layout(msp)
-        svg_str = backend.get_string(page)
+        render_box = None
+        if focus and highlight_handle:
+            render_box = _focus_box_for_highlight(
+                doc,
+                msp,
+                [highlight_handle, *(supporting_handles or [])],
+                focus_points or [],
+            )
+        svg_str = backend.get_string(page, render_box=render_box)
         if not highlight_handle:
             with open(cache_file, "w", encoding="utf-8") as f:
                 f.write(svg_str)
@@ -704,8 +787,33 @@ def list_tolerance_cases(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _find_tolerance_case(case_id: str) -> Optional[ToleranceCase]:
+    return next((case for case in case_base.cases if case.case_id == case_id), None)
+
+
+def _audit_model_links(case: ToleranceCase) -> Dict[str, Any]:
+    metadata = case.source_metadata or {}
+    step_path = str(metadata.get("step_path") or "")
+    available = bool(step_path and os.path.isfile(step_path))
+    return {
+        "model_available": available,
+        "source_model_name": os.path.basename(step_path) if available else None,
+        "model_preview_url": (
+            f"/api/tolerance/audit/model-preview/{case.case_id}.png" if available else None
+        ),
+        "model_download_url": (
+            f"/api/tolerance/audit/source-step/{case.case_id}" if available else None
+        ),
+    }
+
+
 @app.get("/api/tolerance/drawing-svg/{model_name}")
-def get_drawing_svg(model_name: str, highlight: Optional[str] = None):
+def get_drawing_svg(
+    model_name: str,
+    highlight: Optional[str] = None,
+    case_id: Optional[str] = None,
+    focus: bool = False,
+):
     """
     動態生成或讀取 DXF 轉出的高解析向量 SVG 圖面
     """
@@ -721,11 +829,76 @@ def get_drawing_svg(model_name: str, highlight: Optional[str] = None):
     if not dxf_path or not os.path.exists(dxf_path):
         raise HTTPException(status_code=404, detail=f"DXF file for {model_name} not found")
 
-    svg_str = render_dxf_to_svg_cached(dxf_path, clean_name, highlight_handle=highlight)
+    supporting_handles: List[str] = []
+    focus_points: List[List[float]] = []
+    if case_id:
+        case = _find_tolerance_case(case_id)
+        if case is not None:
+            metadata = case.source_metadata or {}
+            highlight = str(metadata.get("entity_handle") or highlight or "") or None
+            verification = metadata.get("geometry_verification") or {}
+            association = verification.get("association") or {}
+            supporting_handles = [
+                str(handle)
+                for handle in (
+                    association.get("attached_geometry_handles")
+                    or metadata.get("supporting_entity_handles")
+                    or []
+                )
+            ]
+            focus_points = [
+                list(value[:2])
+                for value in (metadata.get("points") or {}).values()
+                if isinstance(value, (list, tuple)) and len(value) >= 2
+            ]
+    svg_str = render_dxf_to_svg_cached(
+        dxf_path,
+        clean_name,
+        highlight_handle=highlight,
+        supporting_handles=supporting_handles,
+        focus_points=focus_points,
+        focus=focus,
+    )
     if not svg_str:
         raise HTTPException(status_code=500, detail="Failed to render DXF to SVG")
 
     return Response(content=svg_str, media_type="image/svg+xml")
+
+
+@app.get("/api/tolerance/audit/model-preview/{case_id}.png")
+def get_tolerance_audit_model_preview(case_id: str):
+    case = _find_tolerance_case(case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Tolerance case not found")
+    metadata = case.source_metadata or {}
+    step_path = str(metadata.get("step_path") or "")
+    if not step_path or not os.path.isfile(step_path):
+        raise HTTPException(status_code=404, detail="Original STEP model is unavailable")
+    try:
+        preview_path = ensure_model_preview(
+            case.case_id,
+            step_path,
+            metadata,
+            AUDIT_MODEL_CACHE_DIR,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Model preview generation failed: {exc}")
+    return FileResponse(preview_path, media_type="image/png")
+
+
+@app.get("/api/tolerance/audit/source-step/{case_id}")
+def download_tolerance_audit_source_step(case_id: str):
+    case = _find_tolerance_case(case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Tolerance case not found")
+    step_path = str((case.source_metadata or {}).get("step_path") or "")
+    if not step_path or not os.path.isfile(step_path):
+        raise HTTPException(status_code=404, detail="Original STEP model is unavailable")
+    return FileResponse(
+        step_path,
+        media_type="application/step",
+        filename=os.path.basename(step_path),
+    )
 
 
 @app.get("/api/tolerance/drawing-pdf/{model_name}")
@@ -770,11 +943,13 @@ def get_drawing_details(model_name: str):
         handle = str(metadata.get("entity_handle") or "")
         if not handle:
             continue
-        case_evidence_by_handle[handle] = {
+        evidence = {
             "case_id": case.case_id,
             "verification_status": case.effective_verification_status(),
             "retrieval_eligible": case.is_retrieval_eligible(),
-            "matched_feature_id": metadata.get("matched_feature_id"),
+            "feature_identity_verified": bool(metadata.get("feature_identity_verified")),
+            "verified_extraction": case.is_verified_extraction(),
+            "matched_feature_id": metadata.get("canonical_feature_id") or metadata.get("matched_feature_id"),
             "matched_feature_type": case.feature_type,
             "matched_nominal_field": metadata.get("matched_nominal_field"),
             "pair_method": metadata.get("pair_method"),
@@ -786,7 +961,23 @@ def get_drawing_details(model_name: str):
             "global_geometry_pair_evidence": metadata.get("global_geometry_pair_evidence"),
             "geometry_verification": metadata.get("geometry_verification"),
             "verification_candidate": metadata.get("verification_candidate"),
+            "topology_mapping": metadata.get("topology_mapping"),
+            "supporting_entity_handles": metadata.get("supporting_entity_handles", []),
+            **_audit_model_links(case),
         }
+        existing = case_evidence_by_handle.get(handle)
+        evidence_rank = (
+            int(evidence["verified_extraction"]),
+            int(evidence["feature_identity_verified"]),
+            int(evidence["retrieval_eligible"]),
+        )
+        existing_rank = (
+            int(bool(existing and existing.get("verified_extraction"))),
+            int(bool(existing and existing.get("feature_identity_verified"))),
+            int(bool(existing and existing.get("retrieval_eligible"))),
+        )
+        if existing is None or evidence_rank > existing_rank:
+            case_evidence_by_handle[handle] = evidence
     paths = lookup_drawing_paths(clean_name) or {}
     dwg_p = paths.get("dwg")
     dxf_p = paths.get("dxf")
@@ -2137,6 +2328,20 @@ def tolerance_inspector_page():
     )
     if not os.path.exists(public_page):
         raise HTTPException(status_code=404, detail="Tolerance inspector is not installed")
+    return FileResponse(public_page, media_type="text/html")
+
+
+@app.get("/tolerance-audit-v2.html", include_in_schema=False)
+def tolerance_audit_v2_page():
+    """Serve the performance-oriented visual tolerance audit page."""
+    public_page = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "frontend",
+        "public",
+        "tolerance-audit-v2.html",
+    )
+    if not os.path.exists(public_page):
+        raise HTTPException(status_code=404, detail="Tolerance audit V2 is not installed")
     return FileResponse(public_page, media_type="text/html")
 
 

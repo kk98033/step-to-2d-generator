@@ -1510,8 +1510,16 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
           </div>
           <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>FORCECON Auto 2D</h1>
           <a
+            href="/tolerance-audit-v2.html"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', margin: '16px 0 8px', padding: '10px 14px', background: '#2563eb', border: '1px solid #2563eb', borderRadius: 6, color: '#fff', textDecoration: 'none', fontSize: 14, fontWeight: 600 }}
+          >
+            <Database size={17} />
+            <span>公差提取視覺稽核 V2</span>
+            <ExternalLink size={14} />
+          </a>
+          <a
             href="/tolerance-inspector.html"
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', margin: '16px 0 20px', padding: '10px 14px', background: '#262626', border: '1px solid #2563eb', borderRadius: 6, color: '#dbeafe', textDecoration: 'none', fontSize: 14, fontWeight: 600 }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', margin: '0 0 20px', padding: '10px 14px', background: '#262626', border: '1px solid #444', borderRadius: 6, color: '#dbeafe', textDecoration: 'none', fontSize: 14, fontWeight: 600 }}
           >
             <Database size={17} />
             <span>開啟公差案例檢視器</span>
