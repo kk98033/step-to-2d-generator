@@ -6,7 +6,7 @@ import ezdxf
 from auto_2d_drawing.tolerance.audit_visual_assets import _feature_box
 from web_app.backend.server import (
     _modelspace_render_box,
-    get_drawing_details,
+    get_tolerance_debug_component_details,
     list_tolerance_cases,
     list_tolerance_debug_cases,
 )
@@ -81,13 +81,13 @@ class ToleranceAuditVisualTests(unittest.TestCase):
     def test_debug_category_reads_isolated_latest_canonical_snapshot(self):
         payload = list_tolerance_debug_cases()
         self.assertTrue(payload["debug_snapshot"])
-        self.assertEqual(payload["algorithm"], "CANONICAL_FEATURE_REPLAY")
-        self.assertEqual(payload["evidence_count"], 5)
-        self.assertEqual(len(payload["cases"]), 1)
-        drawing = payload["cases"][0]
-        self.assertEqual(drawing["model_name"], "1AL0W5000H-R03")
-        self.assertEqual(drawing["drawing_verified_extraction_count"], 5)
-        details = get_drawing_details(drawing["model_name"], debug=True)
+        self.assertEqual(payload["algorithm"], "CANONICAL_COMPONENT_TOLERANCE_REPLAY")
+        self.assertEqual(payload["total_count"], 5)
+        self.assertEqual(payload["verified_count"], 7)
+        self.assertEqual(len(payload["cases"]), 5)
+        blade = next(item for item in payload["cases"] if item["model_name"] == "AL0W_BLADE_H-R01")
+        self.assertEqual(blade["drawing_verified_extraction_count"], 5)
+        details = get_tolerance_debug_component_details(blade["model_name"])
         linked = [
             item for item in details["tolerances"]
             if item.get("case_id") and (item.get("geometry_verification") or {}).get("passed")
@@ -95,8 +95,14 @@ class ToleranceAuditVisualTests(unittest.TestCase):
         self.assertEqual(len(linked), 5)
         self.assertEqual(
             {item["matched_feature_id"] for item in linked},
-            {"hole_04", "shaft_04", "shaft_02", "hole_01", "shaft_01"},
+            {"hole_03", "shaft_03", "shaft_02", "hole_01", "shaft_01"},
         )
+        zero_hit = next(item for item in payload["cases"] if item["model_name"] == "2AL0W5010H-R01")
+        self.assertEqual(zero_hit["drawing_case_count"], 5)
+        self.assertEqual(zero_hit["drawing_verified_extraction_count"], 0)
+        zero_details = get_tolerance_debug_component_details(zero_hit["model_name"])
+        self.assertEqual(len(zero_details["tolerances"]), 5)
+        self.assertTrue(all(item["model_available"] for item in zero_details["tolerances"]))
 
 
 if __name__ == "__main__":

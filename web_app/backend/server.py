@@ -370,10 +370,14 @@ TOLERANCE_DEBUG_MANIFEST_PATH = os.path.abspath(os.environ.get(
     os.path.join(
         PROJECT_ROOT,
         "experimental_lab", "tolerance_extraction_audit", "experiments",
-        "2026-10-07", "canonical_feature_audit", "visual_review",
-        "visual_manifest.json",
+        "2026-10-07", "latest_tolerance_debug.json",
     ),
 ))
+TOLERANCE_DEBUG_COMPONENT_ASSET_DIR = os.path.join(
+    PROJECT_ROOT,
+    "experimental_lab", "tolerance_extraction_audit", "experiments",
+    "2026-10-07", "projection_pairing_v2",
+)
 os.makedirs(SVG_CACHE_DIR, exist_ok=True)
 os.makedirs(PDF_CACHE_DIR, exist_ok=True)
 os.makedirs(AUDIT_MODEL_CACHE_DIR, exist_ok=True)
@@ -394,8 +398,9 @@ def _load_tolerance_debug_snapshot() -> tuple[Dict[str, Any], List[ToleranceCase
         with open(TOLERANCE_DEBUG_MANIFEST_PATH, "r", encoding="utf-8") as handle:
             manifest = json.load(handle)
         cases = []
-        for board in manifest.get("boards") or []:
-            for item in board.get("cases") or []:
+        result_groups = manifest.get("runs") or manifest.get("boards") or []
+        for result in result_groups:
+            for item in result.get("cases") or []:
                 cases.append(ToleranceCase(**item))
         _tolerance_debug_cache.update({
             "mtime": mtime,
@@ -893,6 +898,62 @@ def list_tolerance_cases(
 def list_tolerance_debug_cases(search: Optional[str] = None):
     """Return only the newest isolated Canonical experiment results."""
     manifest, debug_cases = _load_tolerance_debug_snapshot()
+    runs = list(manifest.get("runs") or [])
+    if runs:
+        rows = []
+        for run in runs:
+            component_name = str(run.get("component_name") or "")
+            drawing_name = str(run.get("drawing") or "")
+            drawing_model_name = os.path.splitext(os.path.basename(drawing_name))[0]
+            if not component_name or not drawing_model_name:
+                continue
+            if search:
+                search_blob = " ".join([
+                    component_name,
+                    drawing_name,
+                    str(run.get("status") or ""),
+                    *[str(value or "") for value in run.get("feature_ids") or []],
+                ]).lower()
+                if search.strip().lower() not in search_blob:
+                    continue
+            plausible_count = int(run.get("plausible_dimension_count") or 0)
+            verified_count = int(run.get("verified_case_count") or 0)
+            rows.append({
+                "model_name": component_name,
+                "drawing_model_name": drawing_model_name,
+                "product_family": "AL0W",
+                "drawing_case_count": plausible_count,
+                "drawing_verified_extraction_count": verified_count,
+                "verified_extraction": verified_count > 0,
+                "preview_image_url": (
+                    f"/api/tolerance/debug/component-asset/{component_name}/model.png"
+                ),
+                "svg_url": f"/api/tolerance/drawing-svg/{drawing_model_name}",
+                "pdf_url": f"/api/tolerance/drawing-pdf/{drawing_model_name}",
+                "details_url": (
+                    f"/api/tolerance/debug/component-details/{component_name}"
+                ),
+                "debug_snapshot": True,
+                "debug_status": run.get("status"),
+                "debug_algorithm": manifest.get("algorithm"),
+                "debug_generated_at": manifest.get("generated_at"),
+            })
+        return {
+            "status": "ok",
+            "debug_snapshot": True,
+            "algorithm": manifest.get("algorithm"),
+            "generated_at": manifest.get("generated_at"),
+            "total_count": len(rows),
+            "evidence_count": sum(
+                int(run.get("plausible_dimension_count") or 0) for run in runs
+            ),
+            "verified_count": len(debug_cases),
+            "page": 1,
+            "page_size": len(rows),
+            "total_pages": 1,
+            "cases": rows,
+        }
+
     cases_by_drawing: Dict[str, List[ToleranceCase]] = {}
     for case in debug_cases:
         metadata = case.source_metadata or {}
@@ -942,6 +1003,87 @@ def list_tolerance_debug_cases(search: Optional[str] = None):
         "total_pages": 1,
         "cases": rows,
     }
+
+
+def _find_tolerance_debug_run(component_name: str) -> Optional[Dict[str, Any]]:
+    manifest, _cases = _load_tolerance_debug_snapshot()
+    return next(
+        (
+            run for run in manifest.get("runs") or []
+            if str(run.get("component_name") or "") == component_name
+        ),
+        None,
+    )
+
+
+@app.get("/api/tolerance/debug/component-details/{component_name}")
+def get_tolerance_debug_component_details(component_name: str):
+    run = _find_tolerance_debug_run(component_name)
+    if run is None:
+        raise HTTPException(status_code=404, detail="DEBUG component result not found")
+    drawing_model_name = os.path.splitext(str(run.get("drawing") or ""))[0]
+    result = get_drawing_details(drawing_model_name, debug=True)
+    debug_handles = {
+        str(handle) for handle in run.get("dimension_handles") or [] if str(handle)
+    }
+    if debug_handles:
+        result["tolerances"] = [
+            item for item in result.get("tolerances") or []
+            if str(item.get("entity_handle") or "") in debug_handles
+        ]
+        result["total_dimensions_count"] = int(
+            run.get("plausible_dimension_count") or len(debug_handles)
+        )
+        result["total_tolerances_count"] = len(result["tolerances"])
+    model_preview_url = (
+        f"/api/tolerance/debug/component-asset/{component_name}/model.png"
+    )
+    model_download_url = (
+        f"/api/tolerance/debug/component-asset/{component_name}/model.stl"
+    )
+    for item in result.get("tolerances") or []:
+        item.update({
+            "model_available": True,
+            "source_model_name": component_name,
+            "model_preview_url": model_preview_url,
+            "model_download_url": model_download_url,
+            "model_asset_type": "STL",
+        })
+    result.update({
+        "model_name": component_name,
+        "drawing_model_name": drawing_model_name,
+        "debug_status": run.get("status"),
+        "debug_plausible_dimension_count": int(
+            run.get("plausible_dimension_count") or 0
+        ),
+        "debug_verified_case_count": int(run.get("verified_case_count") or 0),
+        "debug_verification_stats": run.get("verification_stats") or {},
+    })
+    return result
+
+
+@app.get("/api/tolerance/debug/component-asset/{component_name}/{asset_name}")
+def get_tolerance_debug_component_asset(component_name: str, asset_name: str):
+    if _find_tolerance_debug_run(component_name) is None:
+        raise HTTPException(status_code=404, detail="DEBUG component result not found")
+    allowed_assets = {
+        "model.png": ("01_original_step_component.png", "image/png"),
+        "model.stl": ("01_original_step_component.stl", "model/stl"),
+        "review.png": ("00_review_board.png", "image/png"),
+    }
+    asset = allowed_assets.get(asset_name)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="DEBUG component asset not found")
+    component_dir = os.path.abspath(
+        os.path.join(TOLERANCE_DEBUG_COMPONENT_ASSET_DIR, component_name)
+    )
+    asset_root = os.path.abspath(TOLERANCE_DEBUG_COMPONENT_ASSET_DIR)
+    if os.path.commonpath([asset_root, component_dir]) != asset_root:
+        raise HTTPException(status_code=400, detail="Invalid DEBUG component name")
+    asset_path = os.path.join(component_dir, asset[0])
+    if not os.path.isfile(asset_path):
+        raise HTTPException(status_code=404, detail="DEBUG component asset unavailable")
+    return FileResponse(asset_path, media_type=asset[1], filename=None)
 
 
 def _find_tolerance_case(case_id: str) -> Optional[ToleranceCase]:
