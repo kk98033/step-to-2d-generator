@@ -8,6 +8,7 @@ export default defineConfig({
     proxy: {
       '/api': 'http://127.0.0.1:8000',
       '/tolerance-inspector.html': 'http://127.0.0.1:8000',
+      '/tolerance-audit-v2.html': 'http://127.0.0.1:8000',
     },
   },
 })

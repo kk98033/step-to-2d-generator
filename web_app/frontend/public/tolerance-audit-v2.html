@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>公差提取視覺稽核 V2</title>
+  <style>
+    :root{color-scheme:dark;--bg:#111;--panel:#171717;--panel2:#202020;--line:#343434;--line2:#444;--blue:#2563eb;--blue2:#60a5fa;--orange:#f97316;--green:#22c55e;--yellow:#eab308;--red:#ef4444;--text:#e5e5e5;--muted:#9ca3af}
+    *{box-sizing:border-box}html,body{height:100%}body{margin:0;background:var(--bg);color:var(--text);font:13px "Segoe UI","Microsoft JhengHei",sans-serif;overflow:hidden}button,input,select,a{font:inherit}.hidden{display:none!important}
+    header{height:62px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 18px;gap:18px}.title h1{font-size:17px;margin:0;font-weight:700}.title p{font-size:11px;color:var(--muted);margin:4px 0 0}.actions{display:flex;gap:8px;align-items:center}.btn,.input,.select{border:1px solid var(--line2);background:#262626;color:var(--text);border-radius:4px;padding:7px 10px;text-decoration:none}.btn{cursor:pointer}.btn:hover,.btn.active{border-color:var(--blue);color:#dbeafe}.btn.active{background:#1e3a8a}.btn.primary{background:var(--blue);border-color:var(--blue);color:white}.btn:disabled{opacity:.45;cursor:not-allowed}
+    .layout{height:calc(100% - 62px);display:grid;grid-template-columns:310px minmax(520px,1fr) 390px;min-width:1100px}.rail{border-right:1px solid var(--line);background:#151515;display:flex;flex-direction:column;min-height:0}.rail-head{padding:12px;border-bottom:1px solid var(--line)}.rail-head .input{width:100%;margin-bottom:9px}.filter-row{display:flex;gap:6px;flex-wrap:wrap}.filter-row .btn{font-size:11px;padding:5px 8px}.summary{font-size:11px;color:var(--muted);margin-top:9px;line-height:1.5}.drawing-list{padding:10px;overflow:auto;min-height:0}.drawing-card{width:100%;text-align:left;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:0;margin:0 0 9px;border-radius:5px;overflow:hidden;cursor:pointer}.drawing-card:hover,.drawing-card.active{border-color:var(--blue)}.drawing-card.active{box-shadow:inset 3px 0 0 var(--blue)}.drawing-thumb{height:116px;background:#0d0d0d;display:flex;align-items:center;justify-content:center;overflow:hidden}.drawing-thumb img{width:100%;height:100%;object-fit:contain}.drawing-meta{padding:9px}.drawing-name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.drawing-count{display:flex;justify-content:space-between;color:var(--muted);font-size:10px;margin-top:5px}.pager{border-top:1px solid var(--line);padding:9px;display:flex;align-items:center;justify-content:center;gap:8px}.pager span{color:var(--muted);font-size:11px}
+    .workspace{min-width:0;display:flex;flex-direction:column;background:#0d0d0d}.workspace-head{height:52px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;align-items:center;justify-content:space-between;padding:0 14px;gap:10px}.workspace-title{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.workspace-subtitle{color:var(--muted);font-size:10px;margin-top:3px}.viewer-grid{flex:1;min-height:0;display:grid;grid-template-rows:minmax(260px,43%) minmax(330px,57%);gap:1px;background:var(--line)}.viewer-panel{background:var(--panel);display:flex;flex-direction:column;min-height:0}.panel-head{height:42px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 12px;gap:8px}.panel-head strong{font-size:12px}.panel-tools{display:flex;gap:6px;align-items:center}.panel-tools .btn{padding:5px 8px;font-size:10px}.canvas{position:relative;flex:1;min-height:0;background:#101010;display:flex;align-items:center;justify-content:center;overflow:hidden}.canvas img{display:block;width:100%;height:100%;object-fit:contain}.placeholder{padding:30px;text-align:center;color:#777;line-height:1.7}.loading-bar{position:absolute;inset:0;background:rgba(17,17,17,.88);display:flex;align-items:center;justify-content:center;color:var(--muted);z-index:3}.model-caption{position:absolute;left:10px;bottom:10px;max-width:calc(100% - 20px);background:rgba(17,17,17,.9);border:1px solid var(--line);padding:6px 8px;border-radius:4px;font-size:10px;color:var(--muted)}
+    .detail{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}.detail-head{padding:12px;border-bottom:1px solid var(--line)}.detail-head h2{font-size:14px;margin:0 0 5px}.detail-head p{font-size:11px;color:var(--muted);margin:0;line-height:1.45}.tol-list{padding:10px;overflow:auto;min-height:0;flex:1}.tol-row{display:block;width:100%;text-align:left;background:#202020;border:1px solid var(--line);color:var(--text);border-radius:5px;padding:10px;margin:0 0 8px;cursor:pointer}.tol-row:hover,.tol-row.active{border-color:var(--orange)}.tol-row.active{background:#292016;box-shadow:inset 3px 0 0 var(--orange)}.tol-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.tol-value{font-size:15px;color:#facc15;font-weight:750}.tol-nominal{font-family:Consolas,monospace;color:#bfdbfe;font-size:11px;margin-top:4px}.tol-feature{font-size:11px;color:var(--text);margin-top:7px}.tol-meta{font-size:10px;color:var(--muted);margin-top:5px;line-height:1.45}.badge{display:inline-block;border:1px solid #475569;border-radius:3px;padding:2px 5px;font-size:9px;color:#cbd5e1;white-space:nowrap}.badge.good{border-color:#166534;color:#86efac}.badge.review{border-color:#92400e;color:#fbbf24}.badge.bad{border-color:#7f1d1d;color:#fca5a5}.evidence{border-top:1px solid var(--line);padding:11px 12px;max-height:260px;overflow:auto;background:#141414}.evidence h3{font-size:11px;color:#d1d5db;margin:0 0 8px;text-transform:uppercase;letter-spacing:.5px}.evidence-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.metric{background:#202020;border:1px solid #303030;padding:7px;border-radius:4px}.metric span{display:block;color:var(--muted);font-size:9px}.metric strong{display:block;font-size:11px;margin-top:3px;word-break:break-word}.checks{font-size:10px;color:var(--muted);line-height:1.65;margin-top:8px}.check-pass{color:#86efac}.check-fail{color:#fca5a5}.empty-list{padding:40px 18px;text-align:center;color:#777;line-height:1.6}
+    @media(max-width:1250px){.layout{grid-template-columns:270px minmax(480px,1fr) 340px}.actions .wide{display:none}}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title"><h1>公差提取視覺稽核 V2</h1><p>原始 STEP、DXF 公差位置與投影／拓撲驗證並排檢查</p></div>
+    <div class="actions"><span id="globalStatus" class="wide" style="color:#9ca3af;font-size:11px">準備中</span><a class="btn" href="/tolerance-inspector.html">舊版案例庫</a><a class="btn" href="/">返回主系統</a></div>
+  </header>
+  <div class="layout">
+    <aside class="rail">
+      <div class="rail-head">
+        <input class="input" id="search" placeholder="搜尋圖號、特徵或案例" />
+        <div class="filter-row" id="qualityFilters">
+          <button class="btn active" data-quality="VERIFIED_EXTRACTION">已驗證</button>
+          <button class="btn" data-quality="NEEDS_REVIEW">待檢查</button>
+          <button class="btn" data-quality="ALL">全部提取</button>
+        </div>
+        <div class="summary" id="summary">讀取案例庫統計資料</div>
+      </div>
+      <div class="drawing-list" id="drawingList"><div class="empty-list">正在載入圖面清單</div></div>
+      <div class="pager"><button class="btn" id="prev">上一頁</button><span id="pageText">-</span><button class="btn" id="next">下一頁</button></div>
+    </aside>
+
+    <main class="workspace">
+      <div class="workspace-head"><div style="min-width:0"><div class="workspace-title" id="drawingTitle">尚未選擇圖面</div><div class="workspace-subtitle" id="drawingSubtitle">從左側選一張工程圖開始檢查</div></div><span class="badge" id="drawingQuality">-</span></div>
+      <div class="viewer-grid">
+        <section class="viewer-panel">
+          <div class="panel-head"><strong>原始 3D 模型與對應特徵</strong><div class="panel-tools"><a class="btn hidden" id="downloadStep" href="#">下載 STEP</a></div></div>
+          <div class="canvas" id="modelCanvas"><div class="placeholder" id="modelPlaceholder">選取右側公差後，才會按需產生模型預覽。<br>列表載入時不啟動 3D，以控制記憶體與等待時間。</div><div class="loading-bar hidden" id="modelLoading">首次產生模型預覽可能需要數秒</div><img class="hidden" id="modelImage" alt="原始 STEP 模型與特徵框" /><div class="model-caption hidden" id="modelCaption"></div></div>
+        </section>
+        <section class="viewer-panel">
+          <div class="panel-head"><strong>原始 2D 工程圖與公差位置</strong><div class="panel-tools"><button class="btn active" id="focus2d">聚焦公差</button><button class="btn" id="full2d">完整圖面</button><a class="btn hidden" id="openPdf" target="_blank" rel="noreferrer">另開 PDF</a></div></div>
+          <div class="canvas"><div class="placeholder" id="drawingPlaceholder">選擇圖面後載入快取向量圖，不會自動載入 PDF。</div><div class="loading-bar hidden" id="drawingLoading">正在載入 DXF 向量圖</div><img class="hidden" id="drawingImage" alt="DXF 工程圖" /></div>
+        </section>
+      </div>
+    </main>
+
+    <aside class="detail">
+      <div class="detail-head"><h2>提取公差</h2><p id="detailSummary">點選公差可讓 2D 圖聚焦，並切換對應的 3D 特徵。</p></div>
+      <div class="tol-list" id="toleranceList"><div class="empty-list">尚未載入圖面公差</div></div>
+      <section class="evidence" id="evidencePanel"><h3>驗證與投影證據</h3><div class="empty-list" style="padding:14px 0">尚未選取公差</div></section>
+    </aside>
+  </div>
+
+  <script>
+    const state={page:1,pages:1,pageSize:24,quality:'VERIFIED_EXTRACTION',search:'',cases:[],activeDrawing:null,details:null,selected:null,focus:true,requestSerial:0};
+    const $=id=>document.getElementById(id);
+    const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const num=(value,digits=3)=>Number.isFinite(Number(value))?Number(value).toFixed(digits):'-';
+    async function getJson(url){const response=await fetch(url,{credentials:'same-origin'});if(!response.ok)throw new Error(`${response.status} ${await response.text()}`);return response.json()}
+    function setImage(image,placeholder,loading,url){loading.classList.remove('hidden');placeholder.classList.add('hidden');image.classList.add('hidden');image.onload=()=>{loading.classList.add('hidden');image.classList.remove('hidden')};image.onerror=()=>{loading.classList.add('hidden');image.classList.add('hidden');placeholder.textContent='影像載入失敗';placeholder.classList.remove('hidden')};image.src=url}
+
+    async function loadStats(){try{const d=await getJson('/api/tolerance/stats');$('globalStatus').textContent=`${d.total_cases.toLocaleString()} 筆案例 · ${d.verified_extraction_cases.toLocaleString()} 筆已驗證 · ${d.total_drawings.toLocaleString()} 張圖面`}catch(error){$('globalStatus').textContent='統計資料讀取失敗'}}
+    async function loadCases(){
+      const params=new URLSearchParams({page:state.page,page_size:state.pageSize,group_by_drawing:'true'});if(state.quality!=='ALL')params.set('quality',state.quality);if(state.search)params.set('search',state.search);
+      $('drawingList').innerHTML='<div class="empty-list">正在載入圖面清單</div>';
+      try{const data=await getJson('/api/tolerance/cases?'+params);state.pages=data.total_pages;state.cases=data.cases;$('summary').textContent=`篩選後 ${data.total_count.toLocaleString()} 張圖面，包含 ${data.evidence_count.toLocaleString()} 筆公差證據`;$('pageText').textContent=`${data.page} / ${data.total_pages}`;$('prev').disabled=data.page<=1;$('next').disabled=data.page>=data.total_pages;renderDrawingList()}catch(error){$('drawingList').innerHTML=`<div class="empty-list">圖面清單載入失敗<br>${esc(error.message)}</div>`}
+    }
+    function renderDrawingList(){
+      if(!state.cases.length){$('drawingList').innerHTML='<div class="empty-list">目前篩選條件沒有案例</div>';return}
+      $('drawingList').innerHTML=state.cases.map((item,index)=>{const total=item.drawing_case_count||1;const verified=item.drawing_verified_extraction_count??(item.verified_extraction?1:0);return `<button class="drawing-card" data-drawing="${index}"><div class="drawing-thumb">${item.preview_image_url?`<img loading="lazy" src="${esc(item.preview_image_url)}" alt="${esc(item.model_name)}"/>`:'<span style="color:#666">無預覽</span>'}</div><div class="drawing-meta"><div class="drawing-name">${esc(item.model_name)}</div><div class="drawing-count"><span>${total} 筆提取</span><span style="color:${verified?'#86efac':'#fbbf24'}">${verified} 筆已驗證</span></div></div></button>`}).join('');
+      document.querySelectorAll('[data-drawing]').forEach(button=>button.onclick=()=>openDrawing(Number(button.dataset.drawing),button));
+    }
+    async function openDrawing(index,button){
+      const serial=++state.requestSerial;state.activeDrawing=state.cases[index];state.details=null;state.selected=null;document.querySelectorAll('.drawing-card').forEach(item=>item.classList.remove('active'));button.classList.add('active');
+      const item=state.activeDrawing;$('drawingTitle').textContent=item.model_name;$('drawingSubtitle').textContent='正在解析 DXF 尺寸與案例連結';$('drawingQuality').textContent=`${item.drawing_verified_extraction_count||0}/${item.drawing_case_count||1} 已驗證`;$('toleranceList').innerHTML='<div class="empty-list">正在載入公差明細</div>';
+      showDrawing(item.svg_url);$('openPdf').classList.toggle('hidden',!item.pdf_url);if(item.pdf_url)$('openPdf').href=item.pdf_url;
+      resetModel();
+      try{const details=await getJson(item.details_url);if(serial!==state.requestSerial)return;state.details=details;$('drawingSubtitle').textContent=`DXF 共 ${details.total_dimensions_count} 筆尺寸，提取 ${details.total_tolerances_count} 筆公差`;renderTolerances()}catch(error){if(serial!==state.requestSerial)return;$('toleranceList').innerHTML=`<div class="empty-list">公差明細載入失敗<br>${esc(error.message)}</div>`}
+    }
+    function visibleTolerances(){const rows=state.details?.tolerances||[];if(state.quality==='VERIFIED_EXTRACTION')return rows.filter(item=>item.case_id&&item.geometry_verification?.passed);if(state.quality==='NEEDS_REVIEW')return rows.filter(item=>!item.case_id||!item.geometry_verification?.passed);return rows}
+    function renderTolerances(){
+      const rows=visibleTolerances();$('detailSummary').textContent=`顯示 ${rows.length} 筆；橘色選取項會同步控制 2D 與 3D 視圖。`;
+      if(!rows.length){$('toleranceList').innerHTML='<div class="empty-list">這張圖沒有符合目前品質篩選的公差</div>';return}
+      $('toleranceList').innerHTML=rows.map((item,index)=>{const verified=!!item.geometry_verification?.passed;const badge=verified?'good':item.validation_status==='REJECTED'?'bad':'review';const label=verified?'幾何已驗證':item.case_id?'待複核':'未連結 3D';const feature=item.matched_feature_id?`${item.matched_feature_id}.${item.matched_nominal_field||''}`:(item.matched_feature_type||'未確定特徵');return `<button class="tol-row" data-tolerance="${index}"><div class="tol-top"><div class="tol-value">${esc(item.formatted_tolerance)}</div><span class="badge ${badge}">${label}</span></div><div class="tol-nominal">${esc(item.prefix||'')}${num(item.nominal_value)} mm · ${esc(item.dimension_category)}</div><div class="tol-feature">${esc(feature)}</div><div class="tol-meta">handle ${esc(item.entity_handle||'-')} · ${esc(item.validation_status)} · 信心 ${Math.round(Number(item.extraction_confidence||0)*100)}%</div></button>`}).join('');
+      document.querySelectorAll('[data-tolerance]').forEach(button=>button.onclick=()=>selectTolerance(rows[Number(button.dataset.tolerance)],button));selectTolerance(rows[0],document.querySelector('[data-tolerance="0"]'));
+    }
+    function selectTolerance(item,button){state.selected=item;document.querySelectorAll('.tol-row').forEach(row=>row.classList.remove('active'));button?.classList.add('active');showSelectedDrawing();showModel(item);renderEvidence(item)}
+    function showDrawing(url){if(!url)return;setImage($('drawingImage'),$('drawingPlaceholder'),$('drawingLoading'),url)}
+    function showSelectedDrawing(){if(!state.activeDrawing||!state.selected)return;const item=state.selected;const params=new URLSearchParams();if(item.case_id)params.set('case_id',item.case_id);else if(item.entity_handle)params.set('highlight',item.entity_handle);params.set('focus',state.focus?'true':'false');showDrawing(`${state.activeDrawing.svg_url}?${params}`);$('focus2d').classList.toggle('active',state.focus);$('full2d').classList.toggle('active',!state.focus)}
+    function resetModel(){$('modelImage').classList.add('hidden');$('modelImage').removeAttribute('src');$('modelPlaceholder').innerHTML='選取右側公差後，才會按需產生模型預覽。<br>列表載入時不啟動 3D，以控制記憶體與等待時間。';$('modelPlaceholder').classList.remove('hidden');$('modelLoading').classList.add('hidden');$('downloadStep').classList.add('hidden');$('modelCaption').classList.add('hidden')}
+    function showModel(item){
+      if(!item.model_available||!item.model_preview_url){resetModel();$('modelPlaceholder').textContent='此筆公差尚未連結到可讀取的原始 STEP 模型。';return}
+      $('downloadStep').href=item.model_download_url;$('downloadStep').classList.remove('hidden');$('modelCaption').textContent=`${item.source_model_name||'STEP'} · ${item.matched_feature_id||item.matched_feature_type||'feature'}`;$('modelCaption').classList.remove('hidden');setImage($('modelImage'),$('modelPlaceholder'),$('modelLoading'),item.model_preview_url)
+    }
+    function renderEvidence(item){
+      const geometry=item.geometry_verification||{};const registration=geometry.view_registration||{};const localization=geometry.feature_localization||{};const topology=item.topology_mapping||localization.topology_mapping||{};const association=geometry.association||{};const checks=geometry.checks||{};const checkRows=Object.entries(checks).map(([key,value])=>`<span class="${value?'check-pass':'check-fail'}">${value?'通過':'未通過'}</span> ${esc(key)}`).join('<br>');
+      $('evidencePanel').innerHTML=`<h3>驗證與投影證據</h3><div class="evidence-grid"><div class="metric"><span>幾何驗證</span><strong style="color:${geometry.passed?'#86efac':'#fca5a5'}">${geometry.passed?'PASS':'REVIEW'} · ${num(geometry.score)}</strong></div><div class="metric"><span>DXF / STEP 視圖</span><strong>${esc(registration.dxf_view_id||'-')} / ${esc(registration.step_view||item.matched_step_view||'-')}</strong></div><div class="metric"><span>投影輪廓分數</span><strong>${num(registration.contour_score)}</strong></div><div class="metric"><span>投影轉換</span><strong>${num(registration.rotation_degrees,1)}° · ${registration.mirrored?'鏡射':'未鏡射'}</strong></div><div class="metric"><span>特徵定位</span><strong>${esc(localization.status||'-')} · ${num(localization.score)}</strong></div><div class="metric"><span>拓撲映射</span><strong>${esc(topology.status||'-')} · ${num(topology.score)}</strong></div><div class="metric"><span>附著幾何</span><strong>${esc((association.attached_geometry_handles||[]).join(', ')||'-')}</strong></div><div class="metric"><span>案例狀態</span><strong>${esc(item.verification_status||item.validation_status||'-')}</strong></div></div><div class="checks">${checkRows||'此筆尚無完整幾何驗證檢查項目。'}</div>`
+    }
+
+    $('focus2d').onclick=()=>{state.focus=true;showSelectedDrawing()};$('full2d').onclick=()=>{state.focus=false;showSelectedDrawing()};$('prev').onclick=()=>{if(state.page>1){state.page--;loadCases()}};$('next').onclick=()=>{if(state.page<state.pages){state.page++;loadCases()}};
+    let searchTimer;$('search').oninput=event=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{state.search=event.target.value.trim();state.page=1;loadCases()},300)};
+    document.querySelectorAll('[data-quality]').forEach(button=>button.onclick=()=>{document.querySelectorAll('[data-quality]').forEach(item=>item.classList.remove('active'));button.classList.add('active');state.quality=button.dataset.quality;state.page=1;loadCases()});
+    Promise.all([loadStats(),loadCases()]).catch(error=>console.error(error));
+  </script>
+</body>
+</html>
