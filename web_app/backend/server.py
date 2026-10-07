@@ -368,6 +368,7 @@ AUDIT_MODEL_CACHE_DIR = os.path.join(
 os.makedirs(SVG_CACHE_DIR, exist_ok=True)
 os.makedirs(PDF_CACHE_DIR, exist_ok=True)
 os.makedirs(AUDIT_MODEL_CACHE_DIR, exist_ok=True)
+TOLERANCE_VISUAL_CACHE_VERSION = "v2"
 
 dwg_index = {}
 if os.path.exists(DWG_INDEX_PATH):
@@ -479,6 +480,24 @@ def _focus_box_for_highlight(doc, msp, handles: List[str], points: List[List[flo
         return None
 
 
+def _modelspace_render_box(msp, padding_ratio: float = 0.015):
+    """Use DXF geometry extents to reject exploded renderer-only text bounds."""
+    try:
+        from ezdxf import bbox as ezdxf_bbox
+        from ezdxf.math import BoundingBox2d
+
+        extents = ezdxf_bbox.extents(msp)
+        if not extents.has_data:
+            return None
+        xmin, ymin = float(extents.extmin.x), float(extents.extmin.y)
+        xmax, ymax = float(extents.extmax.x), float(extents.extmax.y)
+        span = max(xmax - xmin, ymax - ymin, 1.0)
+        padding = span * max(0.0, float(padding_ratio))
+        return BoundingBox2d([(xmin - padding, ymin - padding), (xmax + padding, ymax + padding)])
+    except Exception:
+        return None
+
+
 def render_dxf_to_svg_cached(
     dxf_path: str,
     model_name: str,
@@ -489,7 +508,10 @@ def render_dxf_to_svg_cached(
 ) -> Optional[str]:
     if not dxf_path or not os.path.exists(dxf_path):
         return None
-    cache_file = os.path.join(SVG_CACHE_DIR, f"{model_name}.svg")
+    cache_file = os.path.join(
+        SVG_CACHE_DIR,
+        f"{model_name}_{TOLERANCE_VISUAL_CACHE_VERSION}.svg",
+    )
     if not highlight_handle and os.path.exists(cache_file):
         try:
             with open(cache_file, "r", encoding="utf-8") as f:
@@ -505,14 +527,16 @@ def render_dxf_to_svg_cached(
         frontend = Frontend(ctx, backend)
         frontend.draw_layout(msp)
         page = Page.from_dxf_layout(msp)
-        render_box = None
+        render_box = _modelspace_render_box(msp)
         if focus and highlight_handle:
-            render_box = _focus_box_for_highlight(
+            focused_box = _focus_box_for_highlight(
                 doc,
                 msp,
                 [highlight_handle, *(supporting_handles or [])],
                 focus_points or [],
             )
+            if focused_box is not None:
+                render_box = focused_box
         svg_str = backend.get_string(page, render_box=render_box)
         if not highlight_handle:
             with open(cache_file, "w", encoding="utf-8") as f:
@@ -526,14 +550,20 @@ def render_dxf_to_svg_cached(
 def render_dxf_to_pdf_cached(dxf_path: str, model_name: str) -> Optional[str]:
     if not dxf_path or not os.path.exists(dxf_path):
         return None
-    cache_file = os.path.join(PDF_CACHE_DIR, f"{model_name}.pdf")
+    cache_file = os.path.join(
+        PDF_CACHE_DIR,
+        f"{model_name}_{TOLERANCE_VISUAL_CACHE_VERSION}.pdf",
+    )
     if os.path.exists(cache_file):
         return cache_file
     try:
         # Matplotlib's DXF renderer can hang indefinitely on some large company
         # drawings.  Reuse the already-tested SVG renderer and convert the
         # vector output with svglib/reportlab instead.
-        svg_file = os.path.join(SVG_CACHE_DIR, f"{model_name}.svg")
+        svg_file = os.path.join(
+            SVG_CACHE_DIR,
+            f"{model_name}_{TOLERANCE_VISUAL_CACHE_VERSION}.svg",
+        )
         if not os.path.exists(svg_file):
             if not render_dxf_to_svg_cached(dxf_path, model_name):
                 return None
@@ -597,10 +627,12 @@ def get_tolerance_stats():
 def list_tolerance_cases(
     category: Optional[str] = None,
     quality: Optional[str] = None,
+    product_family: Optional[str] = None,
     search: Optional[str] = None,
     page: int = 1,
     page_size: int = 36,
     group_by_drawing: bool = False,
+    group_by_family: bool = False,
 ):
     """
     取得歷史特徵案例庫詳細案例清單，支援分頁、分類篩選與關鍵字搜尋
@@ -608,6 +640,16 @@ def list_tolerance_cases(
     try:
         case_list = []
         for c in case_base.cases:
+            metadata = c.source_metadata or {}
+            case_family = str(
+                metadata.get("product_family")
+                or FeatureCaseBase.infer_product_family(
+                    metadata.get("drawing_file") or c.evidence_source
+                )
+                or "UNCLASSIFIED"
+            ).upper()
+            if product_family and case_family != str(product_family).strip().upper():
+                continue
             if category and category.upper() != "ALL":
                 cat_u = category.upper()
                 r_u = c.inferred_role.upper()
@@ -649,6 +691,7 @@ def list_tolerance_cases(
             d["verified_extraction"] = verified_extraction
             d["candidate_feature_types"] = list((c.source_metadata or {}).get("candidate_feature_types") or [])
             d["feature_inference_2d"] = dict((c.source_metadata or {}).get("feature_inference_2d") or {})
+            d["product_family"] = case_family
 
             t_cfg = c.tolerance_config or {}
             mode = t_cfg.get("mode", "FIT")
@@ -727,14 +770,37 @@ def list_tolerance_cases(
 
             if search:
                 s_lower = search.lower().strip()
-                text_blob = f"{c.case_id} {model_name} {c.part_type} {c.feature_type} {c.inferred_role} {fmt_tol} {d['dim_summary']} {c.description} {c.evidence_source}".lower()
+                text_blob = f"{c.case_id} {model_name} {case_family} {c.part_type} {c.feature_type} {c.inferred_role} {fmt_tol} {d['dim_summary']} {c.description} {c.evidence_source}".lower()
                 if s_lower not in text_blob:
                     continue
 
             case_list.append(d)
 
         evidence_count = len(case_list)
-        if group_by_drawing:
+        if group_by_family:
+            grouped = {}
+            for item in case_list:
+                key = item.get("product_family") or "UNCLASSIFIED"
+                if key not in grouped:
+                    representative = dict(item)
+                    representative["folder_name"] = key
+                    representative["family_case_count"] = 0
+                    representative["family_verified_count"] = 0
+                    representative["family_eligible_count"] = 0
+                    representative["family_drawing_names"] = []
+                    grouped[key] = representative
+                aggregate = grouped[key]
+                aggregate["family_case_count"] += 1
+                aggregate["family_verified_count"] += int(bool(item.get("verified_extraction")))
+                aggregate["family_eligible_count"] += int(bool(item.get("retrieval_eligible")))
+                drawing_names = aggregate["family_drawing_names"]
+                drawing_name = item.get("model_name")
+                if drawing_name and drawing_name not in drawing_names:
+                    drawing_names.append(drawing_name)
+            for aggregate in grouped.values():
+                aggregate["family_drawing_count"] = len(aggregate["family_drawing_names"])
+            case_list = sorted(grouped.values(), key=lambda item: item["folder_name"])
+        elif group_by_drawing:
             grouped = {}
             for item in case_list:
                 key = item["model_name"].lower()
@@ -776,6 +842,8 @@ def list_tolerance_cases(
             "evidence_count": evidence_count,
             "all_cases_count": len(case_base.cases),
             "group_by_drawing": group_by_drawing,
+            "group_by_family": group_by_family,
+            "product_family": product_family,
             "page": curr_page,
             "page_size": page_size,
             "total_pages": total_pages,
