@@ -56,6 +56,7 @@ FastAPI 錯誤：
 | 200 | 成功 |
 | 400 | 參數或狀態不合法，例如 job 未完成 |
 | 401 | 受保護接口缺少或提供錯誤 API key |
+| 403 | 已登入，但角色或資料所有權不允許此操作 |
 | 404 | job、model、part、圖面或 artifact 不存在 |
 | 422 | FastAPI schema 驗證或 DXF 解析失敗 |
 | 500 | CAD 計算、檔案或未處理例外 |
@@ -168,7 +169,7 @@ Response：
 {"job_id": "4e1179f6-69f0-4d16-8c60-3d54539fa4e2"}
 ```
 
-目前 API 沒有檔案大小上限與認證；部署在不可信網路前必須由 reverse proxy 補上限制。
+API 已有帳號與 Session 認證；目前仍沒有檔案大小上限，部署在不可信網路前必須由 reverse proxy 補上限制。
 
 ### `POST /api/compare`
 
@@ -844,3 +845,53 @@ sequenceDiagram
 - DB transaction 與案例 audit trail。
 - 將本機路徑從一般 response 移除或遮罩。
 - OpenAPI contract test 與 SDK generation。
+# 工程師帳號與個人化 API（2026-10）
+
+除 `/api/health`、`/api/auth/login` 與使用獨立 API Key 的外部預測寫入外，API 預設要求有效的 `cad_session` HttpOnly Cookie 或 `Authorization: Bearer <session-token>`。
+
+## 認證
+
+- `POST /api/auth/login`：`{"username":"...","password":"..."}`。
+- `POST /api/auth/logout`：撤銷目前 session。
+- `GET /api/auth/me`：目前帳號、角色與 `must_change_password`。
+- `PUT /api/auth/password`：`current_password`、`new_password`；成功後所有 session 失效。
+
+## 工程師偏好與作品
+
+- `GET /api/engineer/preferences`
+- `PUT /api/engineer/preferences`
+- `DELETE /api/engineer/preferences`：只恢復設定預設值，不刪案例與成品。
+- `GET /api/engineer/artifacts`
+- `DELETE /api/engineer/artifacts/{artifact_id}`
+- `GET /api/engineer/tolerance-cases`
+- `DELETE /api/engineer/tolerance-cases/{case_record_id}`：刪除自己的單筆學習案例。
+- `DELETE /api/engineer/tolerance-cases`：清空自己的全部學習案例，不刪標註成品。
+
+偏好 payload：
+
+```json
+{
+  "recommendation_mode": "BALANCED",
+  "personal_case_weight": 0.35,
+  "personal_case_min_similarity": 0.82,
+  "default_tolerance": {},
+  "dimension_placement": {
+    "preferred_view": "front",
+    "side": "BOTTOM",
+    "baseline": "LEFT",
+    "offset": 12.0
+  },
+  "annotation_style": {},
+  "ui_settings": {}
+}
+```
+
+## 管理員
+
+- `GET /api/admin/users`
+- `POST /api/admin/users`
+- `PATCH /api/admin/users/{user_id}`
+- `POST /api/admin/users/{user_id}/reset-password`
+- `GET /api/admin/audit-events?limit=200`
+
+完整權限、資料隔離和部署說明見 [account-and-personalization-system.md](account-and-personalization-system.md)。

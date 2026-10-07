@@ -8,7 +8,7 @@ from math import isfinite
 from typing import Dict, Any, List, Optional, Literal
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
-from fastapi import FastAPI, UploadFile, File, Body, HTTPException, Header
+from fastapi import FastAPI, UploadFile, File, Body, HTTPException, Header, Request, Depends
 from fastapi.responses import Response, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +19,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from auto_2d_drawing.config import MODELS_DIR, OUTPUT_DIR
 from auto_2d_drawing.batch_generate import batch_generate
+from web_app.backend.account_api import (
+    AuthenticationMiddleware,
+    assert_model_access,
+    require_admin,
+    require_user,
+    router as account_router,
+    store as identity_store,
+)
+from web_app.backend.engineer_personalization import personalize_recommendations
+from web_app.backend.identity_store import CurrentUser
 
 app = FastAPI(
     title="FORCECON STEP-to-2D API",
@@ -29,13 +39,23 @@ app = FastAPI(
     ),
 )
 
+cors_origins = [
+    value.strip()
+    for value in os.environ.get(
+        "CAD_CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000",
+    ).split(",")
+    if value.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(AuthenticationMiddleware)
+app.include_router(account_router)
 
 @app.middleware("http")
 async def add_no_cache_header(request, call_next):
@@ -155,22 +175,41 @@ def _view_urls(entry: dict) -> dict:
     return views
 
 
-def _annotation_path(output_dir: str, part_id: str) -> str:
-    return os.path.join(output_dir, "_annotations", f"{part_id}_annotations.json")
+def _user_workspace(output_dir: str, user_id: str) -> str:
+    """Return an isolated filesystem root for one engineer inside a model."""
+    safe_user_id = str(uuid.UUID(user_id))
+    path = os.path.abspath(os.path.join(output_dir, "_users", safe_user_id))
+    if os.path.commonpath([os.path.abspath(output_dir), path]) != os.path.abspath(output_dir):
+        raise HTTPException(status_code=400, detail="Invalid user workspace")
+    return path
+
+
+def _annotation_path(output_dir: str, part_id: str, user_id: Optional[str] = None) -> str:
+    root = _user_workspace(output_dir, user_id) if user_id else output_dir
+    return os.path.join(root, "_annotations", f"{part_id}_annotations.json")
 
 
 from auto_2d_drawing.step_reader import load_step
 from auto_2d_drawing.feature_extractor import FeatureExtractor
 from auto_2d_drawing.feature_layer import build_feature_records
+from auto_2d_drawing.canonical_features import (
+    extract_canonical_features,
+    normalize_canonical_feature_records,
+)
 from auto_2d_drawing.smart_annotation_engine import TemplateManager, SmartAnnotationEngine
 from auto_2d_drawing.view_projector import ViewProjector
 from auto_2d_drawing.tolerance.tolerance_decision_service import ToleranceDecisionService
 from auto_2d_drawing.tolerance.iso_tolerance_table import lookup_iso_fit_deviation
 from auto_2d_drawing.tolerance.case_base import FeatureCaseBase, ToleranceCase
+from auto_2d_drawing.tolerance.engineer_case_ingestion import (
+    EngineerCaseValidationError,
+    EngineerConfirmedCaseService,
+)
 
 template_manager = TemplateManager()
 case_base = FeatureCaseBase()
 tolerance_service = ToleranceDecisionService(case_base=case_base)
+engineer_case_service = EngineerConfirmedCaseService(case_base=case_base)
 
 
 class ExternalTolerancePrediction(BaseModel):
@@ -919,7 +958,9 @@ def save_external_tolerance_predictions(
     rule_ids = [item.rule_id for item in prediction_set.predictions]
     if len(rule_ids) != len(set(rule_ids)):
         raise HTTPException(status_code=400, detail="Duplicate rule_id in predictions")
-    current_rules = get_candidate_annotation_rules(model_id, part_id).get("rules") or []
+    current_rules = get_candidate_annotation_rules(
+        model_id, part_id, current_user=None
+    ).get("rules") or []
     valid_rule_ids = {
         str(rule.get("rule_id") or rule.get("id"))
         for rule in current_rules
@@ -1006,7 +1047,10 @@ def delete_external_tolerance_predictions(
 
 
 @app.post("/api/tolerance/recommend")
-def recommend_tolerances(body: Dict[str, Any] = Body(...)):
+def recommend_tolerances(
+    body: Dict[str, Any] = Body(...),
+    current_user: CurrentUser = Depends(require_user),
+):
     """
     智慧公差推薦 API：依據 3D 特徵關係圖 (FRG) 與歷史特徵案例庫 (CAD-RAG)，
     為候選標註規則進行三層分流公差決策 (Tier 1~3)
@@ -1024,6 +1068,7 @@ def recommend_tolerances(body: Dict[str, Any] = Body(...)):
     if not model_id or not part_id:
         raise HTTPException(status_code=400, detail="model_id and part_id are required")
 
+    assert_model_access(current_user, model_id)
     output_dir = _safe_output_dir(model_id)
     _safe_part_id(part_id)
 
@@ -1061,6 +1106,14 @@ def recommend_tolerances(body: Dict[str, Any] = Body(...)):
             part_type=part_category,
             product_family=product_family,
         )
+        rec_result = personalize_recommendations(
+            store=identity_store,
+            user=current_user,
+            candidate_rules=candidate_rules,
+            recommendation_result=rec_result,
+            part_type=part_category or rec_result.get("part_type"),
+            product_family=product_family,
+        )
 
         # Attach traceable drawing links only when the referenced source DXF
         # really exists.  Seed/rule-only cases remain visible but non-clickable.
@@ -1089,6 +1142,7 @@ def recommend_tolerances(body: Dict[str, Any] = Body(...)):
             "high_confidence_count": rec_result.get("high_confidence_count"),
             "recommendations": rec_result.get("recommendations"),
             "feature_graph": rec_result.get("feature_graph"),
+            "engineer_personalization": rec_result.get("engineer_personalization"),
             "external_prediction_set": _load_external_prediction_set(output_dir, part_id),
         }
     except Exception as e:
@@ -1098,8 +1152,70 @@ def recommend_tolerances(body: Dict[str, Any] = Body(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/tolerance/confirm-feature-case")
+def confirm_feature_tolerance_case(
+    body: Dict[str, Any] = Body(...),
+    current_user: CurrentUser = Depends(require_user),
+):
+    """Persist a newly annotated tolerance against a revalidated STEP feature."""
+    model_id = str(body.get("model_id") or "")
+    part_id = str(body.get("part_id") or "")
+    if not model_id or not part_id:
+        raise HTTPException(status_code=400, detail="model_id and part_id are required")
+    if body.get("confirmed") is not True:
+        raise HTTPException(status_code=400, detail="confirmed=true is required")
+
+    assert_model_access(current_user, model_id)
+    output_dir = _safe_output_dir(model_id)
+    _safe_part_id(part_id)
+    stp_candidates = [
+        os.path.join(output_dir, "_parts", f"{part_id}.stp"),
+        os.path.join(output_dir, "_parts", f"{part_id}.step"),
+        os.path.join(output_dir, f"{part_id}.stp"),
+        os.path.join(output_dir, f"{part_id}.step"),
+        os.path.join(MODELS_DIR, f"{model_id}.stp"),
+        os.path.join(MODELS_DIR, f"{model_id.replace('_batch', '')}.stp"),
+    ]
+    stp_path = next((path for path in stp_candidates if os.path.exists(path)), None)
+    if not stp_path:
+        raise HTTPException(status_code=404, detail=f"STEP file for {part_id} not found")
+
+    try:
+        case = engineer_case_service.confirm(
+            shape=load_step(stp_path),
+            model_id=model_id,
+            part_id=part_id,
+            feature_id=str(body.get("feature_id") or body.get("canonical_feature_id") or ""),
+            dimension_category=str(body.get("dimension_category") or body.get("dim_type") or ""),
+            tolerance_config=dict(body.get("tolerance_config") or {}),
+            engineer_id=str(getattr(current_user, "id", "") or "unknown"),
+            nominal_field=body.get("nominal_field") or body.get("canonical_nominal_field"),
+            nominal_value=body.get("nominal_value"),
+            part_type=body.get("part_type") or body.get("part_category"),
+            product_family=body.get("product_family"),
+            rule_id=body.get("rule_id"),
+            drawing_file=body.get("drawing_file"),
+            description=body.get("description"),
+        )
+        return {
+            "status": "ok",
+            "case_id": case.case_id,
+            "case": case.to_dict(),
+            "total_cases": len(case_base.cases),
+        }
+    except EngineerCaseValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.post("/api/tolerance/save-case")
-def save_tolerance_case(body: Dict[str, Any] = Body(...)):
+def save_tolerance_case(
+    body: Dict[str, Any] = Body(...),
+    admin: CurrentUser = Depends(require_admin),
+):
     """將審定公差或使用者確認後的標註儲存為歷史案例"""
     try:
         case_id = body.get("case_id", f"case_custom_{uuid.uuid4().hex[:6]}")
@@ -1125,27 +1241,33 @@ def save_tolerance_case(body: Dict[str, Any] = Body(...)):
 
 
 @app.get("/api/annotation/templates")
-def get_annotation_templates():
+def get_annotation_templates(current_user: CurrentUser = Depends(require_user)):
     """取得所有可用標註樣板清單"""
-    templates = template_manager.list_templates()
+    templates = template_manager.list_templates() + identity_store.list_templates(current_user.id)
     return {"status": "ok", "templates": templates}
 
 
 @app.post("/api/annotation/templates")
-def save_annotation_template(data: Dict[str, Any] = Body(...)):
+def save_annotation_template(
+    data: Dict[str, Any] = Body(...),
+    current_user: CurrentUser = Depends(require_user),
+):
     """儲存或建立新標註樣板"""
     try:
-        saved = template_manager.save_template(data)
+        saved = identity_store.save_template(current_user.id, data)
         return {"status": "ok", "template": saved}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.delete("/api/annotation/templates/{template_id}")
-def delete_annotation_template(template_id: str):
+def delete_annotation_template(
+    template_id: str,
+    current_user: CurrentUser = Depends(require_user),
+):
     """刪除自訂標註樣板"""
     try:
-        success = template_manager.delete_template(template_id)
+        success = identity_store.delete_template(current_user, template_id)
         if not success:
             raise HTTPException(status_code=404, detail="Template not found")
         return {"status": "ok", "message": "Template deleted"}
@@ -1156,7 +1278,10 @@ def delete_annotation_template(template_id: str):
 
 
 @app.post("/api/annotation/apply-template")
-def apply_annotation_template(body: Dict[str, Any] = Body(...)):
+def apply_annotation_template(
+    body: Dict[str, Any] = Body(...),
+    current_user: CurrentUser = Depends(require_user),
+):
     """
     將指定樣板的規則動態套用至特徵清單
     Body: {"template_id": "...", "feature_records": [...]} 或 {"template": {...}, "feature_records": [...]}
@@ -1166,7 +1291,10 @@ def apply_annotation_template(body: Dict[str, Any] = Body(...)):
     feature_records = body.get("feature_records", [])
 
     if not template and template_id:
-        template = template_manager.get_template(template_id)
+        template = next(
+            (item for item in identity_store.list_templates(current_user.id) if item.get("id") == template_id),
+            None,
+        ) or template_manager.get_template(template_id)
 
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -1176,7 +1304,10 @@ def apply_annotation_template(body: Dict[str, Any] = Body(...)):
 
 
 @app.post("/api/annotation/render")
-def render_custom_annotation_drawing(body: Dict[str, Any] = Body(...)):
+def render_custom_annotation_drawing(
+    body: Dict[str, Any] = Body(...),
+    current_user: CurrentUser = Depends(require_user),
+):
     """
     依據使用者選定之特徵與自訂公差組態，即時產出客製化工程圖 (DXF, PDF, PNG)
     Body: {
@@ -1194,6 +1325,7 @@ def render_custom_annotation_drawing(body: Dict[str, Any] = Body(...)):
     if not model_id or not part_id:
         raise HTTPException(status_code=400, detail="model_id and part_id are required")
 
+    assert_model_access(current_user, model_id)
     output_dir = _safe_output_dir(model_id)
     _safe_part_id(part_id)
 
@@ -1220,7 +1352,8 @@ def render_custom_annotation_drawing(body: Dict[str, Any] = Body(...)):
         view_data = projector.project_all_views(shape, view_names=['front', 'top', 'right', 'left'])
 
         # 2. 準備客製輸出目錄
-        custom_out_dir = os.path.join(output_dir, "_custom_annotations", part_id)
+        user_workspace = _user_workspace(output_dir, current_user.id)
+        custom_out_dir = os.path.join(user_workspace, "_custom_annotations", part_id)
         os.makedirs(custom_out_dir, exist_ok=True)
 
         dxf_path = os.path.join(custom_out_dir, f"{part_id}_custom.dxf")
@@ -1238,12 +1371,28 @@ def render_custom_annotation_drawing(body: Dict[str, Any] = Body(...)):
             title_info=title_info
         )
 
+        relative_parts = ("_users", current_user.id, "_custom_annotations", part_id)
+        output_files = {
+            "dxf_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.dxf"),
+            "pdf_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.pdf"),
+            "svg_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.svg"),
+            "png_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.png"),
+        }
+        learning = identity_store.record_artifact_and_cases(
+            user=current_user,
+            model_id=model_id,
+            part_id=part_id,
+            feature_records=feature_records,
+            output_files=output_files,
+            title=(title_info or {}).get("drawing_title") or f"{part_id} annotation",
+            part_type=body.get("part_category"),
+            product_family=body.get("product_family") or FeatureCaseBase.infer_product_family(part_id),
+        )
+
         return {
             "status": "ok",
-            "dxf_url": _api_file_url(model_id, "_custom_annotations", part_id, f"{part_id}_custom.dxf"),
-            "pdf_url": _api_file_url(model_id, "_custom_annotations", part_id, f"{part_id}_custom.pdf"),
-            "svg_url": _api_file_url(model_id, "_custom_annotations", part_id, f"{part_id}_custom.svg"),
-            "png_url": _api_file_url(model_id, "_custom_annotations", part_id, f"{part_id}_custom.png"),
+            **output_files,
+            **learning,
             "timestamp": uuid.uuid4().hex[:8]
         }
     except Exception as e:
@@ -1253,8 +1402,7 @@ def render_custom_annotation_drawing(body: Dict[str, Any] = Body(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/annotation/candidate-rules/{model_id}/{part_id}")
-def get_candidate_annotation_rules(model_id: str, part_id: str):
+def _candidate_annotation_rules_impl(model_id: str, part_id: str):
     """
     為指定零件動態掃描並產出所有候選標註規則 (Candidate Dimension Rules)
     """
@@ -1295,12 +1443,28 @@ def get_candidate_annotation_rules(model_id: str, part_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/annotation/candidate-rules/{model_id}/{part_id}")
+def get_candidate_annotation_rules(
+    model_id: str,
+    part_id: str,
+    current_user: Optional[CurrentUser] = Depends(require_user),
+):
+    if current_user is not None:
+        assert_model_access(current_user, model_id)
+    return _candidate_annotation_rules_impl(model_id, part_id)
+
+
 @app.get("/api/features/{model_id}/{part_id}")
-def get_part_features(model_id: str, part_id: str):
+def get_part_features(
+    model_id: str,
+    part_id: str,
+    current_user: CurrentUser = Depends(require_user),
+):
     """
     動態取得或即時提取任何零件的完整 3D 機械特徵清單
     若無快取或為舊版 2D 格式，會自動載入實體 STEP 進行即時提取並更新快取
     """
+    assert_model_access(current_user, model_id)
     output_dir = _safe_output_dir(model_id)
     _safe_part_id(part_id)
 
@@ -1318,7 +1482,7 @@ def get_part_features(model_id: str, part_id: str):
     if json_path and os.path.exists(json_path):
         try:
             with open(json_path, "r", encoding="utf-8") as f:
-                records = json.load(f)
+                records = normalize_canonical_feature_records(json.load(f))
             if isinstance(records, list) and len(records) > 0:
                 has_3d = any(
                     isinstance(r.get("geometry"), dict) and
@@ -1344,8 +1508,7 @@ def get_part_features(model_id: str, part_id: str):
             try:
                 shape = load_step(stp_path)
                 if shape and not shape.IsNull():
-                    fe = FeatureExtractor(shape)
-                    records = build_feature_records(fe, None)
+                    records = extract_canonical_features(shape).records
                     save_path = json_path or os.path.join(output_dir, f"{part_id}_feature_records.json")
                     with open(save_path, "w", encoding="utf-8") as f:
                         json.dump(records, f, indent=2, ensure_ascii=False)
@@ -1364,7 +1527,7 @@ def get_part_features(model_id: str, part_id: str):
     return {"status": "ok", "records": [], "source": "none"}
 
 
-def _build_drawing_package(model_id: str) -> dict:
+def _build_drawing_package(model_id: str, user_id: Optional[str] = None) -> dict:
     output_dir = _safe_output_dir(model_id)
     parts_map = build_parts_map(output_dir, model_id)
     parts = {}
@@ -1385,10 +1548,10 @@ def _build_drawing_package(model_id: str) -> dict:
             },
         }
 
-        annotations_path = _annotation_path(output_dir, part_id)
-        if os.path.exists(annotations_path):
+        annotations_path = _annotation_path(output_dir, part_id, user_id) if user_id else None
+        if annotations_path and os.path.exists(annotations_path):
             package_entry["external_annotations"] = _api_file_url(
-                model_id, "_annotations", os.path.basename(annotations_path)
+                model_id, "_users", user_id, "_annotations", os.path.basename(annotations_path)
             )
 
         parts[part_id] = package_entry
@@ -1417,7 +1580,7 @@ def run_job(job_id: str, file_path: str):
 
     try:
         model_name = os.path.splitext(os.path.basename(file_path))[0]
-        output_dir_name = model_name + "_batch"
+        output_dir_name = jobs[job_id]["requested_model_id"]
         output_dir = os.path.join(OUTPUT_DIR, output_dir_name)
         
         assembly_info = {
@@ -1439,6 +1602,11 @@ def run_job(job_id: str, file_path: str):
                 jobs[job_id]["result"] = json.load(f)
         jobs[job_id]["parts_map"] = build_parts_map(output_dir, output_dir_name)
         jobs[job_id]["output_dir"] = output_dir_name
+        identity_store.claim_model(
+            output_dir_name,
+            jobs[job_id]["owner_user_id"],
+            jobs[job_id].get("filename"),
+        )
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["message"] = "處理完成"
         
@@ -1448,11 +1616,20 @@ def run_job(job_id: str, file_path: str):
 
 
 @app.post("/api/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: CurrentUser = Depends(require_user),
+):
     job_id = str(uuid.uuid4())
-    
-    os.makedirs(MODELS_DIR, exist_ok=True)
-    file_path = os.path.join(MODELS_DIR, file.filename)
+
+    safe_filename = os.path.basename(file.filename or "")
+    if not safe_filename or os.path.splitext(safe_filename)[1].lower() not in {".stp", ".step"}:
+        raise HTTPException(status_code=400, detail="Only STEP/STP files are supported")
+    user_model_dir = os.path.join(MODELS_DIR, "_users", current_user.id)
+    os.makedirs(user_model_dir, exist_ok=True)
+    file_path = os.path.join(user_model_dir, safe_filename)
+    model_name = os.path.splitext(safe_filename)[0]
+    requested_model_id = f"{model_name}_{job_id[:8]}_batch"
     
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
@@ -1462,7 +1639,9 @@ async def upload_file(file: UploadFile = File(...)):
         "total": 0,
         "current": 0,
         "message": "已接收檔案，準備開始處理...",
-        "filename": file.filename,
+        "filename": safe_filename,
+        "owner_user_id": current_user.id,
+        "requested_model_id": requested_model_id,
         "result": None,
         "output_dir": None
     }
@@ -1472,10 +1651,12 @@ async def upload_file(file: UploadFile = File(...)):
 
 
 @app.get("/api/status/{job_id}")
-async def get_status(job_id: str):
+async def get_status(job_id: str, current_user: CurrentUser = Depends(require_user)):
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
     job = jobs[job_id]
+    if not current_user.is_admin and job.get("owner_user_id") != current_user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
     return {
         "status": job["status"],
         "message": job["message"],
@@ -1485,11 +1666,13 @@ async def get_status(job_id: str):
 
 
 @app.get("/api/results/{job_id}")
-async def get_results(job_id: str):
+async def get_results(job_id: str, current_user: CurrentUser = Depends(require_user)):
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
     
     job = jobs[job_id]
+    if not current_user.is_admin and job.get("owner_user_id") != current_user.id:
+        raise HTTPException(status_code=404, detail="Job not found")
     if job["status"] != "completed":
         raise HTTPException(status_code=400, detail="Job not completed yet")
         
@@ -1535,6 +1718,11 @@ def run_compare_job(job_id: str, old_path: str, new_path: str):
         jobs[job_id]["tree_old"] = tree_old
         jobs[job_id]["tree_new"] = tree_new
         jobs[job_id]["output_dir"] = output_dir_name
+        identity_store.claim_model(
+            output_dir_name,
+            jobs[job_id]["owner_user_id"],
+            jobs[job_id].get("filename"),
+        )
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["message"] = "比對完成"
         
@@ -1543,12 +1731,19 @@ def run_compare_job(job_id: str, old_path: str, new_path: str):
         jobs[job_id]["message"] = f"比對發生錯誤: {str(e)}"
         
 @app.post("/api/compare")
-async def compare_files(file_old: UploadFile = File(...), file_new: UploadFile = File(...)):
+async def compare_files(
+    file_old: UploadFile = File(...),
+    file_new: UploadFile = File(...),
+    current_user: CurrentUser = Depends(require_user),
+):
     job_id = str(uuid.uuid4())
-    
-    os.makedirs(MODELS_DIR, exist_ok=True)
-    old_path = os.path.join(MODELS_DIR, f"old_{job_id[:8]}_{file_old.filename}")
-    new_path = os.path.join(MODELS_DIR, f"new_{job_id[:8]}_{file_new.filename}")
+
+    user_model_dir = os.path.join(MODELS_DIR, "_users", current_user.id)
+    os.makedirs(user_model_dir, exist_ok=True)
+    old_name = os.path.basename(file_old.filename or "old.step")
+    new_name = os.path.basename(file_new.filename or "new.step")
+    old_path = os.path.join(user_model_dir, f"old_{job_id[:8]}_{old_name}")
+    new_path = os.path.join(user_model_dir, f"new_{job_id[:8]}_{new_name}")
     
     with open(old_path, "wb") as buffer:
         shutil.copyfileobj(file_old.file, buffer)
@@ -1560,7 +1755,8 @@ async def compare_files(file_old: UploadFile = File(...), file_new: UploadFile =
         "total": 0,
         "current": 0,
         "message": "已接收比對檔案，準備開始分析差異...",
-        "filename": f"{file_old.filename} vs {file_new.filename}",
+        "filename": f"{old_name} vs {new_name}",
+        "owner_user_id": current_user.id,
         "result": None,
         "output_dir": None,
         "is_diff": True,
@@ -1571,13 +1767,18 @@ async def compare_files(file_old: UploadFile = File(...), file_new: UploadFile =
     return {"job_id": job_id}
 
 @app.get("/api/models")
-async def list_models():
+async def list_models(current_user: CurrentUser = Depends(require_user)):
     """列出所有已生成的模型 (output 目錄下的資料夾)"""
     models = []
+    accessible_ids = identity_store.accessible_model_ids(current_user)
     if os.path.exists(OUTPUT_DIR):
         for item in os.listdir(OUTPUT_DIR):
             item_path = os.path.join(OUTPUT_DIR, item)
-            if os.path.isdir(item_path) and item.endswith("_batch"):
+            if (
+                os.path.isdir(item_path)
+                and item.endswith("_batch")
+                and (accessible_ids is None or item in accessible_ids)
+            ):
                 model_name = item.replace("_batch", "")
                 models.append({
                     "id": item,
@@ -1586,8 +1787,9 @@ async def list_models():
     return {"models": models}
 
 @app.get("/api/model/{model_id}")
-async def get_model(model_id: str):
+async def get_model(model_id: str, current_user: CurrentUser = Depends(require_user)):
     """直接讀取已生成模型的資料"""
+    assert_model_access(current_user, model_id)
     output_dir = os.path.join(OUTPUT_DIR, model_id)
     if not os.path.exists(output_dir):
         raise HTTPException(status_code=404, detail="Model not found")
@@ -1609,14 +1811,23 @@ async def get_model(model_id: str):
 
 
 @app.get("/api/drawings/{model_id}")
-async def get_drawing_package(model_id: str):
+async def get_drawing_package(
+    model_id: str,
+    current_user: CurrentUser = Depends(require_user),
+):
     """取得外部對接用的工程圖套件：合圖、三視圖、STL、特徵標註檔。"""
-    return _build_drawing_package(model_id)
+    assert_model_access(current_user, model_id)
+    return _build_drawing_package(model_id, current_user.id)
 
 
 @app.get("/api/drawings/{model_id}/parts/{part_id}/features")
-async def get_part_features(model_id: str, part_id: str):
+async def get_drawing_part_features(
+    model_id: str,
+    part_id: str,
+    current_user: CurrentUser = Depends(require_user),
+):
     """取得指定零件/組合件的特徵標註候選資料。"""
+    assert_model_access(current_user, model_id)
     output_dir = _safe_output_dir(model_id)
     part_id = _safe_part_id(part_id)
     parts_map = build_parts_map(output_dir, model_id)
@@ -1643,11 +1854,16 @@ async def get_part_features(model_id: str, part_id: str):
 
 
 @app.get("/api/drawings/{model_id}/parts/{part_id}/annotations")
-async def get_part_annotations(model_id: str, part_id: str):
+async def get_part_annotations(
+    model_id: str,
+    part_id: str,
+    current_user: CurrentUser = Depends(require_user),
+):
     """取得外部系統回傳並已儲存的標註資訊。"""
+    assert_model_access(current_user, model_id)
     output_dir = _safe_output_dir(model_id)
     part_id = _safe_part_id(part_id)
-    annotations_path = _annotation_path(output_dir, part_id)
+    annotations_path = _annotation_path(output_dir, part_id, current_user.id)
     if not os.path.exists(annotations_path):
         raise HTTPException(status_code=404, detail="Annotations not found")
 
@@ -1666,17 +1882,19 @@ async def save_part_annotations(
     model_id: str,
     part_id: str,
     annotations: Dict[str, Any] = Body(...),
+    current_user: CurrentUser = Depends(require_user),
 ):
     """接收外部系統回傳的標註資訊，儲存在該模型輸出資料夾內。"""
+    assert_model_access(current_user, model_id)
     output_dir = _safe_output_dir(model_id)
     part_id = _safe_part_id(part_id)
     parts_map = build_parts_map(output_dir, model_id)
     if part_id not in parts_map:
         raise HTTPException(status_code=404, detail="Part not found")
 
-    annotations_dir = os.path.join(output_dir, "_annotations")
+    annotations_dir = os.path.join(_user_workspace(output_dir, current_user.id), "_annotations")
     os.makedirs(annotations_dir, exist_ok=True)
-    annotations_path = _annotation_path(output_dir, part_id)
+    annotations_path = _annotation_path(output_dir, part_id, current_user.id)
     with open(annotations_path, "w", encoding="utf-8") as f:
         json.dump(annotations, f, indent=2, ensure_ascii=False)
 
@@ -1685,7 +1903,9 @@ async def save_part_annotations(
         "message": "Annotations saved.",
         "model_id": model_id,
         "part_id": part_id,
-        "annotations_url": _api_file_url(model_id, "_annotations", os.path.basename(annotations_path)),
+        "annotations_url": _api_file_url(
+            model_id, "_users", current_user.id, "_annotations", os.path.basename(annotations_path)
+        ),
     }
 
 # === 範例圖 API ===
@@ -1814,7 +2034,7 @@ if os.path.exists(NEW_EXAMPLE_DIR):
     app.mount("/api/examples/new_files", StaticFiles(directory=NEW_EXAMPLE_DIR), name="new_example_files")
 
 @app.get("/api/examples")
-async def list_examples():
+async def list_examples(admin: CurrentUser = Depends(require_admin)):
     """列出範例資料夾下的所有檔案，並維持資料夾結構"""
     def _build_tree(current_path, name, base_dir, url_prefix):
         return build_file_tree(
@@ -1840,7 +2060,7 @@ async def list_examples():
     return {"example_tree": root_node if root_node["children"] else None}
 
 @app.get("/api/processed/fan-20260625")
-async def list_processed_fan_20260625():
+async def list_processed_fan_20260625(admin: CurrentUser = Depends(require_admin)):
     """列出 FAN 20260625 批次輸出的工程圖，維持原始資料夾結構。"""
     if not os.path.exists(PROCESSED_FAN_20260625_DIR):
         return {"processed_tree": None, "manifest": None}
@@ -1892,7 +2112,10 @@ async def get_tolerances():
 
 
 @app.post("/api/tolerances")
-async def update_tolerances(config: ToleranceConfig):
+async def update_tolerances(
+    config: ToleranceConfig,
+    admin: CurrentUser = Depends(require_admin),
+):
     """更新相容性全域公差設定；資料只存在目前 process。"""
     global global_tolerances
     global_tolerances = config

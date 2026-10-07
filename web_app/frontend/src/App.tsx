@@ -4,15 +4,17 @@ import {
   ChevronRight, ChevronDown, AlertTriangle, BookOpen, ArrowLeft, 
   Home, ZoomIn, ZoomOut, CheckSquare, Square, 
   Layers, Sparkles, Wand2, Download, Save, Trash2, RotateCcw,
-  Cpu, Database, ExternalLink, X
+  Cpu, Database, ExternalLink, X, UserRound, ShieldCheck
 } from 'lucide-react';
 import axios from 'axios';
+import { AccountDialog, LoginPage, type AuthUser } from './AccountPortal';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Html } from '@react-three/drei';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import * as THREE from 'three';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+axios.defaults.withCredentials = true;
 
 interface TreeNode {
   name: string;
@@ -611,7 +613,7 @@ function ExampleTreeNode({ node, onSelect, selectedExample }: any) {
 }
 
 // --- Main App ---
-function App() {
+function WorkspaceApp({ user }: { user: AuthUser }) {
   const [uploadMode, setUploadMode] = useState<'single' | 'diff'>('single');
   const [visibleLayers, setVisibleLayers] = useState({ added: true, removed: true, unchanged: true });
   const [viewMode, setViewMode] = useState<'overlay' | 'wireframe' | 'wiper'>('overlay');
@@ -660,9 +662,10 @@ function App() {
     side?: string;
     sides?: string[];
     baseline?: string;
+    offset?: number;
     prefix?: string;
     tolerance_config?: Record<string, any>;
-    tolerance_source?: 'HISTORICAL_RAG' | 'EXTERNAL_NEURAL_MODEL' | 'MANUAL';
+    tolerance_source?: 'HISTORICAL_RAG' | 'ENGINEER_PERSONAL' | 'EXTERNAL_NEURAL_MODEL' | 'MANUAL';
     external_prediction_metadata?: Record<string, any>;
   }>>({});
   const [ruleFilter, setRuleFilter] = useState<string>('ALL');
@@ -972,9 +975,10 @@ function App() {
     side: string;
     sides: string[];
     baseline: string;
+    offset: number;
     prefix: string;
     tolerance_config: Record<string, any>;
-    tolerance_source: 'HISTORICAL_RAG' | 'EXTERNAL_NEURAL_MODEL' | 'MANUAL';
+    tolerance_source: 'HISTORICAL_RAG' | 'ENGINEER_PERSONAL' | 'EXTERNAL_NEURAL_MODEL' | 'MANUAL';
     external_prediction_metadata: Record<string, any>;
   }>) => {
     setRuleConfig(prev => ({
@@ -1004,10 +1008,16 @@ function App() {
       return;
     }
     if (historical) {
+      const placement = historical.engineer_placement_recommendation || {};
+      const personalSource = historical.tier_level === 'TIER_0_ENGINEER_PREFERENCE';
       updateRuleConfig(ruleId, {
         tolerance: historical.tolerance_str !== undefined ? historical.tolerance_str : (historical.fit_class || ''),
         tolerance_config: historical.tolerance_config || { mode: historical.recommended_mode || 'NONE' },
-        tolerance_source: 'HISTORICAL_RAG',
+        tolerance_source: personalSource ? 'ENGINEER_PERSONAL' : 'HISTORICAL_RAG',
+        ...(placement.preferred_view ? { preferred_view: placement.preferred_view, views: [placement.preferred_view] } : {}),
+        ...(placement.side ? { side: placement.side, sides: [placement.side] } : {}),
+        ...(placement.baseline ? { baseline: placement.baseline } : {}),
+        ...(typeof placement.offset === 'number' ? { offset: placement.offset } : {}),
         external_prediction_metadata: {},
       });
     }
@@ -1052,12 +1062,18 @@ function App() {
           const nextCfg = { ...prev };
           Object.entries(recs).forEach(([rId, rec]: [string, any]) => {
             const existing = nextCfg[rId] || {};
+            const placement = rec.engineer_placement_recommendation || {};
+            const personalSource = rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE';
             nextCfg[rId] = {
               ...existing,
               ...(existing.tolerance_source === 'EXTERNAL_NEURAL_MODEL' ? {} : {
                 tolerance: rec.tolerance_str !== undefined ? rec.tolerance_str : (rec.fit_class || ''),
                 tolerance_config: rec.tolerance_config || { mode: rec.recommended_mode || 'NONE' },
-                tolerance_source: 'HISTORICAL_RAG',
+                tolerance_source: personalSource ? 'ENGINEER_PERSONAL' : 'HISTORICAL_RAG',
+                ...(placement.preferred_view ? { preferred_view: placement.preferred_view, views: [placement.preferred_view] } : {}),
+                ...(placement.side ? { side: placement.side, sides: [placement.side] } : {}),
+                ...(placement.baseline ? { baseline: placement.baseline } : {}),
+                ...(typeof placement.offset === 'number' ? { offset: placement.offset } : {}),
               })
             };
           });
@@ -1067,7 +1083,8 @@ function App() {
         // 高信心度的規則自動勾選
         const highConfIds = Object.entries(recs)
               .filter(([_, rec]: [string, any]) => (
-                rec.tier_level === 'TIER_1_RAG_MATCH' && (rec.confidence || 0) >= 0.85
+                ['TIER_0_ENGINEER_PREFERENCE', 'TIER_1_RAG_MATCH'].includes(rec.tier_level)
+                && (rec.confidence || 0) >= 0.85
               ))
           .map(([rId]) => rId);
         
@@ -1216,7 +1233,8 @@ function App() {
           tolerance_source: cfg.tolerance_source || 'MANUAL',
           external_prediction_metadata: cfg.external_prediction_metadata || {},
           prefix: cfg.prefix !== undefined ? cfg.prefix : (r.prefix || r.default_prefix || ''),
-          baseline: cfg.baseline || r.baseline || 'NONE'
+          baseline: cfg.baseline || r.baseline || 'NONE',
+          offset: cfg.offset !== undefined ? cfg.offset : r.offset
         };
       });
 
@@ -1363,14 +1381,19 @@ function App() {
       axios.get(`${API_BASE}/api/models`).then(res => {
         setExistingModels(res.data.models || []);
       }).catch(err => console.error(err));
-      axios.get(`${API_BASE}/api/examples`).then(res => {
-        setExampleTree(res.data.example_tree || null);
-      }).catch(err => console.error(err));
-      axios.get(`${API_BASE}/api/processed/fan-20260625`).then(res => {
-        setProcessedTree(res.data.processed_tree || null);
-      }).catch(err => console.error(err));
+      if (user.role === 'ADMIN') {
+        axios.get(`${API_BASE}/api/examples`).then(res => {
+          setExampleTree(res.data.example_tree || null);
+        }).catch(err => console.error(err));
+        axios.get(`${API_BASE}/api/processed/fan-20260625`).then(res => {
+          setProcessedTree(res.data.processed_tree || null);
+        }).catch(err => console.error(err));
+      } else {
+        setExampleTree(null);
+        setProcessedTree(null);
+      }
     }
-  }, [status]);
+  }, [status, user.role]);
 
   // Poll for status
   useEffect(() => {
@@ -1569,7 +1592,7 @@ function App() {
             </div>
           )}
 
-          {exampleTree && (
+          {user.role === 'ADMIN' && exampleTree && (
             <div style={{ textAlign: 'left', borderTop: '1px solid #262626', paddingTop: 24, marginTop: 16 }}>
               <h3 style={{ fontSize: 12, fontWeight: 600, color: '#666', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>
                 <BookOpen size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
@@ -1585,7 +1608,7 @@ function App() {
             </div>
           )}
 
-          {processedTree && (
+          {user.role === 'ADMIN' && processedTree && (
             <div style={{ textAlign: 'left', borderTop: '1px solid #262626', paddingTop: 24, marginTop: 16 }}>
               <h3 style={{ fontSize: 12, fontWeight: 600, color: '#666', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>
                 <Folder size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
@@ -2845,7 +2868,8 @@ function App() {
                       const cfg = ruleConfig[rId] || {};
                       const rec = aiRecommendations[rId];
                       const externalPrediction = externalPredictionsByRule[rId];
-                      const selectedToleranceSource = cfg.tolerance_source || (rec ? 'HISTORICAL_RAG' : 'MANUAL');
+                      const recommendedSource = rec?.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? 'ENGINEER_PERSONAL' : 'HISTORICAL_RAG';
+                      const selectedToleranceSource = cfg.tolerance_source || (rec ? recommendedSource : 'MANUAL');
                        const rawSides = cfg.sides || cfg.side || rule.sides || rule.side || ['BOTTOM'];
                       const currentSides: string[] = Array.isArray(rawSides) ? rawSides : [rawSides];
                       const currentViews = cfg.views || rule.target_views || rule.views || ['front', 'top', 'right'];
@@ -2899,13 +2923,13 @@ function App() {
                                     fontSize: 9,
                                     padding: '2px 5px',
                                     borderRadius: 3,
-                                    background: rec.tier_level === 'TIER_1_RAG_MATCH' ? '#064e3b' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#1e3a8a' : '#262626'),
-                                    color: rec.tier_level === 'TIER_1_RAG_MATCH' ? '#6ee7b7' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#93c5fd' : '#a3a3a3'),
-                                    border: `1px solid ${rec.tier_level === 'TIER_1_RAG_MATCH' ? '#047857' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#2563eb' : '#404040')}`,
+                                    background: rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? '#3f2b0b' : (rec.tier_level === 'TIER_1_RAG_MATCH' ? '#064e3b' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#1e3a8a' : '#262626')),
+                                    color: rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? '#fbbf24' : (rec.tier_level === 'TIER_1_RAG_MATCH' ? '#6ee7b7' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#93c5fd' : '#a3a3a3')),
+                                    border: `1px solid ${rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? '#a16207' : (rec.tier_level === 'TIER_1_RAG_MATCH' ? '#047857' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#2563eb' : '#404040'))}`,
                                     fontWeight: 600,
                                   }}
                                 >
-                                  {rec.tier_level === 'TIER_1_RAG_MATCH' ? `RAG ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? `推論 ${(rec.confidence * 100).toFixed(0)}%` : '保底')}
+                                  {rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? `個人 ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_1_RAG_MATCH' ? `RAG ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? `推論 ${(rec.confidence * 100).toFixed(0)}%` : '保底'))}
                                 </span>
                               )}
                               <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: badgeBg, color: badgeColor, fontWeight: 500 }}>
@@ -2942,6 +2966,19 @@ function App() {
                               <div style={{ fontSize: 10, color: '#cbd5e1', lineHeight: 1.35 }}>
                                 {rec.reasoning_description}
                               </div>
+                              {rec.engineer_placement_recommendation && (
+                                <div style={{ fontSize: 9, color: '#fbbf24', borderTop: '1px solid #334155', paddingTop: 4 }}>
+                                  個人標註位置：{[
+                                    rec.engineer_placement_recommendation.preferred_view,
+                                    rec.engineer_placement_recommendation.side,
+                                    rec.engineer_placement_recommendation.baseline,
+                                    typeof rec.engineer_placement_recommendation.offset === 'number'
+                                      ? `偏移 ${rec.engineer_placement_recommendation.offset} mm`
+                                      : null,
+                                  ].filter(Boolean).join(' / ')}
+                                  {' · '}{rec.engineer_placement_recommendation.source === 'ENGINEER_HISTORY' ? `依 ${rec.engineer_placement_recommendation.support_count} 筆個人案例` : '依個人設定'}
+                                </div>
+                              )}
                               <div style={{ fontSize: 9, color: '#94a3b8' }}>
                                 {rec.retrieval_trace?.decision_source === 'HISTORICAL_CASE'
                                   ? `決策來源：已採用歷史案例 ${rec.retrieval_trace?.adopted_case_id || ''}`
@@ -3040,9 +3077,9 @@ function App() {
                                 <button
                                   type="button"
                                   onClick={(event) => { event.stopPropagation(); applyToleranceSource(rId, 'HISTORICAL_RAG'); }}
-                                  style={{ fontSize: 9, padding: '3px 7px', borderRadius: 3, cursor: 'pointer', border: `1px solid ${selectedToleranceSource === 'HISTORICAL_RAG' ? '#2563eb' : '#334155'}`, background: selectedToleranceSource === 'HISTORICAL_RAG' ? '#1e3a8a' : '#171717', color: selectedToleranceSource === 'HISTORICAL_RAG' ? '#bfdbfe' : '#94a3b8' }}
+                                  style={{ fontSize: 9, padding: '3px 7px', borderRadius: 3, cursor: 'pointer', border: `1px solid ${selectedToleranceSource === recommendedSource ? '#2563eb' : '#334155'}`, background: selectedToleranceSource === recommendedSource ? '#1e3a8a' : '#171717', color: selectedToleranceSource === recommendedSource ? '#bfdbfe' : '#94a3b8' }}
                                 >
-                                  歷史案例／工程規則
+                                  {recommendedSource === 'ENGINEER_PERSONAL' ? '個人歷史案例' : '公司歷史案例／工程規則'}
                                 </button>
                               )}
                               {externalPrediction && (
@@ -3694,6 +3731,64 @@ function App() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function App() {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [accountOpen, setAccountOpen] = useState(false);
+
+  useEffect(() => {
+    axios.get(`${API_BASE}/api/auth/me`, { withCredentials: true })
+      .then(response => setUser(response.data.user))
+      .catch(() => setUser(null))
+      .finally(() => setCheckingSession(false));
+  }, []);
+
+  const logout = async () => {
+    try {
+      await axios.post(`${API_BASE}/api/auth/logout`, {}, { withCredentials: true });
+    } finally {
+      setAccountOpen(false);
+      setUser(null);
+    }
+  };
+
+  if (checkingSession) {
+    return <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#aaa', display: 'grid', placeItems: 'center' }}>正在確認登入狀態</div>;
+  }
+  if (!user) {
+    return <LoginPage onLogin={setUser} />;
+  }
+  return (
+    <div style={{ height: '100vh', minHeight: 0, display: 'flex', flexDirection: 'column', background: '#0a0a0a' }}>
+      <div style={{ height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', background: '#111', borderBottom: '1px solid #2b2b2b', color: '#d4d4d4', boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12 }}>
+          <ShieldCheck size={15} color="#60a5fa" />
+          <span style={{ color: '#737373' }}>工程師工作階段</span>
+          <span style={{ border: '1px solid #3a3a3a', background: '#1f1f1f', padding: '2px 6px', color: user.role === 'ADMIN' ? '#93c5fd' : '#cbd5e1' }}>{user.role}</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setAccountOpen(true)}
+          title="工程師帳號與偏好"
+          style={{ height: 32, display: 'flex', alignItems: 'center', gap: 7, padding: '0 12px', background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4, color: '#fff', cursor: 'pointer' }}
+        >
+          <UserRound size={15} /> {user.display_name}
+        </button>
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <WorkspaceApp user={user} />
+      </div>
+      {accountOpen && (
+        <AccountDialog
+          user={user}
+          onClose={() => setAccountOpen(false)}
+          onLogout={logout}
+        />
       )}
     </div>
   );

@@ -7,6 +7,8 @@ pyoccenv
 **/*.pyc
 web_app/frontend/node_modules
 web_app/frontend/dist
+web_app/backend/data
+.env
 auto_2d_drawing/output
 auto_2d_drawing/tolerance/data/svg_cache
 models

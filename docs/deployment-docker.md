@@ -263,3 +263,8 @@ docker compose exec backend python -c "from OCC.Core.STEPControl import STEPCont
 ## 17. 本次驗證邊界
 
 Docker 定義可做靜態檢查，但實際 build 仍需有 Docker Engine 與網路可下載 base image/Conda package。若執行環境沒有 Docker CLI，不能把「檔案已建立」誤報為「映像已成功建置」。交付時應記錄實際執行過的命令與未執行原因。
+# PostgreSQL 與帳號系統
+
+正式部署的 `docker-compose.yml` 會啟動 `database`（PostgreSQL 17）和 `backend`。第一次啟動前必須將 `.env.example` 複製為 `.env` 並設定 `POSTGRES_PASSWORD`、`CAD_ADMIN_PASSWORD`。正式 HTTPS 環境同時設定 `CAD_COOKIE_SECURE=1` 與明確的 `CAD_CORS_ORIGINS`。
+
+PostgreSQL volume 與 `/data/output` 必須一起備份。詳細權限、資料表與個人化推薦流程見 [account-and-personalization-system.md](account-and-personalization-system.md)。
