@@ -120,6 +120,8 @@ def personalize_recommendations(
     recommendation_result: Dict[str, Any],
     part_type: Optional[str],
     product_family: Optional[str],
+    tag_ids: Optional[Iterable[str]] = None,
+    tag_match_mode: str = "ANY",
 ) -> Dict[str, Any]:
     """Blend private engineer history after the company evidence engine.
 
@@ -131,7 +133,10 @@ def personalize_recommendations(
 
     preferences = store.get_preferences(user.id)
     mode = str(preferences.get("recommendation_mode") or "BALANCED").upper()
-    personal_cases = store.personal_cases(user.id) if mode != "COMPANY_ONLY" else []
+    personal_cases = (
+        store.personal_cases(user.id, tag_ids=tag_ids, match_mode=tag_match_mode)
+        if mode != "COMPANY_ONLY" else []
+    )
     minimum = float(preferences.get("personal_case_min_similarity", 0.82))
     rule_map = {
         str(rule.get("rule_id") or rule.get("id")): rule
@@ -226,5 +231,7 @@ def personalize_recommendations(
         "personal_case_count": len(personal_cases),
         "personalized_recommendation_count": personalized_count,
         "preferences": preferences,
+        "selected_tag_ids": list(tag_ids or []),
+        "tag_match_mode": str(tag_match_mode).upper(),
     }
     return recommendation_result

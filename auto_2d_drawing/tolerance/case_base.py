@@ -171,6 +171,7 @@ class FeatureCaseBase:
         include_unverified: bool = False,
         product_family: Optional[str] = None,
         dimension_category: Optional[str] = None,
+        allowed_case_ids: Optional[set[str]] = None,
     ) -> List[Dict[str, Any]]:
         """回傳可追溯的 Top-K 檢索結果，包含每個相似度分項。"""
         if not self.cases:
@@ -187,6 +188,8 @@ class FeatureCaseBase:
         scored_cases: List[Dict[str, Any]] = []
 
         for case in self.cases:
+            if allowed_case_ids is not None and case.case_id not in allowed_case_ids:
+                continue
             verification_status = case.effective_verification_status()
             if verification_status == "SEED_REFERENCE":
                 continue

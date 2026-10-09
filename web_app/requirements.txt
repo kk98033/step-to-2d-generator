@@ -2,6 +2,9 @@ fastapi
 uvicorn
 python-multipart
 pydantic
+SQLAlchemy>=2.0.0,<3.0.0
+cryptography>=45.0.0,<51.0.0
+openpyxl>=3.1.0,<4.0.0
 ezdxf
 matplotlib
 pillow

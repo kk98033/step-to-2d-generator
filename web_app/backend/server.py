@@ -1563,6 +1563,18 @@ def recommend_tolerances(
         or FeatureCaseBase.infer_product_family(part_id)
         or FeatureCaseBase.infer_product_family(model_id)
     )
+    recommendation_tag_ids = list(dict.fromkeys(
+        str(value) for value in (body.get("recommendation_tag_ids") or []) if value
+    ))
+    recommendation_tag_match = str(body.get("recommendation_tag_match") or "ANY").upper()
+    if recommendation_tag_match not in {"ANY", "ALL"}:
+        raise HTTPException(status_code=400, detail="recommendation_tag_match must be ANY or ALL")
+    try:
+        recommendation_tag_ids = identity_store.validate_recommendation_tag_ids(
+            recommendation_tag_ids
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if not model_id or not part_id:
         raise HTTPException(status_code=400, detail="model_id and part_id are required")
@@ -1604,6 +1616,9 @@ def recommend_tolerances(
             view_data=view_data,
             part_type=part_category,
             product_family=product_family,
+            allowed_case_ids=identity_store.company_case_ids_for_tags(
+                recommendation_tag_ids, recommendation_tag_match
+            ),
         )
         rec_result = personalize_recommendations(
             store=identity_store,
@@ -1612,6 +1627,8 @@ def recommend_tolerances(
             recommendation_result=rec_result,
             part_type=part_category or rec_result.get("part_type"),
             product_family=product_family,
+            tag_ids=recommendation_tag_ids,
+            tag_match_mode=recommendation_tag_match,
         )
 
         # Attach traceable drawing links only when the referenced source DXF
@@ -1642,6 +1659,10 @@ def recommend_tolerances(
             "recommendations": rec_result.get("recommendations"),
             "feature_graph": rec_result.get("feature_graph"),
             "engineer_personalization": rec_result.get("engineer_personalization"),
+            "recommendation_scope": {
+                "tag_ids": recommendation_tag_ids,
+                "match_mode": recommendation_tag_match,
+            },
             "external_prediction_set": _load_external_prediction_set(output_dir, part_id),
         }
     except Exception as e:
@@ -1820,6 +1841,11 @@ def render_custom_annotation_drawing(
     part_id = body.get("part_id")
     feature_records = body.get("feature_records", [])
     title_info = body.get("title_info", {})
+    storage_tag_ids = body.get("storage_tag_ids") or []
+    try:
+        storage_tag_ids = identity_store.validate_recommendation_tag_ids(storage_tag_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if not model_id or not part_id:
         raise HTTPException(status_code=400, detail="model_id and part_id are required")
@@ -1886,6 +1912,7 @@ def render_custom_annotation_drawing(
             title=(title_info or {}).get("drawing_title") or f"{part_id} annotation",
             part_type=body.get("part_category"),
             product_family=body.get("product_family") or FeatureCaseBase.infer_product_family(part_id),
+            tag_ids=storage_tag_ids,
         )
 
         return {
@@ -2655,6 +2682,10 @@ def tolerance_audit_v2_page():
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
 if os.path.exists(FRONTEND_DIR):
+    @app.get("/admin/accounts", include_in_schema=False)
+    def admin_accounts_page():
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"), media_type="text/html")
+
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 else:
     print(f"Warning: Frontend dist directory not found at {FRONTEND_DIR}. Please run 'npm run build' in frontend folder.")

@@ -694,6 +694,10 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   const [isRecommendingTolerances, setIsRecommendingTolerances] = useState<boolean>(false);
   const [toleranceStats, setToleranceStats] = useState<{ total_cases: number; categories: Record<string, number> } | null>(null);
   const [recommendSummary, setRecommendSummary] = useState<{ total_rules: number; high_confidence_count: number; product_family?: string; part_type?: string } | null>(null);
+  const [recommendationTags, setRecommendationTags] = useState<any[]>([]);
+  const [recommendationTagIds, setRecommendationTagIds] = useState<Set<string>>(new Set());
+  const [storageTagIds, setStorageTagIds] = useState<Set<string>>(new Set());
+  const [recommendationTagMatch, setRecommendationTagMatch] = useState<'ANY' | 'ALL'>('ANY');
   const [evidenceViewer, setEvidenceViewer] = useState<{
     caseId: string;
     modelName: string;
@@ -725,6 +729,10 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
         }
       })
       .catch(err => console.error('Failed to load tolerance stats:', err));
+
+    axios.get(`${API_BASE}/api/recommendation-tags`)
+      .then(res => setRecommendationTags(res.data?.tags || []))
+      .catch(err => console.error('Failed to load recommendation tags:', err));
   }, []);
 
   useEffect(() => {
@@ -1036,6 +1044,8 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
         model_id: modelId,
         part_id: selectedPart,
         candidate_rules: candidateRules,
+        recommendation_tag_ids: Array.from(recommendationTagIds),
+        recommendation_tag_match: recommendationTagMatch,
       });
 
       if (res.data?.status === 'ok') {
@@ -1242,6 +1252,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
         model_id: modelId,
         part_id: selectedPart,
         feature_records: payloadRules,
+        storage_tag_ids: Array.from(storageTagIds),
         title_info: {
           part_name: `${selectedPart} (SMART ANNOTATED)`,
           drawing_no: `DWG-${selectedPart}-001`,
@@ -2607,6 +2618,32 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                     <span>Beta 決策輔助：推薦結果與歷史案例必須經工程師覆核，不可直接作為正式製造公差。</span>
                   </div>
 
+                  <div style={{ border: '1px solid #333', background: '#171717', padding: 8, borderRadius: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 7 }}>
+                      <span style={{ fontSize: 10, color: '#d4d4d4', fontWeight: 700 }}>推薦資料範圍</span>
+                      <select value={recommendationTagMatch} onChange={event => setRecommendationTagMatch(event.target.value as 'ANY' | 'ALL')} style={{ background: '#262626', color: '#ddd', border: '1px solid #444', fontSize: 9, padding: '3px 5px' }}>
+                        <option value="ANY">符合任一標籤</option><option value="ALL">符合全部標籤</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {recommendationTags.map(tag => {
+                        const active = recommendationTagIds.has(tag.id);
+                        return <button key={`recommend-${tag.id}`} type="button" onClick={() => setRecommendationTagIds(previous => { const next = new Set(previous); active ? next.delete(tag.id) : next.add(tag.id); return next; })} style={{ border: `1px solid ${active ? '#2563eb' : '#444'}`, background: active ? '#1e3a8a' : '#262626', color: active ? '#bfdbfe' : '#aaa', padding: '4px 6px', fontSize: 9, cursor: 'pointer' }}>{tag.name}</button>;
+                      })}
+                    </div>
+                    <div style={{ fontSize: 9, color: '#737373', marginTop: 7 }}>未選標籤時搜尋全部；選取後只使用符合範圍的公司與個人案例。</div>
+                  </div>
+
+                  <div style={{ border: '1px solid #333', background: '#171717', padding: 8, borderRadius: 4 }}>
+                    <div style={{ fontSize: 10, color: '#d4d4d4', fontWeight: 700, marginBottom: 7 }}>本次成品儲存標籤</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {recommendationTags.map(tag => {
+                        const active = storageTagIds.has(tag.id);
+                        return <button key={`storage-${tag.id}`} type="button" onClick={() => setStorageTagIds(previous => { const next = new Set(previous); active ? next.delete(tag.id) : next.add(tag.id); return next; })} style={{ border: `1px solid ${active ? '#2563eb' : '#444'}`, background: active ? '#1e3a8a' : '#262626', color: active ? '#bfdbfe' : '#aaa', padding: '4px 6px', fontSize: 9, cursor: 'pointer' }}>{tag.name}</button>;
+                      })}
+                    </div>
+                  </div>
+
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <button
                       onClick={handleAiRecommendTolerances}
@@ -3751,10 +3788,17 @@ function App() {
 
   useEffect(() => {
     axios.get(`${API_BASE}/api/auth/me`, { withCredentials: true })
-      .then(response => setUser(response.data.user))
+      .then(response => {
+        setUser(response.data.user);
+        if (response.data.user?.must_change_password && response.data.user?.role !== 'ADMIN') setAccountOpen(true);
+      })
       .catch(() => setUser(null))
       .finally(() => setCheckingSession(false));
   }, []);
+
+  useEffect(() => {
+    if (user?.must_change_password && user.role !== 'ADMIN') setAccountOpen(true);
+  }, [user?.must_change_password, user?.role]);
 
   const logout = async () => {
     try {

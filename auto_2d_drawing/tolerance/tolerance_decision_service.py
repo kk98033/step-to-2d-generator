@@ -107,6 +107,7 @@ class ToleranceDecisionService:
         view_data: Optional[Dict[str, Any]] = None,
         part_type: Optional[str] = None,
         product_family: Optional[str] = None,
+        allowed_case_ids: Optional[set[str]] = None,
     ) -> Dict[str, Any]:
         """
         為所有候選標註規則進行智慧公差推薦分析
@@ -137,6 +138,7 @@ class ToleranceDecisionService:
                 graph.part_type,
                 product_family,
                 dimension_category=dim_type,
+                allowed_case_ids=allowed_case_ids,
             )
             recommendations[rule_id] = rec.to_dict()
 
@@ -204,8 +206,13 @@ class ToleranceDecisionService:
         part_type: str,
         product_family: Optional[str] = None,
         dimension_category: Optional[str] = None,
+        allowed_case_ids: Optional[set[str]] = None,
     ) -> ToleranceRecommendation:
-        eligible_case_count = sum(1 for case in self.case_base.cases if case.is_retrieval_eligible())
+        eligible_case_count = sum(
+            1 for case in self.case_base.cases
+            if case.is_retrieval_eligible()
+            and (allowed_case_ids is None or case.case_id in allowed_case_ids)
+        )
         evidence_cases: List[Dict[str, Any]] = []
         retrieval_trace: Dict[str, Any] = {
             "query_feature_type": node.feature_type if node else category,
@@ -232,6 +239,7 @@ class ToleranceDecisionService:
                 top_k=8,
                 product_family=product_family,
                 dimension_category=query_dimension_category,
+                allowed_case_ids=allowed_case_ids,
             )
             audit_matches = self.case_base.search_similar_cases_detailed(
                 node,
@@ -240,6 +248,7 @@ class ToleranceDecisionService:
                 include_unverified=True,
                 product_family=product_family,
                 dimension_category=query_dimension_category,
+                allowed_case_ids=allowed_case_ids,
             )
             review_matches = [
                 match for match in audit_matches
