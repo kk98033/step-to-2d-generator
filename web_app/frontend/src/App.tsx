@@ -3,15 +3,18 @@ import {
   FileText, File, Folder, FolderOpen, Loader2, CheckCircle, 
   ChevronRight, ChevronDown, AlertTriangle, BookOpen, ArrowLeft, 
   Home, ZoomIn, ZoomOut, CheckSquare, Square, 
-  Layers, Sparkles, Wand2, Download, Save, Trash2, RotateCcw
+  Layers, Sparkles, Wand2, Download, Save, Trash2, RotateCcw,
+  Cpu, Database, ExternalLink, X, UserRound, ShieldCheck
 } from 'lucide-react';
 import axios from 'axios';
+import { AccountDialog, LoginPage, type AuthUser } from './AccountPortal';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Html } from '@react-three/drei';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import * as THREE from 'three';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+axios.defaults.withCredentials = true;
 
 interface TreeNode {
   name: string;
@@ -610,7 +613,7 @@ function ExampleTreeNode({ node, onSelect, selectedExample }: any) {
 }
 
 // --- Main App ---
-function App() {
+function WorkspaceApp({ user }: { user: AuthUser }) {
   const [uploadMode, setUploadMode] = useState<'single' | 'diff'>('single');
   const [visibleLayers, setVisibleLayers] = useState({ added: true, removed: true, unchanged: true });
   const [viewMode, setViewMode] = useState<'overlay' | 'wireframe' | 'wiper'>('overlay');
@@ -657,8 +660,13 @@ function App() {
     target_views?: string[];
     tolerance?: string;
     side?: string;
+    sides?: string[];
     baseline?: string;
+    offset?: number;
     prefix?: string;
+    tolerance_config?: Record<string, any>;
+    tolerance_source?: 'HISTORICAL_RAG' | 'ENGINEER_PERSONAL' | 'EXTERNAL_NEURAL_MODEL' | 'MANUAL';
+    external_prediction_metadata?: Record<string, any>;
   }>>({});
   const [ruleFilter, setRuleFilter] = useState<string>('ALL');
   const [ruleSearch, setRuleSearch] = useState<string>('');
@@ -679,6 +687,25 @@ function App() {
   const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isLoadingFeatures, setIsLoadingFeatures] = useState<boolean>(false);
 
+  // --- AI CAD-RAG Tolerance Decision State ---
+  const [aiRecommendations, setAiRecommendations] = useState<Record<string, any>>({});
+  const [externalPredictionsByRule, setExternalPredictionsByRule] = useState<Record<string, any>>({});
+  const [externalPredictionMeta, setExternalPredictionMeta] = useState<Record<string, any> | null>(null);
+  const [isRecommendingTolerances, setIsRecommendingTolerances] = useState<boolean>(false);
+  const [toleranceStats, setToleranceStats] = useState<{ total_cases: number; categories: Record<string, number> } | null>(null);
+  const [recommendSummary, setRecommendSummary] = useState<{ total_rules: number; high_confidence_count: number; product_family?: string; part_type?: string } | null>(null);
+  const [recommendationTags, setRecommendationTags] = useState<any[]>([]);
+  const [recommendationTagIds, setRecommendationTagIds] = useState<Set<string>>(new Set());
+  const [storageTagIds, setStorageTagIds] = useState<Set<string>>(new Set());
+  const [recommendationTagMatch, setRecommendationTagMatch] = useState<'ANY' | 'ALL'>('ANY');
+  const [evidenceViewer, setEvidenceViewer] = useState<{
+    caseId: string;
+    modelName: string;
+    pdfUrl: string;
+    svgUrl: string;
+    mode: 'pdf' | 'svg';
+  } | null>(null);
+
   // --- Tree Diff State ---
   const [diffedTreeOld, setDiffedTreeOld] = useState<any>(null);
   const [diffedTreeNew, setDiffedTreeNew] = useState<any>(null);
@@ -694,12 +721,28 @@ function App() {
         }
       })
       .catch(err => console.error('Failed to load annotation templates:', err));
+
+    axios.get(`${API_BASE}/api/tolerance/stats`)
+      .then(res => {
+        if (res.data?.status === 'ok') {
+          setToleranceStats(res.data);
+        }
+      })
+      .catch(err => console.error('Failed to load tolerance stats:', err));
+
+    axios.get(`${API_BASE}/api/recommendation-tags`)
+      .then(res => setRecommendationTags(res.data?.tags || []))
+      .catch(err => console.error('Failed to load recommendation tags:', err));
   }, []);
 
   useEffect(() => {
     setCustomDrawingResult(null);
     setDrawingPan({ x: 0, y: 0 });
     setAnnotationZoom(1);
+    setAiRecommendations({});
+    setExternalPredictionsByRule({});
+    setExternalPredictionMeta(null);
+    setRecommendSummary(null);
   }, [selectedPart]);
 
   useEffect(() => {
@@ -828,7 +871,7 @@ function App() {
             };
           });
 
-          // 🌟 預設選取與 3D 特徵圖層完全一致（優先選取核心特徵，最多 15 項，排除微小圓角，避免模型雜亂）
+          // 預設選取與 3D 特徵圖層一致（優先核心特徵，最多 15 項，排除微小圓角）
           const topKeyRules = rules.filter((r: any) => {
             const cat = (r.category || r.type || '').toLowerCase();
             return !cat.includes('fillet') && !cat.includes('round');
@@ -938,8 +981,13 @@ function App() {
     target_views: string[];
     tolerance: string;
     side: string;
+    sides: string[];
     baseline: string;
+    offset: number;
     prefix: string;
+    tolerance_config: Record<string, any>;
+    tolerance_source: 'HISTORICAL_RAG' | 'ENGINEER_PERSONAL' | 'EXTERNAL_NEURAL_MODEL' | 'MANUAL';
+    external_prediction_metadata: Record<string, any>;
   }>) => {
     setRuleConfig(prev => ({
       ...prev,
@@ -948,6 +996,169 @@ function App() {
         ...updates
       }
     }));
+  };
+
+  const applyToleranceSource = (ruleId: string, source: 'HISTORICAL_RAG' | 'EXTERNAL_NEURAL_MODEL') => {
+    const historical = aiRecommendations[ruleId];
+    const external = externalPredictionsByRule[ruleId];
+    if (source === 'EXTERNAL_NEURAL_MODEL' && external) {
+      updateRuleConfig(ruleId, {
+        tolerance: external.formatted_display || external.tolerance_str || '',
+        tolerance_config: external.tolerance_config || { mode: external.predicted_mode || 'NONE' },
+        tolerance_source: source,
+        external_prediction_metadata: {
+          provider: externalPredictionMeta?.provider,
+          model_name: externalPredictionMeta?.model_name,
+          model_version: externalPredictionMeta?.model_version,
+          confidence: external.confidence,
+        },
+      });
+      return;
+    }
+    if (historical) {
+      const placement = historical.engineer_placement_recommendation || {};
+      const personalSource = historical.tier_level === 'TIER_0_ENGINEER_PREFERENCE';
+      updateRuleConfig(ruleId, {
+        tolerance: historical.tolerance_str !== undefined ? historical.tolerance_str : (historical.fit_class || ''),
+        tolerance_config: historical.tolerance_config || { mode: historical.recommended_mode || 'NONE' },
+        tolerance_source: personalSource ? 'ENGINEER_PERSONAL' : 'HISTORICAL_RAG',
+        ...(placement.preferred_view ? { preferred_view: placement.preferred_view, views: [placement.preferred_view] } : {}),
+        ...(placement.side ? { side: placement.side, sides: [placement.side] } : {}),
+        ...(placement.baseline ? { baseline: placement.baseline } : {}),
+        ...(typeof placement.offset === 'number' ? { offset: placement.offset } : {}),
+        external_prediction_metadata: {},
+      });
+    }
+  };
+
+  const handleAiRecommendTolerances = async () => {
+    const modelId = results?.model_id || results?.output_dir || jobId;
+    if (!modelId || !selectedPart) {
+      alert('請先從左側選擇零件！');
+      return;
+    }
+
+    setIsRecommendingTolerances(true);
+    try {
+      const res = await axios.post(`${API_BASE}/api/tolerance/recommend`, {
+        model_id: modelId,
+        part_id: selectedPart,
+        candidate_rules: candidateRules,
+        recommendation_tag_ids: Array.from(recommendationTagIds),
+        recommendation_tag_match: recommendationTagMatch,
+      });
+
+      if (res.data?.status === 'ok') {
+        const recs: Record<string, any> = res.data.recommendations || {};
+        setAiRecommendations(recs);
+        const externalSet = res.data.external_prediction_set || null;
+        setExternalPredictionsByRule(externalSet?.predictions_by_rule || {});
+        setExternalPredictionMeta(externalSet ? {
+          provider: externalSet.provider,
+          model_name: externalSet.model_name,
+          model_version: externalSet.model_version,
+          model_artifact_id: externalSet.model_artifact_id,
+          received_at_utc: externalSet.received_at_utc,
+        } : null);
+        setRecommendSummary({
+          total_rules: res.data.total_rules || Object.keys(recs).length,
+          high_confidence_count: res.data.high_confidence_count || 0,
+          product_family: res.data.product_family || '',
+          part_type: res.data.part_type || '',
+        });
+
+        // 自動將推薦公差注入到 ruleConfig 中
+        setRuleConfig(prev => {
+          const nextCfg = { ...prev };
+          Object.entries(recs).forEach(([rId, rec]: [string, any]) => {
+            const existing = nextCfg[rId] || {};
+            const placement = rec.engineer_placement_recommendation || {};
+            const personalSource = rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE';
+            nextCfg[rId] = {
+              ...existing,
+              ...(existing.tolerance_source === 'EXTERNAL_NEURAL_MODEL' ? {} : {
+                tolerance: rec.tolerance_str !== undefined ? rec.tolerance_str : (rec.fit_class || ''),
+                tolerance_config: rec.tolerance_config || { mode: rec.recommended_mode || 'NONE' },
+                tolerance_source: personalSource ? 'ENGINEER_PERSONAL' : 'HISTORICAL_RAG',
+                ...(placement.preferred_view ? { preferred_view: placement.preferred_view, views: [placement.preferred_view] } : {}),
+                ...(placement.side ? { side: placement.side, sides: [placement.side] } : {}),
+                ...(placement.baseline ? { baseline: placement.baseline } : {}),
+                ...(typeof placement.offset === 'number' ? { offset: placement.offset } : {}),
+              })
+            };
+          });
+          return nextCfg;
+        });
+
+        // 高信心度的規則自動勾選
+        const highConfIds = Object.entries(recs)
+              .filter(([_, rec]: [string, any]) => (
+                ['TIER_0_ENGINEER_PREFERENCE', 'TIER_1_RAG_MATCH'].includes(rec.tier_level)
+                && (rec.confidence || 0) >= 0.85
+              ))
+          .map(([rId]) => rId);
+        
+        if (highConfIds.length > 0) {
+          setSelectedRuleIds(prev => {
+            const next = new Set(prev);
+            highConfIds.forEach(id => next.add(id));
+            return next;
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error('AI tolerance recommendation error:', err);
+      alert(`AI 智慧推薦公差失敗: ${err?.response?.data?.detail || err.message}`);
+    } finally {
+      setIsRecommendingTolerances(false);
+    }
+  };
+
+  const handleSaveAsHistoricalCase = async (ruleId: string) => {
+    const rec = aiRecommendations[ruleId];
+    const external = externalPredictionsByRule[ruleId];
+    const cfg = ruleConfig[ruleId] || {};
+    const rule = candidateRules.find(r => (r.id || r.rule_id) === ruleId);
+    if (!rule) return;
+    const modelId = results?.model_id || results?.output_dir || jobId;
+    const dimType = String(rule.dim_type || rule.category || '').toUpperCase();
+    const nominal = Number(rule.nominal_value || 0);
+    const nominalDimensions = dimType.includes('DIAMETER')
+      ? { diameter: nominal }
+      : dimType.includes('RADIUS')
+        ? { radius: nominal }
+        : { length: nominal };
+
+    try {
+      const res = await axios.post(`${API_BASE}/api/tolerance/save-case`, {
+        part_type: recommendSummary?.part_type || rule.part_type || 'GENERAL',
+        feature_type: rule.feature_type || rule.category || 'unknown',
+        inferred_role: rec?.inferred_role || rule.inferred_role || rule.role || 'UNKNOWN',
+        nominal_dimensions: nominalDimensions,
+        tolerance_config: cfg.tolerance_config || { mode: 'FIT', fit_class: cfg.tolerance },
+        neighbor_types: [],
+        boundary_position: 'INTERIOR',
+        description: `工程師於 UI 審定之 ${ruleId} 公差案例`,
+        source_metadata: {
+          model_id: modelId,
+          part_id: selectedPart,
+          rule_id: ruleId,
+          decision_source: cfg.tolerance_source || 'MANUAL',
+          external_model: cfg.tolerance_source === 'EXTERNAL_NEURAL_MODEL' ? {
+            provider: externalPredictionMeta?.provider,
+            model_name: externalPredictionMeta?.model_name,
+            model_version: externalPredictionMeta?.model_version,
+            confidence: external?.confidence,
+          } : null,
+        }
+      });
+      if (res.data?.status === 'ok') {
+        alert(`已成功將 ${ruleId} 公差案例存入歷史案例庫（總數: ${res.data.total_cases} 筆）！`);
+        setToleranceStats(prev => prev ? { ...prev, total_cases: res.data.total_cases } : null);
+      }
+    } catch (err: any) {
+      alert(`儲存案例失敗: ${err?.message}`);
+    }
   };
 
   const handleApplyTemplate = (templateId: string) => {
@@ -1018,6 +1229,7 @@ function App() {
         const views = cfg.views || cfg.target_views || r.target_views || r.views || [cfg.preferred_view || r.preferred_view || r.view || 'front'];
         const rawSides = cfg.sides || cfg.side || r.sides || r.side || ['BOTTOM'];
         const sides = Array.isArray(rawSides) ? rawSides : [rawSides];
+        const tolCfg = cfg.tolerance_config !== undefined ? cfg.tolerance_config : r.tolerance_config;
         return {
           ...r,
           enabled: selectedRuleIds.has(rId),
@@ -1026,9 +1238,13 @@ function App() {
           sides: sides,
           side: sides[0] || 'BOTTOM',
           preferred_view: cfg.preferred_view || r.preferred_view || r.view || 'front',
+          tolerance_config: tolCfg,
           tolerance: cfg.tolerance !== undefined ? cfg.tolerance : (r.tolerance || r.default_tolerance || ''),
+          tolerance_source: cfg.tolerance_source || 'MANUAL',
+          external_prediction_metadata: cfg.external_prediction_metadata || {},
           prefix: cfg.prefix !== undefined ? cfg.prefix : (r.prefix || r.default_prefix || ''),
-          baseline: cfg.baseline || r.baseline || 'NONE'
+          baseline: cfg.baseline || r.baseline || 'NONE',
+          offset: cfg.offset !== undefined ? cfg.offset : r.offset
         };
       });
 
@@ -1036,6 +1252,7 @@ function App() {
         model_id: modelId,
         part_id: selectedPart,
         feature_records: payloadRules,
+        storage_tag_ids: Array.from(storageTagIds),
         title_info: {
           part_name: `${selectedPart} (SMART ANNOTATED)`,
           drawing_no: `DWG-${selectedPart}-001`,
@@ -1175,14 +1392,19 @@ function App() {
       axios.get(`${API_BASE}/api/models`).then(res => {
         setExistingModels(res.data.models || []);
       }).catch(err => console.error(err));
-      axios.get(`${API_BASE}/api/examples`).then(res => {
-        setExampleTree(res.data.example_tree || null);
-      }).catch(err => console.error(err));
-      axios.get(`${API_BASE}/api/processed/fan-20260625`).then(res => {
-        setProcessedTree(res.data.processed_tree || null);
-      }).catch(err => console.error(err));
+      if (user.role === 'ADMIN') {
+        axios.get(`${API_BASE}/api/examples`).then(res => {
+          setExampleTree(res.data.example_tree || null);
+        }).catch(err => console.error(err));
+        axios.get(`${API_BASE}/api/processed/fan-20260625`).then(res => {
+          setProcessedTree(res.data.processed_tree || null);
+        }).catch(err => console.error(err));
+      } else {
+        setExampleTree(null);
+        setProcessedTree(null);
+      }
     }
-  }, [status]);
+  }, [status, user.role]);
 
   // Poll for status
   useEffect(() => {
@@ -1298,6 +1520,25 @@ function App() {
             <File color="#3B82F6" size={32} />
           </div>
           <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>FORCECON Auto 2D</h1>
+          <a
+            href="/tolerance-audit-v2.html"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', margin: '16px 0 8px', padding: '10px 14px', background: '#2563eb', border: '1px solid #2563eb', borderRadius: 6, color: '#fff', textDecoration: 'none', fontSize: 14, fontWeight: 600 }}
+          >
+            <Database size={17} />
+            <span>公差提取視覺稽核 V2</span>
+            <ExternalLink size={14} />
+          </a>
+          <a
+            href="/tolerance-inspector.html"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', margin: '0 0 20px', padding: '10px 14px', background: '#262626', border: '1px solid #444', borderRadius: 6, color: '#dbeafe', textDecoration: 'none', fontSize: 14, fontWeight: 600 }}
+          >
+            <Database size={17} />
+            <span>開啟公差案例檢視器</span>
+            <span style={{ fontSize: 9, lineHeight: 1, padding: '3px 5px', borderRadius: 3, border: '1px solid #b45309', background: '#292117', color: '#fbbf24', letterSpacing: 0.6 }}>
+              BETA
+            </span>
+            <ExternalLink size={14} />
+          </a>
           {/* Mode Toggle */}
           <div style={{ display: 'flex', background: '#222', borderRadius: 8, padding: 4, marginBottom: 24 }}>
             <button onClick={() => setUploadMode('single')} style={{ flex: 1, padding: '8px 0', borderRadius: 6, border: 'none', background: uploadMode === 'single' ? '#3B82F6' : 'transparent', color: uploadMode === 'single' ? '#fff' : '#888', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}>單一模型轉換</button>
@@ -1370,7 +1611,7 @@ function App() {
             </div>
           )}
 
-          {exampleTree && (
+          {user.role === 'ADMIN' && exampleTree && (
             <div style={{ textAlign: 'left', borderTop: '1px solid #262626', paddingTop: 24, marginTop: 16 }}>
               <h3 style={{ fontSize: 12, fontWeight: 600, color: '#666', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>
                 <BookOpen size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
@@ -1386,7 +1627,7 @@ function App() {
             </div>
           )}
 
-          {processedTree && (
+          {user.role === 'ADMIN' && processedTree && (
             <div style={{ textAlign: 'left', borderTop: '1px solid #262626', paddingTop: 24, marginTop: 16 }}>
               <h3 style={{ fontSize: 12, fontWeight: 600, color: '#666', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>
                 <Folder size={14} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
@@ -1504,14 +1745,11 @@ function App() {
           <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>{status === 'uploading' ? '上傳中...' : '處理中...'}</h2>
           <div style={{ width: '100%', background: '#333', borderRadius: 999, height: 12, marginBottom: 8, overflow: 'hidden' }}>
             <div style={{ 
-              backgroundSize: '1.5rem 1.5rem',
-              backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.15) 75%, transparent 75%, transparent)', 
               backgroundColor: '#3B82F6', 
               height: 12, 
               borderRadius: 999, 
               transition: 'width 0.3s', 
-              width: `${Math.max(2, percent)}%`,
-              animation: 'progress-stripes 1s linear infinite'
+              width: `${Math.max(2, percent)}%`
             }} />
           </div>
           <p style={{ fontSize: 13, color: '#888', minHeight: 20 }}>{progressMsg}{dots}</p>
@@ -2208,7 +2446,7 @@ function App() {
                     <div style={{ position: 'absolute', inset: 0, background: 'rgba(9, 13, 22, 0.85)', backdropFilter: 'blur(6px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 25, gap: 12 }}>
                       <Loader2 size={38} color="#38bdf8" className="animate-spin" />
                       <span style={{ fontSize: 14, color: '#f8fafc', fontWeight: 700, letterSpacing: 0.5 }}>
-                        ✨ 正在即時提取 3D 特徵圖層...
+                        正在即時提取 3D 特徵圖層...
                       </span>
                       <span style={{ fontSize: 12, color: '#94a3b8' }}>
                         正在分析零件拓撲面與特徵幾何，請稍候
@@ -2353,6 +2591,101 @@ function App() {
                   <span style={{ fontSize: 11, background: '#262626', color: '#a3a3a3', border: '1px solid #333', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
                     {selectedRuleIds.size} / {candidateRules.length} 規則已選
                   </span>
+                </div>
+
+                {/* CAD-RAG AI 智慧公差決策區塊 (CAD-RAG AI Tolerance Studio) */}
+                <div style={{ padding: '10px 12px', background: '#121212', borderBottom: '1px solid #262626', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Cpu size={14} color="#3b82f6" />
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#f5f5f5', letterSpacing: 0.5 }}>
+                        CAD-RAG 智慧公差推薦
+                      </span>
+                      <span style={{ fontSize: 9, lineHeight: 1, padding: '3px 5px', borderRadius: 3, border: '1px solid #b45309', background: '#292117', color: '#fbbf24', fontWeight: 700, letterSpacing: 0.6 }}>
+                        BETA
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#1a2234', border: '1px solid #1e3a8a', padding: '2px 6px', borderRadius: 3 }}>
+                      <Database size={11} color="#60a5fa" />
+                      <span style={{ fontSize: 10, color: '#93c5fd', fontWeight: 600 }}>
+                        案例庫: {toleranceStats?.total_cases ?? 70} 筆
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, padding: '6px 8px', borderRadius: 4, border: '1px solid #78350f', background: '#211a12', color: '#fcd34d', fontSize: 10, lineHeight: 1.45 }}>
+                    <AlertTriangle size={13} style={{ flex: '0 0 auto', marginTop: 1 }} />
+                    <span>Beta 決策輔助：推薦結果與歷史案例必須經工程師覆核，不可直接作為正式製造公差。</span>
+                  </div>
+
+                  <div style={{ border: '1px solid #333', background: '#171717', padding: 8, borderRadius: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 7 }}>
+                      <span style={{ fontSize: 10, color: '#d4d4d4', fontWeight: 700 }}>推薦資料範圍</span>
+                      <select value={recommendationTagMatch} onChange={event => setRecommendationTagMatch(event.target.value as 'ANY' | 'ALL')} style={{ background: '#262626', color: '#ddd', border: '1px solid #444', fontSize: 9, padding: '3px 5px' }}>
+                        <option value="ANY">符合任一標籤</option><option value="ALL">符合全部標籤</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {recommendationTags.map(tag => {
+                        const active = recommendationTagIds.has(tag.id);
+                        return <button key={`recommend-${tag.id}`} type="button" onClick={() => setRecommendationTagIds(previous => { const next = new Set(previous); active ? next.delete(tag.id) : next.add(tag.id); return next; })} style={{ border: `1px solid ${active ? '#2563eb' : '#444'}`, background: active ? '#1e3a8a' : '#262626', color: active ? '#bfdbfe' : '#aaa', padding: '4px 6px', fontSize: 9, cursor: 'pointer' }}>{tag.name}</button>;
+                      })}
+                    </div>
+                    <div style={{ fontSize: 9, color: '#737373', marginTop: 7 }}>未選標籤時搜尋全部；選取後只使用符合範圍的公司與個人案例。</div>
+                  </div>
+
+                  <div style={{ border: '1px solid #333', background: '#171717', padding: 8, borderRadius: 4 }}>
+                    <div style={{ fontSize: 10, color: '#d4d4d4', fontWeight: 700, marginBottom: 7 }}>本次成品儲存標籤</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {recommendationTags.map(tag => {
+                        const active = storageTagIds.has(tag.id);
+                        return <button key={`storage-${tag.id}`} type="button" onClick={() => setStorageTagIds(previous => { const next = new Set(previous); active ? next.delete(tag.id) : next.add(tag.id); return next; })} style={{ border: `1px solid ${active ? '#2563eb' : '#444'}`, background: active ? '#1e3a8a' : '#262626', color: active ? '#bfdbfe' : '#aaa', padding: '4px 6px', fontSize: 9, cursor: 'pointer' }}>{tag.name}</button>;
+                      })}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <button
+                      onClick={handleAiRecommendTolerances}
+                      disabled={isRecommendingTolerances || candidateRules.length === 0}
+                      style={{
+                        flex: 1,
+                        background: isRecommendingTolerances ? '#1e3a8a' : '#1d4ed8',
+                        border: '1px solid #2563eb',
+                        borderRadius: 4,
+                        color: '#fff',
+                        fontSize: 11,
+                        padding: '6px 12px',
+                        fontWeight: 600,
+                        cursor: isRecommendingTolerances ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      {isRecommendingTolerances ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <Sparkles size={13} />
+                      )}
+                      <span>{isRecommendingTolerances ? '正在進行 CAD-RAG 檢索推論...' : '一鍵智慧推薦公差（CAD-RAG／規則）'}</span>
+                    </button>
+                  </div>
+
+                  {recommendSummary && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 10, color: '#a3a3a3', background: '#18181b', padding: '4px 8px', borderRadius: 3, border: '1px solid #27272a' }}>
+                      <span>已完成 {recommendSummary.total_rules} 條規則推薦 · 產品族 {recommendSummary.product_family || '未識別'} · 零件 {recommendSummary.part_type || 'GENERAL'}</span>
+                      <span style={{ color: '#34d399', fontWeight: 600 }}>{recommendSummary.high_confidence_count} 項高信心度匹配</span>
+                    </div>
+                  )}
+                  {recommendSummary && (
+                    <div style={{ fontSize: 10, color: externalPredictionMeta ? '#93c5fd' : '#737373', background: '#18181b', padding: '4px 8px', borderRadius: 3, border: `1px solid ${externalPredictionMeta ? '#1e3a8a' : '#27272a'}` }}>
+                      {externalPredictionMeta
+                        ? `外部神經模型：${externalPredictionMeta.provider} / ${externalPredictionMeta.model_name} ${externalPredictionMeta.model_version} · ${Object.keys(externalPredictionsByRule).length} 筆，可在各規則中比較後採用`
+                        : '尚未收到此外部模型／零件的神經網路公差預測；CAD-RAG 與規則結果仍可獨立使用'}
+                    </div>
+                  )}
                 </div>
 
                 {/* 樣板風格庫與一鍵套用區塊 (Template Preset Section) */}
@@ -2578,8 +2911,11 @@ function App() {
                       const isHovered = hoveredFeatureId === rId;
                       const cat = (rule.category || rule.type || '').toLowerCase();
                       const cfg = ruleConfig[rId] || {};
-                      const currentTol = cfg.tolerance !== undefined ? cfg.tolerance : (rule.tolerance || rule.default_tolerance || '');
-                      const rawSides = cfg.sides || cfg.side || rule.sides || rule.side || ['BOTTOM'];
+                      const rec = aiRecommendations[rId];
+                      const externalPrediction = externalPredictionsByRule[rId];
+                      const recommendedSource = rec?.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? 'ENGINEER_PERSONAL' : 'HISTORICAL_RAG';
+                      const selectedToleranceSource = cfg.tolerance_source || (rec ? recommendedSource : 'MANUAL');
+                       const rawSides = cfg.sides || cfg.side || rule.sides || rule.side || ['BOTTOM'];
                       const currentSides: string[] = Array.isArray(rawSides) ? rawSides : [rawSides];
                       const currentViews = cfg.views || rule.target_views || rule.views || ['front', 'top', 'right'];
 
@@ -2612,28 +2948,235 @@ function App() {
                             gap: 6,
                           }}
                         >
-                          {/* Header Row: Checkbox + Rule ID + Category Badge */}
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1 }}>
+                          {/* Header Row: Checkbox + Rule ID + Category Badge + AI Tier Badge */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1, minWidth: 0 }}>
                               <input
                                 type="checkbox"
                                 checked={isSelected}
                                 onChange={() => toggleRule(rId)}
-                                style={{ cursor: 'pointer', accentColor: '#2563eb', width: 14, height: 14 }}
+                                style={{ cursor: 'pointer', accentColor: '#2563eb', width: 14, height: 14, flexShrink: 0 }}
                               />
-                              <span style={{ fontWeight: 600, color: isSelected ? '#f5f5f5' : '#737373', fontSize: 12 }}>
+                              <span style={{ fontWeight: 600, color: isSelected ? '#f5f5f5' : '#737373', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {rId}
                               </span>
                             </label>
-                            <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: badgeBg, color: badgeColor, fontWeight: 500 }}>
-                              {rule.category || rule.type || rule.dim_type}
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                              {rec && (
+                                <span
+                                  style={{
+                                    fontSize: 9,
+                                    padding: '2px 5px',
+                                    borderRadius: 3,
+                                    background: rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? '#3f2b0b' : (rec.tier_level === 'TIER_1_RAG_MATCH' ? '#064e3b' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#1e3a8a' : '#262626')),
+                                    color: rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? '#fbbf24' : (rec.tier_level === 'TIER_1_RAG_MATCH' ? '#6ee7b7' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#93c5fd' : '#a3a3a3')),
+                                    border: `1px solid ${rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? '#a16207' : (rec.tier_level === 'TIER_1_RAG_MATCH' ? '#047857' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#2563eb' : '#404040'))}`,
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? `個人 ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_1_RAG_MATCH' ? `RAG ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? `推論 ${(rec.confidence * 100).toFixed(0)}%` : '保底'))}
+                                </span>
+                              )}
+                              <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: badgeBg, color: badgeColor, fontWeight: 500 }}>
+                                {rule.category || rule.type || rule.dim_type}
+                              </span>
+                            </div>
                           </div>
 
                           {/* Rule Name */}
                           <div style={{ fontWeight: 500, color: isSelected ? '#93c5fd' : '#a3a3a3', fontSize: 11, paddingLeft: 22 }}>
                             {rule.name}
                           </div>
+
+                          {/* AI Recommendation Reasoning Banner */}
+                          {rec && (
+                            <div style={{ marginLeft: 22, background: '#131b26', border: '1px solid #1e3a8a', borderRadius: 4, padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <Cpu size={11} color="#60a5fa" />
+                                  <span style={{ fontSize: 10, fontWeight: 700, color: '#93c5fd' }}>
+                                    {rec.inferred_role ? `[${rec.inferred_role}] ` : ''}
+                                    尺寸 {Number(rec.nominal_value || 0).toFixed(2)} · 公差：{rec.recommended_mode === 'NONE' ? '沿用圖面一般公差' : rec.formatted_display}
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                                  <span style={{ fontSize: 9, color: rec.confidence >= 0.85 ? '#34d399' : '#93c5fd', fontWeight: 600 }}>
+                                    {(rec.confidence * 100).toFixed(0)}% 信心度
+                                  </span>
+                                  <span style={{ fontSize: 9, color: '#cbd5e1', border: '1px solid #334155', borderRadius: 3, padding: '1px 5px', background: '#171717' }}>
+                                    查找 {rec.retrieval_trace?.retrieved_case_count || 0}／同產品族 {rec.retrieval_trace?.same_family_candidate_count || 0}／語意相容 {rec.retrieval_trace?.compatible_case_count || 0}／待驗證 {rec.retrieval_trace?.unverified_candidate_count || 0}
+                                  </span>
+                                </div>
+                              </div>
+                              <div style={{ fontSize: 10, color: '#cbd5e1', lineHeight: 1.35 }}>
+                                {rec.reasoning_description}
+                              </div>
+                              {rec.engineer_placement_recommendation && (
+                                <div style={{ fontSize: 9, color: '#fbbf24', borderTop: '1px solid #334155', paddingTop: 4 }}>
+                                  個人標註位置：{[
+                                    rec.engineer_placement_recommendation.preferred_view,
+                                    rec.engineer_placement_recommendation.side,
+                                    rec.engineer_placement_recommendation.baseline,
+                                    typeof rec.engineer_placement_recommendation.offset === 'number'
+                                      ? `偏移 ${rec.engineer_placement_recommendation.offset} mm`
+                                      : null,
+                                  ].filter(Boolean).join(' / ')}
+                                  {' · '}{rec.engineer_placement_recommendation.source === 'ENGINEER_HISTORY' ? `依 ${rec.engineer_placement_recommendation.support_count} 筆個人案例` : '依個人設定'}
+                                </div>
+                              )}
+                              <div style={{ fontSize: 9, color: '#94a3b8' }}>
+                                {rec.retrieval_trace?.decision_source === 'HISTORICAL_CASE'
+                                  ? `決策來源：已採用歷史案例 ${rec.retrieval_trace?.adopted_case_id || ''}`
+                                  : rec.retrieval_trace?.decision_source === 'RULE_WITH_CASE_CONTEXT'
+                                    ? `決策來源：規則推論；案例 ${rec.retrieval_trace?.context_case_id || ''} 僅供情境參考`
+                                    : '決策來源：一般規則；未採用任何歷史案例'}
+                              </div>
+                              {rec.evidence_cases && rec.evidence_cases.length > 0 && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 3 }}>
+                                  <div style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700 }}>查找案例與相似原因</div>
+                                  {rec.evidence_cases.slice(0, 6).map((evidence: any, index: number) => {
+                                    const breakdown = evidence.score_breakdown || {};
+                                    const percent = Math.round((evidence.similarity || 0) * 100);
+                                    const reasons = [
+                                      `產品族 ${Math.round((breakdown.product_family || 0) * 100)}%`,
+                                      `特徵 ${Math.round((breakdown.feature_type || 0) * 100)}%`,
+                                      `直徑 ${Math.round((breakdown.diameter || 0) * 100)}%`,
+                                      `長度 ${Math.round((breakdown.length || 0) * 100)}%`,
+                                      `功能角色 ${Math.round((breakdown.functional_role || 0) * 100)}%`,
+                                      `鄰接關係 ${Math.round((breakdown.topology || 0) * 100)}%`,
+                                    ];
+                                    return (
+                                      <button
+                                        key={`${evidence.case_id}-${index}`}
+                                        type="button"
+                                        disabled={!evidence.has_source_drawing}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          if (!evidence.drawing_urls) return;
+                                          setEvidenceViewer({
+                                            caseId: evidence.case_id,
+                                            modelName: evidence.source_model || evidence.drawing,
+                                            pdfUrl: evidence.drawing_urls.pdf,
+                                            svgUrl: evidence.drawing_urls.svg,
+                                            mode: 'pdf',
+                                          });
+                                        }}
+                                        title={evidence.has_source_drawing ? '開啟此案例的原始 PDF／圖面' : '此案例沒有可追溯的原始圖面'}
+                                        style={{ width: '100%', textAlign: 'left', background: '#171717', border: `1px solid ${evidence.used_for_decision ? '#047857' : (evidence.used_as_context ? '#1d4ed8' : '#334155')}`, borderRadius: 3, padding: '5px 6px', cursor: evidence.has_source_drawing ? 'pointer' : 'not-allowed', opacity: evidence.has_source_drawing ? 1 : 0.72 }}
+                                      >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: '#dbeafe', fontSize: 9, fontWeight: 600 }}>
+                                          <span>{evidence.case_id} · {evidence.drawing || '未知圖面'} · {evidence.same_product_family ? '同產品族' : (evidence.product_family ? `跨產品族 ${evidence.product_family}` : '通用標準')}</span>
+                                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: evidence.used_for_decision ? '#6ee7b7' : (evidence.used_as_context ? '#93c5fd' : '#94a3b8') }}>
+                                            {evidence.used_for_decision ? '已採用' : (evidence.used_as_context ? '規則參考' : (!evidence.decision_eligible ? '待驗證' : (evidence.dimension_compatible ? '候選' : '語意不符')))} · {percent}%
+                                            {evidence.has_source_drawing && <ExternalLink size={9} />}
+                                          </span>
+                                        </div>
+                                        <div style={{ color: '#94a3b8', fontSize: 9, marginTop: 2 }}>
+                                          {reasons.join(' · ')} · {evidence.verification_status || 'UNVERIFIED'}
+                                        </div>
+                                        <div style={{ color: evidence.has_source_drawing ? '#60a5fa' : '#64748b', fontSize: 9, marginTop: 3 }}>
+                                          {evidence.has_source_drawing ? '點擊查看原始 PDF／向量圖' : '無可追溯原始圖面'}
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              {rec.evidence_sources && rec.evidence_sources.length > 0 && (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 2, paddingTop: 4, borderTop: '1px solid #1e293b' }}>
+                                  <span style={{ fontSize: 9, color: '#64748b' }}>
+                                    依據: {rec.evidence_sources.join(', ')}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSaveAsHistoricalCase(rId);
+                                    }}
+                                    title="將此審定公差存入歷史案例庫"
+                                    style={{
+                                      background: 'transparent',
+                                      border: '1px solid #334155',
+                                      borderRadius: 3,
+                                      color: '#94a3b8',
+                                      fontSize: 9,
+                                      padding: '1px 5px',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 3
+                                    }}
+                                  >
+                                    <Save size={9} />
+                                    <span>存為案例</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {(rec || externalPrediction) && (
+                            <div style={{ marginLeft: 22, display: 'flex', gap: 5, alignItems: 'center' }}>
+                              <span style={{ fontSize: 9, color: '#737373' }}>採用來源:</span>
+                              {rec && (
+                                <button
+                                  type="button"
+                                  onClick={(event) => { event.stopPropagation(); applyToleranceSource(rId, 'HISTORICAL_RAG'); }}
+                                  style={{ fontSize: 9, padding: '3px 7px', borderRadius: 3, cursor: 'pointer', border: `1px solid ${selectedToleranceSource === recommendedSource ? '#2563eb' : '#334155'}`, background: selectedToleranceSource === recommendedSource ? '#1e3a8a' : '#171717', color: selectedToleranceSource === recommendedSource ? '#bfdbfe' : '#94a3b8' }}
+                                >
+                                  {recommendedSource === 'ENGINEER_PERSONAL' ? '個人歷史案例' : '公司歷史案例／工程規則'}
+                                </button>
+                              )}
+                              {externalPrediction && (
+                                <button
+                                  type="button"
+                                  onClick={(event) => { event.stopPropagation(); applyToleranceSource(rId, 'EXTERNAL_NEURAL_MODEL'); }}
+                                  style={{ fontSize: 9, padding: '3px 7px', borderRadius: 3, cursor: 'pointer', border: `1px solid ${selectedToleranceSource === 'EXTERNAL_NEURAL_MODEL' ? '#2563eb' : '#334155'}`, background: selectedToleranceSource === 'EXTERNAL_NEURAL_MODEL' ? '#1e3a8a' : '#171717', color: selectedToleranceSource === 'EXTERNAL_NEURAL_MODEL' ? '#dbeafe' : '#94a3b8' }}
+                                >
+                                  神經網路預測
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {externalPrediction && (
+                            <div style={{ marginLeft: 22, background: '#131b26', border: '1px solid #1e3a8a', borderRadius: 4, padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                                <span style={{ fontSize: 10, color: '#dbeafe', fontWeight: 700 }}>
+                                  神經模型預測 · {externalPrediction.formatted_display || externalPrediction.predicted_mode || '未提供顯示值'}
+                                </span>
+                                <span style={{ fontSize: 9, color: '#93c5fd', fontWeight: 600 }}>
+                                  {Math.round((externalPrediction.confidence || 0) * 100)}% 模型信心
+                                </span>
+                              </div>
+                              <div style={{ fontSize: 9, color: '#93c5fd' }}>
+                                {externalPredictionMeta?.provider} / {externalPredictionMeta?.model_name} {externalPredictionMeta?.model_version}
+                              </div>
+                              {(externalPrediction.explanation || []).length > 0 && (
+                                <div style={{ fontSize: 9, color: '#d4d4d8', lineHeight: 1.4 }}>
+                                  {(externalPrediction.explanation || []).join('；')}
+                                </div>
+                              )}
+                              {(externalPrediction.warnings || []).length > 0 && (
+                                <div style={{ fontSize: 9, color: '#fbbf24', lineHeight: 1.4 }}>
+                                  注意：{(externalPrediction.warnings || []).join('；')}
+                                </div>
+                              )}
+                              {Object.keys(externalPrediction.input_features || {}).length > 0 && (
+                                <div style={{ fontSize: 9, color: '#a3a3a3', lineHeight: 1.4, wordBreak: 'break-word' }}>
+                                  模型輸入摘要：{JSON.stringify(externalPrediction.input_features)}
+                                </div>
+                              )}
+                              {Object.keys(externalPrediction.uncertainty || {}).length > 0 && (
+                                <div style={{ fontSize: 9, color: '#a3a3a3', lineHeight: 1.4, wordBreak: 'break-word' }}>
+                                  不確定性：{JSON.stringify(externalPrediction.uncertainty)}
+                                </div>
+                              )}
+                              <div style={{ fontSize: 9, color: '#a1a1aa' }}>
+                                此結果為獨立模型輸出，不代表已由歷史案例或 STEP 幾何核實。
+                              </div>
+                            </div>
+                          )}
 
                           {/* Annotation Customization Controls (Multi-View, Multi-Side, Tolerance) */}
                           {isSelected && (
@@ -2717,16 +3260,121 @@ function App() {
                                 </div>
                               </div>
 
-                              {/* Tolerance Setting */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span style={{ fontSize: 10, color: '#737373', width: 48 }}>公差設定:</span>
-                                <input
-                                  type="text"
-                                  value={currentTol}
-                                  onChange={(e) => updateRuleConfig(rId, { tolerance: e.target.value })}
-                                  placeholder="如 ±0.005 或 H13"
-                                  style={{ flex: 1, background: '#1f1f1f', border: '1px solid #333', borderRadius: 3, color: '#facc15', fontSize: 10, padding: '2px 6px' }}
-                                />
+                              {/* Tolerance Configuration (公差設定與配合代號選擇) */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{ fontSize: 10, color: '#737373', width: 48 }}>公差設定:</span>
+                                  {(() => {
+                                    const currentTolConfig = cfg.tolerance_config || rule.tolerance_config || { mode: 'NONE' };
+                                    const tolMode = currentTolConfig.mode || 'NONE';
+                                    const fitClass = currentTolConfig.fit_class || 'h6';
+                                    const selectValue = tolMode === 'FIT' ? fitClass : (tolMode === 'GROOVE' ? 'GROOVE' : (tolMode === 'CUSTOM_SYMMETRIC' ? 'CUSTOM_SYMMETRIC' : (tolMode === 'CUSTOM_LIMITS' ? 'CUSTOM_LIMITS' : 'NONE')));
+
+                                    return (
+                                      <select
+                                        value={selectValue}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          if (val === 'NONE') {
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'NONE' }, tolerance: '', tolerance_source: 'MANUAL' });
+                                          } else if (val === 'GROOVE') {
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'GROOVE', upper_dev: 0.040, lower_dev: 0.000 }, tolerance: '(+0.040/0.000)', tolerance_source: 'MANUAL' });
+                                          } else if (val === 'CUSTOM_SYMMETRIC') {
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'CUSTOM_SYMMETRIC', dev: currentTolConfig.dev || 0.05 }, tolerance: `±${currentTolConfig.dev || 0.05}`, tolerance_source: 'MANUAL' });
+                                          } else if (val === 'CUSTOM_LIMITS') {
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'CUSTOM_LIMITS', upper_dev: currentTolConfig.upper_dev || 0.02, lower_dev: currentTolConfig.lower_dev || -0.01 }, tolerance: `(+${currentTolConfig.upper_dev || 0.02}/${currentTolConfig.lower_dev || -0.01})`, tolerance_source: 'MANUAL' });
+                                          } else {
+                                            const isHole = cat.includes('hole') || val.startsWith('H') || val.startsWith('P') || val.startsWith('JS');
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'FIT', fit_class: val, is_hole: isHole }, tolerance: val, tolerance_source: 'MANUAL' });
+                                          }
+                                        }}
+                                        style={{
+                                          flex: 1,
+                                          background: '#1f1f1f',
+                                          border: '1px solid #333',
+                                          borderRadius: 3,
+                                          color: tolMode !== 'NONE' ? '#facc15' : '#a3a3a3',
+                                          fontSize: 10,
+                                          padding: '3px 6px',
+                                          cursor: 'pointer',
+                                          fontWeight: tolMode !== 'NONE' ? 600 : 400
+                                        }}
+                                      >
+                                        <option value="NONE">無公差 (未注 ISO 2768-m)</option>
+                                        {(cat.includes('groove') || rId.includes('groove')) && (
+                                          <option value="GROOVE">JIS 卡簧槽標準 (+0.040 / 0.000)</option>
+                                        )}
+                                        <optgroup label="ISO 286 配合公差">
+                                          <option value="h6">h6 — 軸承/精密滑動配合</option>
+                                          <option value="p6">p6 — 輪轂過盈壓配</option>
+                                          <option value="g6">g6 — 滑動間隙配合</option>
+                                          <option value="js6">js6 — 軸向對稱過渡配合</option>
+                                          <option value="h11">h11 — 自由外徑/卡簧槽</option>
+                                          <option value="H7">H7 — 基準孔精密配合</option>
+                                          <option value="H8">H8 — 基準孔一般配合</option>
+                                        </optgroup>
+                                        <optgroup label="自訂數值偏差">
+                                          <option value="CUSTOM_SYMMETRIC">自訂對稱偏差 (±)</option>
+                                          <option value="CUSTOM_LIMITS">自訂極限偏差 (+ / -)</option>
+                                        </optgroup>
+                                      </select>
+                                    );
+                                  })()}
+                                </div>
+
+                                {(() => {
+                                  const currentTolConfig = cfg.tolerance_config || rule.tolerance_config || { mode: 'NONE' };
+                                  if (currentTolConfig.mode === 'CUSTOM_SYMMETRIC') {
+                                    return (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 54 }}>
+                                        <span style={{ fontSize: 10, color: '#737373' }}>對稱偏差 ±:</span>
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={currentTolConfig.dev !== undefined ? currentTolConfig.dev : 0.05}
+                                          onChange={(e) => {
+                                            const val = parseFloat(e.target.value) || 0.0;
+                                            updateRuleConfig(rId, { tolerance_config: { ...currentTolConfig, mode: 'CUSTOM_SYMMETRIC', dev: val }, tolerance: `±${val}`, tolerance_source: 'MANUAL' });
+                                          }}
+                                          style={{ width: 60, background: '#1f1f1f', border: '1px solid #333', borderRadius: 3, color: '#facc15', fontSize: 10, padding: '2px 6px' }}
+                                        />
+                                        <span style={{ fontSize: 10, color: '#737373' }}>mm</span>
+                                      </div>
+                                    );
+                                  }
+                                  if (currentTolConfig.mode === 'CUSTOM_LIMITS') {
+                                    return (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 54 }}>
+                                        <span style={{ fontSize: 10, color: '#737373' }}>上:</span>
+                                        <input
+                                          type="number"
+                                          step="0.005"
+                                          value={currentTolConfig.upper_dev !== undefined ? currentTolConfig.upper_dev : 0.02}
+                                          onChange={(e) => {
+                                            const val = parseFloat(e.target.value) || 0.0;
+                                            const low = currentTolConfig.lower_dev !== undefined ? currentTolConfig.lower_dev : -0.01;
+                                            updateRuleConfig(rId, { tolerance_config: { ...currentTolConfig, mode: 'CUSTOM_LIMITS', upper_dev: val, lower_dev: low }, tolerance: `(+${val}/${low})`, tolerance_source: 'MANUAL' });
+                                          }}
+                                          style={{ width: 50, background: '#1f1f1f', border: '1px solid #333', borderRadius: 3, color: '#4ade80', fontSize: 10, padding: '2px 6px' }}
+                                        />
+                                        <span style={{ fontSize: 10, color: '#737373' }}>下:</span>
+                                        <input
+                                          type="number"
+                                          step="0.005"
+                                          value={currentTolConfig.lower_dev !== undefined ? currentTolConfig.lower_dev : -0.01}
+                                          onChange={(e) => {
+                                            const val = parseFloat(e.target.value) || 0.0;
+                                            const up = currentTolConfig.upper_dev !== undefined ? currentTolConfig.upper_dev : 0.02;
+                                            updateRuleConfig(rId, { tolerance_config: { ...currentTolConfig, mode: 'CUSTOM_LIMITS', upper_dev: up, lower_dev: val }, tolerance: `(+${up}/${val})`, tolerance_source: 'MANUAL' });
+                                          }}
+                                          style={{ width: 50, background: '#1f1f1f', border: '1px solid #333', borderRadius: 3, color: '#f87171', fontSize: 10, padding: '2px 6px' }}
+                                        />
+                                        <span style={{ fontSize: 10, color: '#737373' }}>mm</span>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
                               </div>
                             </div>
                           )}
@@ -3011,7 +3659,67 @@ function App() {
 
       </div>
 
-      {/* 🌟 儲存自訂樣板 Modal (Save Template Preset Modal) */}
+      {evidenceViewer && (
+        <div
+          onClick={() => setEvidenceViewer(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: 20 }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{ width: 'min(1180px, 96vw)', height: 'min(820px, 92vh)', background: '#171717', border: '1px solid #404040', borderRadius: 6, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 50px rgba(0,0,0,0.8)' }}
+          >
+            <div style={{ height: 48, flexShrink: 0, background: '#262626', borderBottom: '1px solid #404040', padding: '0 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: '#f5f5f5', fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  參考案例：{evidenceViewer.caseId}
+                </div>
+                <div style={{ color: '#a3a3a3', fontSize: 10 }}>{evidenceViewer.modelName}</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => setEvidenceViewer(current => current ? { ...current, mode: 'pdf' } : current)}
+                  style={{ background: evidenceViewer.mode === 'pdf' ? '#2563eb' : '#171717', border: '1px solid #404040', borderRadius: 3, color: '#f5f5f5', padding: '5px 9px', fontSize: 10, cursor: 'pointer' }}
+                >
+                  PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEvidenceViewer(current => current ? { ...current, mode: 'svg' } : current)}
+                  style={{ background: evidenceViewer.mode === 'svg' ? '#2563eb' : '#171717', border: '1px solid #404040', borderRadius: 3, color: '#f5f5f5', padding: '5px 9px', fontSize: 10, cursor: 'pointer' }}
+                >
+                  向量圖
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.open(evidenceViewer.mode === 'pdf' ? evidenceViewer.pdfUrl : evidenceViewer.svgUrl, '_blank', 'noopener,noreferrer')}
+                  title="在新分頁開啟"
+                  style={{ background: '#171717', border: '1px solid #404040', borderRadius: 3, color: '#cbd5e1', width: 28, height: 27, display: 'grid', placeItems: 'center', cursor: 'pointer' }}
+                >
+                  <ExternalLink size={13} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEvidenceViewer(null)}
+                  title="關閉"
+                  style={{ background: '#171717', border: '1px solid #404040', borderRadius: 3, color: '#cbd5e1', width: 28, height: 27, display: 'grid', placeItems: 'center', cursor: 'pointer' }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+            <div style={{ flex: 1, minHeight: 0, background: '#0f0f0f' }}>
+              {evidenceViewer.mode === 'pdf' ? (
+                <iframe title={`PDF ${evidenceViewer.caseId}`} src={evidenceViewer.pdfUrl} style={{ width: '100%', height: '100%', border: 0, background: '#fff' }} />
+              ) : (
+                <img src={evidenceViewer.svgUrl} alt={`圖面 ${evidenceViewer.modelName}`} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#fff' }} />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 儲存自訂樣板 Modal (Save Template Preset Modal) */}
       {saveTemplateModalOpen && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ width: 440, background: '#0f172a', border: '1px solid #334155', borderRadius: 12, padding: 24, boxShadow: '0 20px 50px rgba(0,0,0,0.8)' }}>
@@ -3061,13 +3769,78 @@ function App() {
               <button
                 onClick={handleSaveNewTemplate}
                 disabled={!newTemplateName.trim()}
-                style={{ padding: '8px 18px', background: newTemplateName.trim() ? 'linear-gradient(135deg, #0284c7, #2563eb)' : '#334155', border: 'none', borderRadius: 6, color: '#fff', fontSize: 13, cursor: newTemplateName.trim() ? 'pointer' : 'not-allowed', fontWeight: 700 }}
+                style={{ padding: '8px 18px', background: newTemplateName.trim() ? '#2563eb' : '#334155', border: 'none', borderRadius: 6, color: '#fff', fontSize: 13, cursor: newTemplateName.trim() ? 'pointer' : 'not-allowed', fontWeight: 700 }}
               >
                 確認儲存樣板
               </button>
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function App() {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [accountOpen, setAccountOpen] = useState(false);
+
+  useEffect(() => {
+    axios.get(`${API_BASE}/api/auth/me`, { withCredentials: true })
+      .then(response => {
+        setUser(response.data.user);
+        if (response.data.user?.must_change_password && response.data.user?.role !== 'ADMIN') setAccountOpen(true);
+      })
+      .catch(() => setUser(null))
+      .finally(() => setCheckingSession(false));
+  }, []);
+
+  useEffect(() => {
+    if (user?.must_change_password && user.role !== 'ADMIN') setAccountOpen(true);
+  }, [user?.must_change_password, user?.role]);
+
+  const logout = async () => {
+    try {
+      await axios.post(`${API_BASE}/api/auth/logout`, {}, { withCredentials: true });
+    } finally {
+      setAccountOpen(false);
+      setUser(null);
+    }
+  };
+
+  if (checkingSession) {
+    return <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#aaa', display: 'grid', placeItems: 'center' }}>正在確認登入狀態</div>;
+  }
+  if (!user) {
+    return <LoginPage onLogin={setUser} />;
+  }
+  return (
+    <div style={{ height: '100vh', minHeight: 0, display: 'flex', flexDirection: 'column', background: '#0a0a0a' }}>
+      <div style={{ height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', background: '#111', borderBottom: '1px solid #2b2b2b', color: '#d4d4d4', boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12 }}>
+          <ShieldCheck size={15} color="#60a5fa" />
+          <span style={{ color: '#737373' }}>工程師工作階段</span>
+          <span style={{ border: '1px solid #3a3a3a', background: '#1f1f1f', padding: '2px 6px', color: user.role === 'ADMIN' ? '#93c5fd' : '#cbd5e1' }}>{user.role}</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setAccountOpen(true)}
+          title="工程師帳號與偏好"
+          style={{ height: 32, display: 'flex', alignItems: 'center', gap: 7, padding: '0 12px', background: '#262626', border: '1px solid #3a3a3a', borderRadius: 4, color: '#fff', cursor: 'pointer' }}
+        >
+          <UserRound size={15} /> {user.display_name}
+        </button>
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <WorkspaceApp user={user} />
+      </div>
+      {accountOpen && (
+        <AccountDialog
+          user={user}
+          onClose={() => setAccountOpen(false)}
+          onLogout={logout}
+        />
       )}
     </div>
   );

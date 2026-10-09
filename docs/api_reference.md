@@ -1,313 +1,913 @@
-# STEP-to-2D API Reference
+# FORCECON STEP-to-2D REST API Reference
 
-## Base URL
-`http://localhost:8000`
+本文件是外部系統對接的主要契約說明。執行中的 FastAPI 會同步提供 `/docs`、`/redoc` 與 `/openapi.json`；若文件與部署版本不一致，先確認後端回傳的 `info.version` 與 Git commit。
 
-後端入口為 `web_app/backend/server.py`。所有背景任務狀態目前只存在記憶體中的 `jobs` dict，server 重啟後不會保留。
+## 1. 基本資訊
 
-## Endpoints
+| 項目 | 值 |
+| --- | --- |
+| 預設 Base URL | `http://localhost:8000` |
+| API Prefix | `/api` |
+| JSON | `application/json; charset=utf-8` |
+| 檔案上傳 | `multipart/form-data` |
+| OpenAPI | `/openapi.json` |
+| Swagger UI | `/docs` |
+| ReDoc | `/redoc` |
+| 目前 API 版本 | `0.4.0-dev` |
 
-外部系統若要取得三視圖與回傳標註資訊，建議優先閱讀 `docs/drawing_exchange_api.md`。該文件描述完整的工程圖交換流程。
+除檔案下載／PDF／SVG 外，成功回應為 JSON。日期時間若新增，應使用 ISO 8601 UTC。
 
-### 1. `POST /api/upload`
-Uploads a single STEP/STP file for 2D drawing generation.
-- **Content-Type**: `multipart/form-data`
-- **Body Parameters**:
-  - `file`: The `.step` or `.stp` file.
-- **Returns**:
-  ```json
-  { "job_id": "uuid-string" }
-  ```
+## 2. ID 與名詞
 
-### 2. `POST /api/compare`
-Uploads two STEP/STP files for fast visual comparison and structural tree diffing.
+### `job_id`
 
-Current implementation uses **Fast Visual Diff Mode**:
-- `added` is the full new model STL shown in green.
-- `removed` is the full old model STL shown in red.
-- It does not currently compute exact Boolean added/removed/unchanged solids.
-- Volume, surface area, bounding box, and assembly tree differences are still reported as numerical/contextual aids.
+上傳或比較任務的 UUID，只用於查詢當次執行狀態。Job 目前儲存在記憶體，後端重啟即失效。
 
-- **Content-Type**: `multipart/form-data`
-- **Body Parameters**:
-  - `file_old`: The older version of the `.step` file.
-  - `file_new`: The newer version of the `.step` file.
-- **Returns**:
-  ```json
-  { "job_id": "uuid-string" }
-  ```
+### `model_id`
 
-### 3. `GET /api/status/{job_id}`
-Checks the status of a background processing job.
-- **Path Parameters**:
-  - `job_id`: The UUID returned by the upload/compare APIs.
-- **Returns**:
-  ```json
-  {
-    "status": "processing|completed|error",
-    "message": "Status description...",
-    "progress": { "current": 1, "total": 10 },
-    "logs": []
-  }
-  ```
+產圖輸出資料夾名稱，通常是 `/api/results/{job_id}` 的 `output_dir`，例如 `BLADE_ASSY-R01_batch`。不是 job UUID。
 
-### 4. `GET /api/results/{job_id}`
-Fetches the detailed results of a completed job.
-- **Path Parameters**:
-  - `job_id`: The UUID of a completed job.
-- **Returns (Single File Job)**:
-  ```json
-  {
-    "tree": { "name": "Assembly", "children": [...] },
-    "parts_map": { "Part_1": { "pdf": "...", "dxf": "...", "stl": "..." } },
-    "output_dir": "dir_name"
-  }
-  ```
-- **Returns (Compare Job)**:
-  ```json
-  {
-    "diff_result": {
-      "added": "/api/files/.../added.stl",
-      "removed": "/api/files/.../removed.stl"
-    },
-    "stats": {
-      "old": { "volume": 100, "area": 50, "bbox": [10, 10, 10] },
-      "new": { "volume": 120, "area": 60, "bbox": [12, 10, 10] },
-      "diff": { "volume": 20, "area": 10, "bbox": [2, 0, 0] }
-    },
-    "tree_old": { "name": "Root", "children": [...] },
-    "tree_new": { "name": "Root", "children": [...] }
-  }
-  ```
+### `part_id`
 
-### 5. `GET /api/files/{dir_name}/{filename}`
-Serves statically generated files (STL, PDF, DXF, PNG).
-- **Path Parameters**:
-  - `dir_name`: The output directory of the job.
-  - `filename`: The specific file. Nested paths such as `_parts/model.stl` are also served by the mounted static route.
-- **Returns**: The binary file content.
+組合件中的零件 ID，例如 `_full_assembly`、`Part_1`。請從 `parts_map` 或 drawing package 取得，不要自行猜測。
 
----
+### `model_name`
 
-### 6. `GET /api/models`
-Lists previously generated model output folders under the output directory.
-- **Returns**:
-  ```json
-  {
-    "models": [
-      { "id": "model_batch", "name": "model" }
-    ]
-  }
-  ```
+公差來源圖面的檔名 stem，例如 `0AJ0A00009-R03`，不含 `.dxf`。
 
-### 7. `GET /api/model/{model_id}`
-Loads an already generated model without re-running STEP processing.
-- **Path Parameters**:
-  - `model_id`: The output folder id returned by `/api/models`.
-- **Returns**:
-  ```json
-  {
-    "tree": { "name": "Assembly", "children": [...] },
-    "parts_map": {
-      "_full_assembly": {
-        "png": "/api/files/model_batch/model_assembly.png",
-        "pdf": "/api/files/model_batch/model_assembly.pdf",
-        "dxf": "/api/files/model_batch/model_assembly.dxf",
-        "stl": "/api/files/model_batch/_parts/_full_assembly.stl",
-        "front_pdf": "/api/files/model_batch/model_assembly_front.pdf",
-        "top_pdf": "/api/files/model_batch/model_assembly_top.pdf",
-        "right_pdf": "/api/files/model_batch/model_assembly_right.pdf"
-      }
-    },
-    "output_dir": "model_batch"
-  }
-  ```
+### `rule_id`
 
-### 8. `GET /api/examples`
-Lists reference example files if local example directories exist.
+候選標註規則 ID。公差推薦的 recommendations object 通常以此作 key。
 
-The response may include:
-- old examples from `auto_2d_drawing/reference/example_output`
-- new examples from the machine-local path configured in `server.py`
+## 3. 共通錯誤格式
 
-Allowed extensions include PDF, SVG, DWG, XLS/XLSX, 7z, and ZIP.
-- **Returns**:
-  ```json
-  {
-    "example_tree": {
-      "name": "所有公司範例圖",
-      "type": "folder",
-      "children": [...]
-    }
-  }
-  ```
-
-If no configured example folder exists or no supported files are found:
+FastAPI 錯誤：
 
 ```json
-{ "example_tree": null }
+{
+  "detail": "Model output not found"
+}
 ```
 
----
+常見狀態：
 
-### 9. `GET /api/drawings/{model_id}`
-Returns an exchange-friendly drawing package for a generated model. This includes main drawing files, split view files, feature layer files, and previously returned external annotations when present.
+| HTTP | 意義 |
+| ---: | --- |
+| 200 | 成功 |
+| 400 | 參數或狀態不合法，例如 job 未完成 |
+| 401 | 受保護接口缺少或提供錯誤 API key |
+| 403 | 已登入，但角色或資料所有權不允許此操作 |
+| 404 | job、model、part、圖面或 artifact 不存在 |
+| 422 | FastAPI schema 驗證或 DXF 解析失敗 |
+| 500 | CAD 計算、檔案或未處理例外 |
 
-- **Path Parameters**:
-  - `model_id`: The output folder id, usually the `output_dir` returned by `/api/results/{job_id}`.
-- **Returns**:
-  ```json
-  {
-    "model_id": "model_batch",
-    "output_dir": "model_batch",
-    "tree": { "name": "Assembly", "children": [] },
-    "parts": {
-      "_full_assembly": {
-        "part_id": "_full_assembly",
-        "main": {
-          "pdf": "/api/files/model_batch/model_assembly.pdf",
-          "png": "/api/files/model_batch/model_assembly.png",
-          "dxf": "/api/files/model_batch/model_assembly.dxf",
-          "stl": "/api/files/model_batch/_parts/_full_assembly.stl"
-        },
-        "views": {
-          "front": { "pdf": "/api/files/model_batch/model_assembly_front.pdf" },
-          "top": { "pdf": "/api/files/model_batch/model_assembly_top.pdf" },
-          "right": { "pdf": "/api/files/model_batch/model_assembly_right.pdf" }
-        },
-        "feature_layer": {
-          "pdf": "/api/files/model_batch/model_assembly_features_view.pdf",
-          "json": "/api/files/model_batch/model_assembly_feature_records.json"
-        }
-      }
+目前沒有統一的錯誤 `code`；整合端不應解析 `detail` 文字來決定商業流程。
+
+## 4. API 總表
+
+### 系統
+
+| Method | Path | 用途 |
+| --- | --- | --- |
+| GET | `/api/health` | Liveness 與部署路徑 |
+
+### Job 與模型
+
+| Method | Path | 用途 |
+| --- | --- | --- |
+| POST | `/api/upload` | 上傳 STEP/STP 並建立產圖 job |
+| POST | `/api/compare` | 上傳 old/new STEP 並建立比較 job |
+| GET | `/api/status/{job_id}` | 查詢 job |
+| GET | `/api/results/{job_id}` | 取得完成結果 |
+| GET | `/api/models` | 列出既有模型輸出 |
+| GET | `/api/model/{model_id}` | 讀取既有模型與 parts map |
+
+### 工程圖交換
+
+| Method | Path | 用途 |
+| --- | --- | --- |
+| GET | `/api/drawings/{model_id}` | 正規化工程圖套件 |
+| GET | `/api/drawings/{model_id}/parts/{part_id}/features` | 讀取已輸出的 feature records |
+| GET | `/api/drawings/{model_id}/parts/{part_id}/annotations` | 讀取外部標註 |
+| POST | `/api/drawings/{model_id}/parts/{part_id}/annotations` | 儲存外部標註 |
+| GET | `/api/files/{path}` | 靜態 artifact |
+
+### 即時特徵與智慧標註
+
+| Method | Path | 用途 |
+| --- | --- | --- |
+| GET | `/api/features/{model_id}/{part_id}` | 從 STEP 即時提取 3D 特徵 |
+| GET | `/api/annotation/candidate-rules/{model_id}/{part_id}` | 產生候選標註規則 |
+| GET | `/api/annotation/templates` | 列出樣板 |
+| POST | `/api/annotation/templates` | 儲存樣板 |
+| DELETE | `/api/annotation/templates/{template_id}` | 刪除樣板 |
+| POST | `/api/annotation/apply-template` | 套用樣板到 records |
+| POST | `/api/annotation/render` | 產出客製工程圖 |
+
+### 公差案例與推薦
+
+| Method | Path | 用途 |
+| --- | --- | --- |
+| GET | `/api/tolerance/stats` | 案例庫統計 |
+| GET | `/api/tolerance/cases` | 案例／圖面清單 |
+| GET | `/api/tolerance/drawing-details/{model_name}` | 圖面內全部尺寸與公差 |
+| GET | `/api/tolerance/drawing-svg/{model_name}` | SVG，可 highlight handle |
+| GET | `/api/tolerance/drawing-pdf/{model_name}` | Inline PDF |
+| GET | `/api/tolerance/download/{model_name}` | 下載 DWG/DXF |
+| POST | `/api/tolerance/open-local` | Windows 本機開啟圖面 |
+| POST | `/api/tolerance/recommend` | Tier 1～3 公差推薦 |
+| POST | `/api/tolerance/external-predictions/{model_id}/{part_id}` | 提交外部神經網路預測批次 |
+| GET | `/api/tolerance/external-predictions/{model_id}/{part_id}` | 讀取目前預測批次 |
+| DELETE | `/api/tolerance/external-predictions/{model_id}/{part_id}` | 移除目前預測批次 |
+| POST | `/api/tolerance/save-case` | 保存工程師確認案例 |
+
+### 參考資料與相容 API
+
+| Method | Path | 用途 |
+| --- | --- | --- |
+| GET | `/api/examples` | 公司範例樹 |
+| GET | `/api/processed/fan-20260625` | 指定批次結果 |
+| GET | `/api/tolerances` | 讀取全域暫存公差 |
+| POST | `/api/tolerances` | 更新全域暫存公差 |
+
+## 5. 系統 API
+
+### `GET /api/health`
+
+不執行 CAD 工作，供 Docker/Kubernetes liveness 使用。
+
+```json
+{
+  "status": "ok",
+  "service": "forcecon-step-to-2d",
+  "version": "0.4.0-dev",
+  "models_dir": "/data/models",
+  "output_dir": "/data/output"
+}
+```
+
+此 endpoint 只表示 Web 程序活著，不保證 OpenCASCADE 能成功處理任意模型。正式環境可另建 readiness smoke test。
+
+## 6. 上傳與 Job
+
+### `POST /api/upload`
+
+Request：
+
+```http
+POST /api/upload
+Content-Type: multipart/form-data
+```
+
+| Form field | Type | Required | 說明 |
+| --- | --- | --- | --- |
+| `file` | file | yes | `.stp` 或 `.step` |
+
+Response：
+
+```json
+{"job_id": "4e1179f6-69f0-4d16-8c60-3d54539fa4e2"}
+```
+
+API 已有帳號與 Session 認證；目前仍沒有檔案大小上限，部署在不可信網路前必須由 reverse proxy 補上限制。
+
+### `POST /api/compare`
+
+| Form field | Type | Required |
+| --- | --- | --- |
+| `file_old` | STEP file | yes |
+| `file_new` | STEP file | yes |
+
+Response 同 upload。現在採快速視覺比較：`added` 是完整新模型，`removed` 是完整舊模型，不是 Boolean 差集。
+
+### `GET /api/status/{job_id}`
+
+```json
+{
+  "status": "processing",
+  "message": "正在處理 Part_1 (1/5)",
+  "progress": {"current": 1, "total": 5},
+  "logs": []
+}
+```
+
+`status`：`processing`、`completed`、`error`。
+
+建議輪詢：前幾次每 1 秒，長任務退避至 2～5 秒；收到 404 代表 job 不存在或服務曾重啟。
+
+### `GET /api/results/{job_id}`
+
+Job 必須 completed，否則 400。
+
+```json
+{
+  "tree": {"name": "Assembly", "children": []},
+  "parts_map": {
+    "_full_assembly": {
+      "pdf": "/api/files/M_batch/M_assembly.pdf",
+      "png": "/api/files/M_batch/M_assembly.png",
+      "dxf": "/api/files/M_batch/M_assembly.dxf",
+      "stl": "/api/files/M_batch/_parts/_full_assembly.stl",
+      "front_pdf": "/api/files/M_batch/M_assembly_front.pdf",
+      "features_json": "/api/files/M_batch/M_assembly_feature_records.json"
+    }
+  },
+  "output_dir": "M_batch",
+  "diff_result": null,
+  "stats": null,
+  "tree_old": null,
+  "tree_new": null
+}
+```
+
+Compare job 主要使用 `diff_result`、`stats`、`tree_old`、`tree_new`。
+
+### `GET /api/models`
+
+列出 output 下以 `_batch` 結尾的資料夾。
+
+```json
+{"models": [{"id": "M_batch", "name": "M"}]}
+```
+
+### `GET /api/model/{model_id}`
+
+```json
+{
+  "tree": {},
+  "parts_map": {},
+  "output_dir": "M_batch"
+}
+```
+
+## 7. 工程圖交換 API
+
+### `GET /api/drawings/{model_id}`
+
+建議外部系統從此 endpoint 取得模型可用的 part、主圖、視圖與 feature artifact。
+
+```json
+{
+  "model_id": "M_batch",
+  "output_dir": "M_batch",
+  "tree": {},
+  "parts": {
+    "_full_assembly": {
+      "part_id": "_full_assembly",
+      "main": {
+        "pdf": "/api/files/M_batch/M_assembly.pdf",
+        "png": "/api/files/M_batch/M_assembly.png",
+        "dxf": "/api/files/M_batch/M_assembly.dxf",
+        "stl": "/api/files/M_batch/_parts/_full_assembly.stl"
+      },
+      "views": {
+        "front": {"pdf": "/api/files/M_batch/M_assembly_front.pdf"},
+        "top": {"pdf": "/api/files/M_batch/M_assembly_top.pdf"}
+      },
+      "feature_layer": {
+        "pdf": "/api/files/M_batch/M_assembly_features_view.pdf",
+        "json": "/api/files/M_batch/M_assembly_feature_records.json"
+      },
+      "external_annotations": null
     }
   }
-  ```
+}
+```
 
-### 10. `GET /api/drawings/{model_id}/parts/{part_id}/features`
-Returns feature records for a generated drawing part. These records are intended as annotation and tolerance candidates for an external service.
+Client 必須 feature-detect 欄位，不假設每個 part 一定有全部視圖或格式。
 
-- **Returns**:
-  ```json
-  {
-    "model_id": "model_batch",
-    "part_id": "_full_assembly",
-    "features_url": "/api/files/model_batch/model_assembly_feature_records.json",
-    "records": [
+### `GET /api/drawings/{model_id}/parts/{part_id}/features`
+
+讀取已產生的 feature record JSON，不重新跑 STEP。
+
+```json
+{
+  "model_id": "M_batch",
+  "part_id": "Part_1",
+  "features_url": "/api/files/...json",
+  "records": [
+    {
+      "id": "shaft_segment_01",
+      "type": "shaft_segment",
+      "name": "軸段 Φ10",
+      "view": "front",
+      "nominal": {"diameter": 10.0},
+      "geometry": {},
+      "source": {"extractor": "FeatureExtractor", "confidence": 0.9}
+    }
+  ]
+}
+```
+
+### `POST /api/drawings/{model_id}/parts/{part_id}/annotations`
+
+Body 是 JSON object，schema 目前寬鬆。建議：
+
+```json
+{
+  "schema_version": "1.0",
+  "source": "external-tolerance-service",
+  "annotations": [
+    {
+      "feature_id": "shaft_segment_01",
+      "view": "front",
+      "type": "diameter",
+      "nominal": 10.0,
+      "label": "Φ10 h6",
+      "tolerance": {"mode": "FIT", "fit_class": "h6"},
+      "confidence": 0.94,
+      "needs_review": false
+    }
+  ]
+}
+```
+
+Response：
+
+```json
+{
+  "status": "success",
+  "message": "Annotations saved.",
+  "model_id": "M_batch",
+  "part_id": "Part_1",
+  "annotations_url": "/api/files/M_batch/_annotations/Part_1_annotations.json"
+}
+```
+
+### `GET .../annotations`
+
+```json
+{"model_id": "M_batch", "part_id": "Part_1", "annotations": {}}
+```
+
+沒有標註時回 404，不回空 object。
+
+### `GET /api/files/{path}`
+
+FastAPI StaticFiles，服務 `CAD_OUTPUT_DIR` 下的 artifact。請使用 API 回傳 URL，不自行拼接未驗證路徑。
+
+## 8. 即時特徵與標註
+
+### `GET /api/features/{model_id}/{part_id}`
+
+從 output `_parts` 或 models 目錄尋找 STEP，動態提取 FeatureRecord。可能是 CPU 密集同步呼叫。
+
+成功回應包含 model/part、part type、feature records 與幾何摘要；實際欄位請同時參考 OpenAPI 與 [特徵查找引擎](feature-search-engine.md)。
+
+### `GET /api/annotation/candidate-rules/{model_id}/{part_id}`
+
+重新載入 STEP、投影必要視圖並產生候選標註規則。
+
+典型 response：
+
+```json
+{
+  "status": "ok",
+  "model_id": "M_batch",
+  "part_id": "Part_1",
+  "rules": [
+    {
+      "rule_id": "shaft_segment_01_diameter",
+      "dim_type": "DIAMETER",
+      "nominal_value": 10.0,
+      "target_views": ["front", "top"],
+      "views": ["front"],
+      "enabled": true
+    }
+  ]
+}
+```
+
+### `GET /api/annotation/templates`
+
+```json
+{"status": "ok", "templates": []}
+```
+
+### `POST /api/annotation/templates`
+
+Body 傳完整 template object。TemplateManager 負責建立 ID／保存。回應：
+
+```json
+{"status": "ok", "template": {}}
+```
+
+### `DELETE /api/annotation/templates/{template_id}`
+
+成功：
+
+```json
+{"status": "ok", "message": "Template deleted"}
+```
+
+內建／不存在 template 可能回 400/404。
+
+### `POST /api/annotation/apply-template`
+
+```json
+{
+  "template_id": "shaft-default",
+  "feature_records": []
+}
+```
+
+也可直接傳 `template` object。Response：
+
+```json
+{
+  "status": "ok",
+  "records": [],
+  "applied_template": "Shaft Default"
+}
+```
+
+### `POST /api/annotation/render`
+
+```json
+{
+  "model_id": "M_batch",
+  "part_id": "Part_1",
+  "feature_records": [
+    {
+      "rule_id": "shaft_segment_01_diameter",
+      "enabled": true,
+      "views": ["front"],
+      "tolerance_config": {"mode": "FIT", "fit_class": "h6"}
+    }
+  ],
+  "title_info": {
+    "drawing_no": "M-R01",
+    "part_name": "SHAFT",
+    "material": "SUS304"
+  }
+}
+```
+
+成功回應包含產生的 DXF/PDF/PNG/SVG URL 與 timestamp。這是同步 CAD 工作，reverse proxy timeout 應高於一般 API。
+
+## 9. 公差案例 API
+
+### `GET /api/tolerance/stats`
+
+```json
+{
+  "status": "ok",
+  "total_cases": 23517,
+  "total_drawings": 1507,
+  "roles": {},
+  "verification": {"AUTO_EXTRACTED": 23513, "AUTO_VERIFIED": 4},
+  "feature_linkage": {"FEATURE_LINKED": 4, "UNRESOLVED_FEATURE": 23513},
+  "retrieval_eligible_cases": 4,
+  "top_series": {}
+}
+```
+
+`total_cases` 是尺寸／公差證據，不等於圖面數。
+
+### `GET /api/tolerance/cases`
+
+Query：
+
+| Name | Type | Default | 說明 |
+| --- | --- | --- | --- |
+| `category` | string | null | `ALL` 或 UI 分類 |
+| `search` | string | null | case/model/type/role/tolerance 搜尋 |
+| `page` | int | 1 | 1-based |
+| `page_size` | int | 36 | `<=0` 表示不分頁，不建議外部使用 |
+| `group_by_drawing` | bool | false | true 時一張圖面一筆 |
+
+Response：
+
+```json
+{
+  "status": "ok",
+  "total_count": 1507,
+  "evidence_count": 23517,
+  "all_cases_count": 23517,
+  "group_by_drawing": true,
+  "page": 1,
+  "page_size": 36,
+  "total_pages": 42,
+  "cases": [
+    {
+      "model_name": "0AJ0A00009-R03",
+      "drawing_case_count": 8,
+      "drawing_verified_count": 0,
+      "drawing_eligible_count": 0,
+      "drawing_feature_types": ["shaft_segment", "hole"],
+      "preview_image_url": "/api/tolerance/drawing-svg/0AJ0A00009-R03",
+      "pdf_url": "/api/tolerance/drawing-pdf/0AJ0A00009-R03",
+      "details_url": "/api/tolerance/drawing-details/0AJ0A00009-R03"
+    }
+  ]
+}
+```
+
+### `GET /api/tolerance/drawing-details/{model_name}`
+
+從來源 DXF 即時解析全部 dimension/text item。
+
+```json
+{
+  "status": "ok",
+  "model_name": "0AJ0A00009-R03",
+  "has_dwg": true,
+  "has_dxf": true,
+  "svg_url": "/api/tolerance/drawing-svg/...",
+  "pdf_url": "/api/tolerance/drawing-pdf/...",
+  "total_dimensions_count": 15,
+  "total_tolerances_count": 8,
+  "tolerances": [
+    {
+      "nominal_value": 120.0,
+      "dimension_category": "LINEAR",
+      "formatted_tolerance": "(+0.500 / -0.500 mm)",
+      "entity_handle": "31F88",
+      "validation_status": "AUTO_VALIDATED",
+      "feature_inference_2d": {},
+      "pair_method": "GLOBAL_COMPONENT_DXF_GEOMETRY_SEARCH_V1",
+      "component_name": "SHAFT-2XXXX",
+      "component_fingerprint": "40c9b222a1aea47b4",
+      "matched_dxf_view_ids": ["view_004"],
+      "matched_step_view": "front",
+      "global_geometry_score": 0.91,
+      "global_geometry_pair_evidence": {}
+    }
+  ],
+  "drawing_defaults": [],
+  "rejected_items": [],
+  "all_dimensions": []
+}
+```
+
+配對欄位語意：
+
+| 欄位 | 說明 |
+| --- | --- |
+| `pair_method` | STEP/DXF 關係的建立方法；`GLOBAL_COMPONENT_DXF_GEOMETRY_SEARCH_V1` 表示不依賴檔名的全域幾何搜尋 |
+| `component_name` | STEP/XCAF 葉零件名稱；可能與 DXF 檔名不同 |
+| `component_fingerprint` | 與 placement 無關的 B-Rep 去重鍵，不是料號 |
+| `matched_dxf_view_ids` | 全域搜尋實際命中的 DXF 視圖；幾何配對不授權同張圖的其他視圖 |
+| `matched_step_view` | 命中的 STEP HLR 投影方向 |
+| `global_geometry_score` | 配對候選的輪廓註冊分數；不能單獨作為公差可採用條件 |
+| `global_geometry_pair_evidence` | 描述子、ICP／Chamfer、inlier、競爭者分差與 reciprocal-best checks |
+
+`AUTO_VERIFIED` 案例的 `source_metadata.geometry_verification` 會提供可機器判讀的核實證據：
+
+```json
+{
+  "method": "DXF_ATTACHMENT_STEP_HLR_V2",
+  "status": "GEOMETRY_VERIFIED",
+  "passed": true,
+  "score": 0.9867,
+  "checks": {
+    "reliable_dimension_attachment": true,
+    "local_feature_semantics": true,
+    "step_projection_signature": true,
+    "drawing_view_matches_step_projection": true,
+    "dimension_matches_projected_feature_location": true
+  },
+  "association": {
+    "association_status": "GEOMETRIC_ATTACHMENT",
+    "primary_view_id": "view_004",
+    "attached_geometry_handles": ["801B8", "801BF"]
+  },
+  "local_feature_evidence": {
+    "signature": "TWO_EXACT_EXTENSION_ENDPOINTS"
+  },
+  "step_projection_evidence": {
+    "passed": true,
+    "matching_views": [
       {
-        "id": "front_circle_1",
-        "type": "projected_circle",
         "view": "front",
-        "nominal": { "diameter": 12.5 },
-        "tolerance_key": "projected_circle",
-        "geometry": { "kind": "circle", "center": [10, 20], "radius": 6.25 }
+        "signature": "VISIBLE_LENGTH_OR_SEPARATION",
+        "visible_axis_separation": true
       }
     ]
+  },
+  "view_registration": {
+    "dxf_view_id": "view_004",
+    "step_view": "front",
+    "score": 0.9055,
+    "contour_score": 0.865,
+    "rotation_degrees": 90,
+    "mirrored": false
+  },
+  "feature_localization": {
+    "status": "PROJECTED_NODE_ALIGNED",
+    "passed": true,
+    "score": 0.9996,
+    "node_center_3d": [-21.13, -8.2, 43.95],
+    "expected_normalized_point": [0.0311, 0.2703],
+    "observed_normalized_anchor": [0.0279, 0.2703],
+    "along_axis_error": 0.0
   }
-  ```
-
-### 11. `POST /api/drawings/{model_id}/parts/{part_id}/annotations`
-Receives external annotation results for a generated part and stores them under the model output folder.
-
-- **Content-Type**: `application/json`
-- **Body**: Any JSON object. Recommended schema is documented in `docs/drawing_exchange_api.md`.
-- **Returns**:
-  ```json
-  {
-    "status": "success",
-    "message": "Annotations saved.",
-    "model_id": "model_batch",
-    "part_id": "_full_assembly",
-    "annotations_url": "/api/files/model_batch/_annotations/_full_assembly_annotations.json"
-  }
-  ```
-
-### 12. `GET /api/drawings/{model_id}/parts/{part_id}/annotations`
-Returns annotations previously stored through the POST endpoint.
-
-- **Returns**:
-  ```json
-  {
-    "model_id": "model_batch",
-    "part_id": "_full_assembly",
-    "annotations": {}
-  }
-  ```
-
----
-
-### 13. `GET /api/processed/fan-20260625`
-Lists the preprocessed FAN 20260625 batch outputs under `auto_2d_drawing/output/fan_20260625_autodraw`.
-
-Generated variants are grouped by model name. For each model, the API prefers PDF over SVG over DXF when multiple formats exist for the same view.
-
-- **Returns**:
-  ```json
-  {
-    "processed_tree": {
-      "name": "FAN 20260625 已處理工程圖",
-      "type": "folder",
-      "children": [...]
-    },
-    "manifest": {}
-  }
-  ```
-
-If the processed output directory does not exist:
-
-```json
-{ "processed_tree": null, "manifest": null }
+}
 ```
 
----
+呼叫端不得只根據 `score` 判定可採用性；必須同時要求 `passed=true`、案例狀態為 `AUTO_VERIFIED` 或 `ENGINEER_VERIFIED`，且推薦回應的 `decision_status` 不是 `REVIEW_REQUIRED`。
 
-### 14. `POST /api/tolerances`
-Updates the global tolerance configuration for 2D dimension generation. Designed to be called by external ML prediction models.
+### `GET /api/tolerance/drawing-svg/{model_name}`
 
-Current limitation: this configuration is stored in memory and is not yet fully wired into every generated `DimensionTask`.
+Query `highlight` 可指定 DXF entity handle：
 
-- **Content-Type**: `application/json`
-- **Body Schema**:
-  ```json
-  {
-    "default_tolerance": "±0.1",
-    "feature_overrides": {
-      "shaft": "±0.05",
-      "hole": "±0.02"
+```text
+/api/tolerance/drawing-svg/0AJ0A00009-R03?highlight=31F88
+```
+
+Response Content-Type：`image/svg+xml`。
+
+### `GET /api/tolerance/drawing-pdf/{model_name}`
+
+Response Content-Type：`application/pdf`；`Content-Disposition` 為 `inline`，可嵌入 iframe。
+
+### `GET /api/tolerance/download/{model_name}`
+
+Query：`format=dwg|dxf`，找不到指定格式時現行程式可能 fallback 到另一可用來源。Response 是 attachment。
+
+### `POST /api/tolerance/open-local`
+
+```json
+{"model_name": "0AJ0A00009-R03", "format": "dwg"}
+```
+
+呼叫 Windows `os.startfile`，只適用與使用者同機的可信桌面部署。Docker/Linux、遠端服務與多租戶環境不應使用。
+
+## 10. 公差推薦 API
+
+### `POST /api/tolerance/recommend`
+
+```json
+{
+  "model_id": "M_batch",
+  "part_id": "Part_1",
+  "part_category": "SHAFT",
+  "product_family": "FQ6V",
+  "candidate_rules": [
+    {
+      "rule_id": "shaft_segment_01_diameter",
+      "dim_type": "DIAMETER",
+      "nominal_value": 10.0,
+      "feature_type": "shaft_segment"
     }
-  }
-  ```
-- **Returns**:
-  ```json
-  {
-    "status": "success",
-    "message": "Tolerances updated.",
-    "data": {
-      "default_tolerance": "±0.1",
-      "feature_overrides": {
-        "shaft": "±0.05",
-        "hole": "±0.02"
-      }
+  ]
+}
+```
+
+`model_id`、`part_id` 必填。省略 `candidate_rules` 時後端會重新建立候選規則。
+
+Response：
+
+```json
+{
+  "status": "ok",
+  "model_id": "M_batch",
+  "part_id": "Part_1",
+  "part_type": "SHAFT",
+  "product_family": "FQ6V",
+  "total_rules": 12,
+  "high_confidence_count": 2,
+  "recommendations": {
+    "shaft_segment_01_diameter": {
+      "tier_level": "TIER_1_RAG_MATCH",
+      "decision_status": "RECOMMENDED",
+      "confidence_basis": "HISTORICAL_EVIDENCE_UNCALIBRATED",
+      "recommended_mode": "FIT",
+      "formatted_display": "h6",
+      "confidence": 0.9,
+      "reasoning": [],
+      "retrieval_trace": {
+        "decision_source": "HISTORICAL_CASE",
+        "adopted_case_id": "HIST2_...",
+        "retrieved_case_count": 3,
+        "compatible_case_count": 1,
+        "consensus": {
+          "eligible": false,
+          "support_case_count": 1,
+          "support_part_count": 1,
+          "weighted_agreement": 1.0,
+          "near_top_conflict": false
+        }
+      },
+      "evidence_cases": [
+        {
+          "case_id": "HIST2_...",
+          "source_model": "1FQ6V5000H-R01",
+          "similarity": 0.91,
+          "used_for_decision": true,
+          "evidence_role": "ADOPTED_HISTORICAL_CASE",
+          "has_source_drawing": true,
+          "drawing_urls": {
+            "pdf": "/api/tolerance/drawing-pdf/...",
+            "svg": "/api/tolerance/drawing-svg/...",
+            "details": "/api/tolerance/drawing-details/..."
+          }
+        }
+      ]
     }
+  },
+  "feature_graph": {},
+  "external_prediction_set": {
+    "source_type": "EXTERNAL_NEURAL_MODEL",
+    "provider": "tolerance-ml-service",
+    "model_name": "ToleranceNet",
+    "model_version": "2026.09.1",
+    "predictions_by_rule": {}
   }
-  ```
+}
+```
 
-### 15. `GET /api/tolerances`
-Retrieves the current global tolerance configuration.
-- **Returns**:
-  ```json
-  {
-    "default_tolerance": "±0.1",
-    "feature_overrides": {
-      "shaft": "±0.05",
-      "hole": "±0.02"
-    }
+整合端必須使用 `retrieval_trace.decision_source` 與 `used_for_decision` 判定是否真正採用歷史案例；不能只因 `evidence_cases` 非空就宣稱使用案例。
+
+`external_prediction_set` 與 `recommendations` 是兩個獨立來源；後端不會合併信心、投票或自動採用外部結果。沒有已提交預測時此欄位為 `null`。
+
+### 外部神經網路預測 API
+
+| Method | Endpoint | 語意 |
+| --- | --- | --- |
+| POST | `/api/tolerance/external-predictions/{model_id}/{part_id}` | 原子取代此零件目前整批預測 |
+| GET | `/api/tolerance/external-predictions/{model_id}/{part_id}` | 讀回原始陣列及 `predictions_by_rule` 索引 |
+| DELETE | `/api/tolerance/external-predictions/{model_id}/{part_id}` | 只移除外部預測，不影響 CAD-RAG 案例 |
+
+POST 至少需要 `provider`、`model_name`、`model_version` 及一筆 prediction。每筆 prediction 必須包含唯一 `rule_id` 與 0～1 的 `confidence`；mode 必須是支援 enum，結構化 config 必須相符。後端固定拒絕不屬於目前 candidate rules 的 ID，呼叫端不能停用此檢查。模型版本、輸入特徵、不確定性、警告、完整 request/response 範例與上線驗收方式，請見[外部神經網路公差預測接入規格](external-tolerance-model-api.md)。
+
+若後端設定 `CAD_EXTERNAL_PREDICTION_API_KEY`，三個 endpoint 都必須帶 `X-API-Key`。正式部署不可把空 key 的開發模式暴露到不可信網路。
+
+### `POST /api/tolerance/save-case`
+
+保存工程師已確認案例：
+
+```json
+{
+  "case_id": "optional-client-id",
+  "part_type": "SHAFT",
+  "feature_type": "shaft_segment",
+  "inferred_role": "BEARING_JOURNAL",
+  "nominal_dimensions": {"diameter": 10.0, "length": 8.0},
+  "neighbor_types": ["locating_shoulder"],
+  "boundary_position": "INTERIOR",
+  "tolerance_config": {"mode": "FIT", "fit_class": "h6"},
+  "description": "工程師確認",
+  "source_metadata": {"model_id": "M_batch", "part_id": "Part_1"}
+}
+```
+
+後端會設為 `ENGINEER_VERIFIED`。目前 endpoint 尚無登入、角色權限與 audit identity；正式環境不可直接公開。
+
+## 11. 參考資料 API
+
+### `GET /api/examples`
+
+回傳 folder/file tree：
+
+```json
+{
+  "example_tree": {
+    "name": "所有公司範例圖",
+    "type": "folder",
+    "children": []
   }
-  ```
+}
+```
 
-## Notes
+資料來源為專案 reference 與 `CAD_NEW_EXAMPLE_DIR`。
 
-- `POST /api/upload` writes uploaded files to `step-to-2d-generator/models`.
-- Generated drawings and STL files are served from `auto_2d_drawing/output`.
-- `POST /api/compare` is intentionally visual/statistical. It does not promise exact geometric difference bodies.
-- For production use, the in-memory job store should be replaced with JSON/SQLite/Redis or another persistent queue.
+### `GET /api/processed/fan-20260625`
+
+```json
+{"processed_tree": null, "manifest": null}
+```
+
+這是特定批次便利 API，不建議外部通用整合依賴其固定名稱。
+
+## 12. 相容性全域公差 API
+
+### `GET /api/tolerances`
+
+```json
+{
+  "default_tolerance": "±0.1",
+  "feature_overrides": {"shaft": "±0.05", "hole": "±0.02"}
+}
+```
+
+### `POST /api/tolerances`
+
+Body 同上。設定只存在記憶體，且未完整串入所有 SmartDimensionTask。新的外部整合不應把它當成正式公差規則庫；優先使用 annotation render 的結構化 `tolerance_config`。
+
+## 13. 建議整合流程
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    Client->>API: GET /api/health
+    Client->>API: POST /api/upload
+    API-->>Client: job_id
+    loop status != completed
+        Client->>API: GET /api/status/{job_id}
+        API-->>Client: status/progress
+    end
+    Client->>API: GET /api/results/{job_id}
+    API-->>Client: output_dir=model_id
+    Client->>API: GET /api/drawings/{model_id}
+    API-->>Client: parts and artifacts
+    Client->>API: GET .../features
+    API-->>Client: feature records
+    Client->>API: POST .../annotations
+    API-->>Client: annotations_url
+```
+
+## 14. Timeout、重試與冪等性
+
+- GET 可針對網路錯誤重試。
+- Upload/compare 不是冪等；重試會建立新 job 與檔案。
+- Render、save-case、save-template、save-annotations 會寫檔，不應在未知結果時盲目重試。
+- CAD 工作可能耗時數十秒至數分鐘；proxy timeout 建議至少 10 分鐘，或未來改成非同步 render job。
+- 大型 artifact 應串流下載，Client 不應全部載入記憶體。
+
+## 15. 版本與相容性政策
+
+目前仍是 `0.x`：
+
+- 新增 optional response field 視為向後相容。
+- 移除／重新命名欄位、改變狀態語意或 request schema 必須更新版本與 CHANGELOG。
+- 外部 Client 應忽略未知欄位並檢查必要欄位。
+- 正式對接前建議導入 `/api/v1`、Pydantic request/response model 與契約測試。
+
+## 16. 生產環境前必做
+
+- 認證、角色與 API key/OAuth。
+- CORS allowlist。
+- 上傳大小、檔名清理、病毒掃描與 rate limit。
+- Job/queue 持久化。
+- 統一錯誤 code、request ID 與 structured log。
+- DB transaction 與案例 audit trail。
+- 將本機路徑從一般 response 移除或遮罩。
+- OpenAPI contract test 與 SDK generation。
+# 工程師帳號與個人化 API（2026-10）
+
+除 `/api/health`、`/api/auth/login` 與使用獨立 API Key 的外部預測寫入外，API 預設要求有效的 `cad_session` HttpOnly Cookie 或 `Authorization: Bearer <session-token>`。
+
+## 認證
+
+- `POST /api/auth/login`：`{"username":"...","password":"..."}`。
+- `POST /api/auth/logout`：撤銷目前 session。
+- `GET /api/auth/me`：目前帳號、角色與 `must_change_password`。
+- `PUT /api/auth/password`：`current_password`、`new_password`；成功後所有 session 失效。
+
+## 工程師偏好與作品
+
+- `GET /api/engineer/preferences`
+- `PUT /api/engineer/preferences`
+- `DELETE /api/engineer/preferences`：只恢復設定預設值，不刪案例與成品。
+- `GET /api/engineer/artifacts`
+- `DELETE /api/engineer/artifacts/{artifact_id}`
+- `GET /api/engineer/tolerance-cases`
+- `DELETE /api/engineer/tolerance-cases/{case_record_id}`：刪除自己的單筆學習案例。
+- `DELETE /api/engineer/tolerance-cases`：清空自己的全部學習案例，不刪標註成品。
+
+偏好 payload：
+
+```json
+{
+  "recommendation_mode": "BALANCED",
+  "personal_case_weight": 0.35,
+  "personal_case_min_similarity": 0.82,
+  "default_tolerance": {},
+  "dimension_placement": {
+    "preferred_view": "front",
+    "side": "BOTTOM",
+    "baseline": "LEFT",
+    "offset": 12.0
+  },
+  "annotation_style": {},
+  "ui_settings": {}
+}
+```
+
+## 管理員
+
+- `GET /api/admin/users`
+- `POST /api/admin/users`
+- `PATCH /api/admin/users/{user_id}`
+- `POST /api/admin/users/{user_id}/reset-password`
+- `GET /api/admin/audit-events?limit=200`
+
+完整權限、資料隔離和部署說明見 [account-and-personalization-system.md](account-and-personalization-system.md)。
+
+## 帳號治理與推薦資料分區（2026-10）
+
+公司 Email 登入、Excel/CSV 批次帳號、初始密碼寄送介面、可復原刪除，以及多標籤公差推薦的完整 request/response 與部署設定，統一記載於[帳號、資料治理與推薦分區 API](account-governance-api.md)。新增端點摘要：
+
+| Method | Path | 權限 | 用途 |
+|---|---|---|---|
+| GET | `/api/auth/config` | 公開 | 公司 Email 域名清單 |
+| POST | `/api/admin/users/import` | 管理員 | Excel/CSV 批次建立帳號 |
+| GET/POST | `/api/integrations/email/credential-notifications...` | Email API key | 拉取與回報初始密碼通知 |
+| GET/POST | `/api/engineer/trash...` | 本人 | 查看、復原本人刪除資料 |
+| GET/POST/DELETE | `/api/admin/trash...` | 管理員 | 跨帳號復原與永久刪除 |
+| GET/POST/PATCH | `/api/.../recommendation-tags...` | 登入者／管理員 | 推薦標籤查詢與管理 |
+| PUT | `/api/admin/company-cases/{case_id}/tags` | 管理員 | 公司案例標籤指派 |
+
+`POST /api/tolerance/recommend` 新增 `recommendation_tag_ids` 與 `recommendation_tag_match`；`POST /api/annotation/render` 新增 `storage_tag_ids`。未傳新欄位時維持原有相容行為。

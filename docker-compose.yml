@@ -1,0 +1,62 @@
+services:
+  database:
+    image: postgres:17-bookworm
+    container_name: forcecon-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-forcecon_cad}
+      POSTGRES_USER: ${POSTGRES_USER:-forcecon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - forcecon_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-forcecon} -d ${POSTGRES_DB:-forcecon_cad}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: forcecon-step-to-2d
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/data/models
+      - ./auto_2d_drawing/output:/data/output
+      - ./auto_2d_drawing/templates:/data/templates
+      - ./auto_2d_drawing/tolerance/data:/data/tolerance
+      - ${CAD_COMPANY_DATA_DIR:-./company_data}:/data/company-reference:ro
+    environment:
+      PYTHONUNBUFFERED: "1"
+      CAD_MODELS_DIR: /data/models
+      CAD_OUTPUT_DIR: /data/output
+      CAD_TEMPLATES_DIR: /data/templates
+      CAD_TOLERANCE_CASE_DB: /data/tolerance/feature_case_base.json
+      CAD_NEW_EXAMPLE_DIR: /data/company-reference
+      CAD_TOLERANCE_DXF_DIR: /data/company-reference/temp_dxf_cache_ref
+      CAD_EXTERNAL_PREDICTION_API_KEY: ${CAD_EXTERNAL_PREDICTION_API_KEY:-}
+      CAD_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-forcecon}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB:-forcecon_cad}
+      CAD_ADMIN_EMAIL: ${CAD_ADMIN_EMAIL:-admin@forcecon.com.tw}
+      CAD_ADMIN_PASSWORD: ${CAD_ADMIN_PASSWORD:?Set CAD_ADMIN_PASSWORD in .env}
+      CAD_ADMIN_DISPLAY_NAME: ${CAD_ADMIN_DISPLAY_NAME:-System Administrator}
+      CAD_COMPANY_EMAIL_DOMAINS: ${CAD_COMPANY_EMAIL_DOMAINS:-forcecon.com.tw}
+      CAD_CREDENTIAL_ENCRYPTION_KEY: ${CAD_CREDENTIAL_ENCRYPTION_KEY:?Set CAD_CREDENTIAL_ENCRYPTION_KEY in .env}
+      CAD_EMAIL_DELIVERY_API_KEY: ${CAD_EMAIL_DELIVERY_API_KEY:-}
+      CAD_TRASH_RETENTION_DAYS: ${CAD_TRASH_RETENTION_DAYS:-30}
+      CAD_COOKIE_SECURE: ${CAD_COOKIE_SECURE:-0}
+      CAD_CORS_ORIGINS: ${CAD_CORS_ORIGINS:-http://localhost:8000}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+volumes:
+  forcecon_postgres_data:
