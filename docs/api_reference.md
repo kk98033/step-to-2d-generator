@@ -895,3 +895,19 @@ sequenceDiagram
 - `GET /api/admin/audit-events?limit=200`
 
 完整權限、資料隔離和部署說明見 [account-and-personalization-system.md](account-and-personalization-system.md)。
+
+## 帳號治理與推薦資料分區（2026-10）
+
+公司 Email 登入、Excel/CSV 批次帳號、初始密碼寄送介面、可復原刪除，以及多標籤公差推薦的完整 request/response 與部署設定，統一記載於[帳號、資料治理與推薦分區 API](account-governance-api.md)。新增端點摘要：
+
+| Method | Path | 權限 | 用途 |
+|---|---|---|---|
+| GET | `/api/auth/config` | 公開 | 公司 Email 域名清單 |
+| POST | `/api/admin/users/import` | 管理員 | Excel/CSV 批次建立帳號 |
+| GET/POST | `/api/integrations/email/credential-notifications...` | Email API key | 拉取與回報初始密碼通知 |
+| GET/POST | `/api/engineer/trash...` | 本人 | 查看、復原本人刪除資料 |
+| GET/POST/DELETE | `/api/admin/trash...` | 管理員 | 跨帳號復原與永久刪除 |
+| GET/POST/PATCH | `/api/.../recommendation-tags...` | 登入者／管理員 | 推薦標籤查詢與管理 |
+| PUT | `/api/admin/company-cases/{case_id}/tags` | 管理員 | 公司案例標籤指派 |
+
+`POST /api/tolerance/recommend` 新增 `recommendation_tag_ids` 與 `recommendation_tag_match`；`POST /api/annotation/render` 新增 `storage_tag_ids`。未傳新欄位時維持原有相容行為。

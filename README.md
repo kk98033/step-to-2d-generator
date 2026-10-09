@@ -17,6 +17,7 @@
 | [網站頁面與操作流程](docs/web-pages.md) | 首頁、模型工作區、公差檢視器及頁面關係 |
 | [完整 API 文件](docs/api_reference.md) | 所有 REST API、欄位、錯誤碼與對接流程 |
 | [工程圖交換 API](docs/drawing_exchange_api.md) | 外部標註／公差服務的建議交換契約 |
+| [帳號、資料治理與推薦分區 API](docs/account-governance-api.md) | 公司 Email、批次帳號、初始密碼寄送、回收桶與公差標籤 |
 | [Docker 部署](docs/deployment-docker.md) | Conda/PythonOCC 容器、Volume 與健康檢查 |
 | [開發現況與路線圖](docs/development-status.md) | 已完成、進行中、已知限制與下一階段 |
 | [更新日誌](CHANGELOG.md) | 依版本整理的重要功能與相容性變更 |
