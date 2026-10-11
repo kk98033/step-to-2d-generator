@@ -1,0 +1,1097 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-05T15:15:24+00:00",
+  "dataset": {
+    "name": "forcecon-tolerance-silver",
+    "created_at": "2026-10-05T15:15:24+00:00",
+    "label_policy": "SILVER labels are derived from exact STEP/DXF evidence or engineer verification; reported accuracy is a proxy until a frozen engineer-signed GOLD set exists.",
+    "record_count": 20,
+    "label_tier_counts": {
+      "SILVER": 20
+    }
+  },
+  "case_base": {
+    "total_cases": 7176,
+    "retrieval_eligible_cases": 20,
+    "verification_status_counts": {
+      "AUTO_EXTRACTED": 7156,
+      "AUTO_VERIFIED": 20
+    },
+    "feature_counts": {
+      "unresolved_feature": 7156,
+      "shaft_segment": 10,
+      "hole": 10
+    },
+    "eligible_missing_entity_handle": 0,
+    "eligible_missing_dxf_path": 0
+  },
+  "leakage_audit": {
+    "passed": true,
+    "leaking_groups": {},
+    "record_counts": {
+      "train": 18,
+      "test": 1,
+      "validation": 1
+    },
+    "group_counts": {
+      "train": 6,
+      "test": 1,
+      "validation": 1
+    }
+  },
+  "protocol": {
+    "source_replay": true,
+    "retrieval_and_recommendation": "LEAVE_ONE_PART_GROUP_OUT",
+    "group_key": "revision-normalized base part number",
+    "top_k": [
+      1,
+      3,
+      5
+    ]
+  },
+  "extraction": {
+    "status": "COMPLETED",
+    "sample_count": 20,
+    "entity_found_rate": 1.0,
+    "dimension_category_accuracy": 1.0,
+    "nominal_mae_mm": 0.00015,
+    "tolerance_exact_accuracy": 1.0,
+    "failures": []
+  },
+  "feature_linkage_2d": {
+    "status": "COMPLETED",
+    "sample_count": 20,
+    "evaluated_count": 20,
+    "coverage": 1.0,
+    "feature_type_accuracy": 0.05,
+    "auto_decision_rate": 0.05,
+    "retrieval_eligible_rate": 0.0,
+    "confusion": {
+      "shaft_segment->shaft_segment": 1,
+      "shaft_segment->UNRESOLVED": 9,
+      "hole->UNRESOLVED": 10
+    },
+    "rows": [
+      {
+        "id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_01_diameter",
+        "evaluated": true,
+        "correct": true,
+        "predicted_feature_type": "shaft_segment",
+        "expected_feature_type": "shaft_segment",
+        "status": "AUTO_INFERRED_2D",
+        "confidence": 0.93,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_09_diameter",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "shaft_segment",
+        "status": "REVIEW_CANDIDATE",
+        "confidence": 0.66,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_10_diameter",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "hole",
+        "status": "REVIEW_CANDIDATE",
+        "confidence": 0.66,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_14_diameter",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "shaft_segment",
+        "status": "REVIEW_CANDIDATE",
+        "confidence": 0.72,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_15_diameter",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "hole",
+        "status": "UNRESOLVED",
+        "confidence": 0.2,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_1FP3D6000H-R01_875d11ec_cyl_60_diameter",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "shaft_segment",
+        "status": "REVIEW_CANDIDATE",
+        "confidence": 0.72,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_114_diameter",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "hole",
+        "status": "REVIEW_CANDIDATE",
+        "confidence": 0.72,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_36_diameter",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "hole",
+        "status": "REVIEW_CANDIDATE",
+        "confidence": 0.72,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_37_diameter",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "hole",
+        "status": "REVIEW_CANDIDATE",
+        "confidence": 0.72,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_89_diameter",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "hole",
+        "status": "REVIEW_CANDIDATE",
+        "confidence": 0.72,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_22_length",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "hole",
+        "status": "UNRESOLVED",
+        "confidence": 0.2,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_48_length",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "shaft_segment",
+        "status": "UNRESOLVED",
+        "confidence": 0.2,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_63_length",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "shaft_segment",
+        "status": "UNRESOLVED",
+        "confidence": 0.2,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_64_diameter",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "hole",
+        "status": "REVIEW_CANDIDATE",
+        "confidence": 0.68,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_2AL0W3050H-R00_5611f1af_cyl_03_diameter",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "shaft_segment",
+        "status": "UNRESOLVED",
+        "confidence": 0.2,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_2AL0W3050H-R00_5611f1af_cyl_04_diameter",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "shaft_segment",
+        "status": "UNRESOLVED",
+        "confidence": 0.2,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_2AL0W3050H-R00_5611f1af_cyl_05_diameter",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "shaft_segment",
+        "status": "UNRESOLVED",
+        "confidence": 0.2,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_2FQ6H3010H-R00_f064e115_feat_cyl_123_diameter",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "hole",
+        "status": "REVIEW_CANDIDATE",
+        "confidence": 0.68,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_2FQ6V1060H-R00_779db0fa_feat_cyl_59_length",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "shaft_segment",
+        "status": "UNRESOLVED",
+        "confidence": 0.2,
+        "retrieval_eligible": false
+      },
+      {
+        "id": "benchmark:HIST2_2FQ6V3010H-R00_a79a2e6e_feat_cyl_05_length",
+        "evaluated": true,
+        "correct": false,
+        "predicted_feature_type": null,
+        "expected_feature_type": "hole",
+        "status": "UNRESOLVED",
+        "confidence": 0.2,
+        "retrieval_eligible": false
+      }
+    ]
+  },
+  "retrieval": {
+    "protocol": "LEAVE_ONE_PART_GROUP_OUT",
+    "query_count": 20,
+    "evaluable_query_count": 11,
+    "evaluable_coverage": 0.55,
+    "mrr": 0.909091,
+    "ndcg_at_max_k": 0.91367,
+    "recall_at_1": 0.818182,
+    "precision_at_1": 0.818182,
+    "recall_at_3": 1.0,
+    "precision_at_3": 0.606061,
+    "recall_at_5": 1.0,
+    "precision_at_5": 0.418182
+  },
+  "recommendation": {
+    "sample_count": 20,
+    "exact_tolerance_accuracy": 0.0,
+    "mode_accuracy": 0.0,
+    "fit_class_accuracy": 1.0,
+    "upper_deviation_mae_mm": 0.081,
+    "lower_deviation_mae_mm": 0.0465,
+    "mean_interval_iou": 0.0,
+    "unsafe_looser_rate": null,
+    "over_tight_rate": null,
+    "abstention_rate": 1.0,
+    "non_abstained_coverage": 0.0,
+    "selective_accuracy": null,
+    "tier_counts": {
+      "TIER_3_GENERAL_FALLBACK": 20
+    },
+    "decision_status_counts": {
+      "REVIEW_REQUIRED": 20
+    },
+    "display_brier_score": 0.218125,
+    "display_expected_calibration_error": 0.4625,
+    "decision_brier_score": null,
+    "decision_expected_calibration_error": null
+  },
+  "records": [
+    {
+      "benchmark_id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_01_diameter",
+      "group_id": "part:1AL0W5000H",
+      "split": "train",
+      "train_case_count": 15,
+      "relevant_case_count": 0,
+      "retrieved_case_ids": [
+        "HIST2_2AL0W3050H-R00_5611f1af_cyl_05_diameter",
+        "HIST2_2AL0W3050H-R00_5611f1af_cyl_04_diameter",
+        "HIST2_2AL0W3050H-R00_5611f1af_cyl_03_diameter",
+        "HIST2_1FP3D6000H-R01_875d11ec_cyl_60_diameter"
+      ],
+      "first_relevant_rank": null,
+      "recommendation": {
+        "id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_01_diameter",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.2,
+        "lower_error_mm": 0.0,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.5,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.2,
+          "lower_dev": -0.0,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_09_diameter",
+      "group_id": "part:1AL0W5000H",
+      "split": "train",
+      "train_case_count": 15,
+      "relevant_case_count": 1,
+      "retrieved_case_ids": [
+        "HIST2_2AL0W3050H-R00_5611f1af_cyl_04_diameter",
+        "HIST2_2AL0W3050H-R00_5611f1af_cyl_05_diameter",
+        "HIST2_2AL0W3050H-R00_5611f1af_cyl_03_diameter",
+        "HIST2_1FP3D6000H-R01_875d11ec_cyl_60_diameter"
+      ],
+      "first_relevant_rank": 2,
+      "recommendation": {
+        "id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_09_diameter",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.1,
+        "lower_error_mm": 0.1,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.5,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.1,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_10_diameter",
+      "group_id": "part:1AL0W5000H",
+      "split": "train",
+      "train_case_count": 15,
+      "relevant_case_count": 0,
+      "retrieved_case_ids": [
+        "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_37_diameter",
+        "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_36_diameter",
+        "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_89_diameter",
+        "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_114_diameter",
+        "HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_64_diameter"
+      ],
+      "first_relevant_rank": null,
+      "recommendation": {
+        "id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_10_diameter",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.1,
+        "lower_error_mm": 0.1,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.5,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.1,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_14_diameter",
+      "group_id": "part:1AL0W5000H",
+      "split": "train",
+      "train_case_count": 15,
+      "relevant_case_count": 1,
+      "retrieved_case_ids": [
+        "HIST2_2AL0W3050H-R00_5611f1af_cyl_03_diameter",
+        "HIST2_2AL0W3050H-R00_5611f1af_cyl_05_diameter",
+        "HIST2_2AL0W3050H-R00_5611f1af_cyl_04_diameter",
+        "HIST2_1FP3D6000H-R01_875d11ec_cyl_60_diameter"
+      ],
+      "first_relevant_rank": 2,
+      "recommendation": {
+        "id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_14_diameter",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.1,
+        "lower_error_mm": 0.1,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.5,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.1,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_15_diameter",
+      "group_id": "part:1AL0W5000H",
+      "split": "train",
+      "train_case_count": 15,
+      "relevant_case_count": 0,
+      "retrieved_case_ids": [
+        "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_114_diameter",
+        "HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_64_diameter",
+        "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_89_diameter",
+        "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_36_diameter",
+        "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_37_diameter"
+      ],
+      "first_relevant_rank": null,
+      "recommendation": {
+        "id": "benchmark:HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_15_diameter",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.1,
+        "lower_error_mm": 0.1,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.5,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.1,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1FP3D6000H-R01_875d11ec_cyl_60_diameter",
+      "group_id": "part:1FP3D6000H",
+      "split": "train",
+      "train_case_count": 19,
+      "relevant_case_count": 0,
+      "retrieved_case_ids": [
+        "HIST2_2AL0W3050H-R00_5611f1af_cyl_03_diameter",
+        "HIST2_2AL0W3050H-R00_5611f1af_cyl_05_diameter",
+        "HIST2_2AL0W3050H-R00_5611f1af_cyl_04_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_14_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_09_diameter"
+      ],
+      "first_relevant_rank": null,
+      "recommendation": {
+        "id": "benchmark:HIST2_1FP3D6000H-R01_875d11ec_cyl_60_diameter",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.0,
+        "lower_error_mm": 0.1,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.5,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.0,
+          "lower_dev": -0.1,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_114_diameter",
+      "group_id": "part:1FQ6H6000H",
+      "split": "train",
+      "train_case_count": 16,
+      "relevant_case_count": 2,
+      "retrieved_case_ids": [
+        "HIST2_2FQ6H3010H-R00_f064e115_feat_cyl_123_diameter",
+        "HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_64_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_15_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_10_diameter"
+      ],
+      "first_relevant_rank": 1,
+      "recommendation": {
+        "id": "benchmark:HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_114_diameter",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.1,
+        "lower_error_mm": 0.0,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.5,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.0,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_36_diameter",
+      "group_id": "part:1FQ6H6000H",
+      "split": "train",
+      "train_case_count": 16,
+      "relevant_case_count": 2,
+      "retrieved_case_ids": [
+        "HIST2_2FQ6H3010H-R00_f064e115_feat_cyl_123_diameter",
+        "HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_64_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_15_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_10_diameter"
+      ],
+      "first_relevant_rank": 1,
+      "recommendation": {
+        "id": "benchmark:HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_36_diameter",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.1,
+        "lower_error_mm": 0.0,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.5,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.0,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_37_diameter",
+      "group_id": "part:1FQ6H6000H",
+      "split": "train",
+      "train_case_count": 16,
+      "relevant_case_count": 2,
+      "retrieved_case_ids": [
+        "HIST2_2FQ6H3010H-R00_f064e115_feat_cyl_123_diameter",
+        "HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_64_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_10_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_15_diameter"
+      ],
+      "first_relevant_rank": 1,
+      "recommendation": {
+        "id": "benchmark:HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_37_diameter",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.1,
+        "lower_error_mm": 0.0,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.5,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.0,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_89_diameter",
+      "group_id": "part:1FQ6H6000H",
+      "split": "train",
+      "train_case_count": 16,
+      "relevant_case_count": 2,
+      "retrieved_case_ids": [
+        "HIST2_2FQ6H3010H-R00_f064e115_feat_cyl_123_diameter",
+        "HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_64_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_15_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_10_diameter"
+      ],
+      "first_relevant_rank": 1,
+      "recommendation": {
+        "id": "benchmark:HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_89_diameter",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.1,
+        "lower_error_mm": 0.0,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.5,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.0,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_22_length",
+      "group_id": "part:1FQWY6000H",
+      "split": "train",
+      "train_case_count": 16,
+      "relevant_case_count": 1,
+      "retrieved_case_ids": [
+        "HIST2_2FQ6V3010H-R00_a79a2e6e_feat_cyl_05_length"
+      ],
+      "first_relevant_rank": 1,
+      "recommendation": {
+        "id": "benchmark:HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_22_length",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.05,
+        "lower_error_mm": 0.02,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.35,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.05,
+          "lower_dev": -0.02,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_48_length",
+      "group_id": "part:1FQWY6000H",
+      "split": "train",
+      "train_case_count": 16,
+      "relevant_case_count": 0,
+      "retrieved_case_ids": [
+        "HIST2_2FQ6V1060H-R00_779db0fa_feat_cyl_59_length"
+      ],
+      "first_relevant_rank": null,
+      "recommendation": {
+        "id": "benchmark:HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_48_length",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.0,
+        "lower_error_mm": 0.1,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.35,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.0,
+          "lower_dev": -0.1,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_63_length",
+      "group_id": "part:1FQWY6000H",
+      "split": "train",
+      "train_case_count": 16,
+      "relevant_case_count": 0,
+      "retrieved_case_ids": [
+        "HIST2_2FQ6V1060H-R00_779db0fa_feat_cyl_59_length"
+      ],
+      "first_relevant_rank": null,
+      "recommendation": {
+        "id": "benchmark:HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_63_length",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.1,
+        "lower_error_mm": 0.1,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.35,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.1,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_64_diameter",
+      "group_id": "part:1FQWY6000H",
+      "split": "train",
+      "train_case_count": 16,
+      "relevant_case_count": 5,
+      "retrieved_case_ids": [
+        "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_89_diameter",
+        "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_36_diameter",
+        "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_114_diameter",
+        "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_37_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_15_diameter"
+      ],
+      "first_relevant_rank": 1,
+      "recommendation": {
+        "id": "benchmark:HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_64_diameter",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.1,
+        "lower_error_mm": 0.0,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.5,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.0,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_2AL0W3050H-R00_5611f1af_cyl_03_diameter",
+      "group_id": "part:2AL0W3050H",
+      "split": "train",
+      "train_case_count": 17,
+      "relevant_case_count": 0,
+      "retrieved_case_ids": [
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_14_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_09_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_01_diameter",
+        "HIST2_1FP3D6000H-R01_875d11ec_cyl_60_diameter"
+      ],
+      "first_relevant_rank": null,
+      "recommendation": {
+        "id": "benchmark:HIST2_2AL0W3050H-R00_5611f1af_cyl_03_diameter",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.05,
+        "lower_error_mm": 0.05,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.5,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.05,
+          "lower_dev": -0.05,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_2AL0W3050H-R00_5611f1af_cyl_04_diameter",
+      "group_id": "part:2AL0W3050H",
+      "split": "train",
+      "train_case_count": 17,
+      "relevant_case_count": 0,
+      "retrieved_case_ids": [
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_09_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_01_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_14_diameter",
+        "HIST2_1FP3D6000H-R01_875d11ec_cyl_60_diameter"
+      ],
+      "first_relevant_rank": null,
+      "recommendation": {
+        "id": "benchmark:HIST2_2AL0W3050H-R00_5611f1af_cyl_04_diameter",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.02,
+        "lower_error_mm": 0.02,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.5,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.02,
+          "lower_dev": -0.02,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_2AL0W3050H-R00_5611f1af_cyl_05_diameter",
+      "group_id": "part:2AL0W3050H",
+      "split": "train",
+      "train_case_count": 17,
+      "relevant_case_count": 2,
+      "retrieved_case_ids": [
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_09_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_01_diameter",
+        "HIST2_1AL0W5000H-R03_789b2fee_feat_cyl_14_diameter",
+        "HIST2_1FP3D6000H-R01_875d11ec_cyl_60_diameter"
+      ],
+      "first_relevant_rank": 1,
+      "recommendation": {
+        "id": "benchmark:HIST2_2AL0W3050H-R00_5611f1af_cyl_05_diameter",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.1,
+        "lower_error_mm": 0.1,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.5,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.1,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_2FQ6H3010H-R00_f064e115_feat_cyl_123_diameter",
+      "group_id": "part:2FQ6H3010H",
+      "split": "train",
+      "train_case_count": 19,
+      "relevant_case_count": 5,
+      "retrieved_case_ids": [
+        "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_114_diameter",
+        "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_37_diameter",
+        "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_89_diameter",
+        "HIST2_1FQ6H6000H-R00_2d894d01_feat_cyl_36_diameter",
+        "HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_64_diameter"
+      ],
+      "first_relevant_rank": 1,
+      "recommendation": {
+        "id": "benchmark:HIST2_2FQ6H3010H-R00_f064e115_feat_cyl_123_diameter",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.1,
+        "lower_error_mm": 0.0,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.5,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.1,
+          "lower_dev": -0.0,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_2FQ6V1060H-R00_779db0fa_feat_cyl_59_length",
+      "group_id": "part:2FQ6V1060H",
+      "split": "test",
+      "train_case_count": 19,
+      "relevant_case_count": 0,
+      "retrieved_case_ids": [
+        "HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_63_length",
+        "HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_48_length"
+      ],
+      "first_relevant_rank": null,
+      "recommendation": {
+        "id": "benchmark:HIST2_2FQ6V1060H-R00_779db0fa_feat_cyl_59_length",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.05,
+        "lower_error_mm": 0.02,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.35,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.05,
+          "lower_dev": -0.02,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    },
+    {
+      "benchmark_id": "benchmark:HIST2_2FQ6V3010H-R00_a79a2e6e_feat_cyl_05_length",
+      "group_id": "part:2FQ6V3010H",
+      "split": "validation",
+      "train_case_count": 19,
+      "relevant_case_count": 1,
+      "retrieved_case_ids": [
+        "HIST2_1FQWY6000H-R00_ee73a35f_feat_cyl_22_length"
+      ],
+      "first_relevant_rank": 1,
+      "recommendation": {
+        "id": "benchmark:HIST2_2FQ6V3010H-R00_a79a2e6e_feat_cyl_05_length",
+        "correct": false,
+        "mode_correct": false,
+        "fit_class_correct": true,
+        "upper_error_mm": 0.05,
+        "lower_error_mm": 0.02,
+        "interval_iou": 0.0,
+        "unsafe_looser": false,
+        "over_tight": true,
+        "abstained": true,
+        "confidence": 0.35,
+        "tier_level": "TIER_3_GENERAL_FALLBACK",
+        "decision_status": "REVIEW_REQUIRED",
+        "expected": {
+          "mode": "CUSTOM_LIMITS",
+          "upper_dev": 0.05,
+          "lower_dev": -0.02,
+          "source": "DXF_DIMSTYLE"
+        },
+        "predicted": {
+          "mode": "NONE"
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "Silver labels are proxy ground truth generated from strict STEP/DXF matching.",
+    "Functional roles marked functional_role_verified=false are not gold semantic labels.",
+    "A frozen engineer-signed gold set is required before publishing production accuracy."
+  ],
+  "quality_gates": {
+    "passed": true,
+    "checks": [
+      {
+        "name": "no_group_leakage",
+        "passed": true,
+        "actual": true,
+        "requirement": "must be true"
+      },
+      {
+        "name": "source_entity_found_rate",
+        "passed": true,
+        "actual": 1.0,
+        "requirement": ">= 0.99"
+      },
+      {
+        "name": "source_tolerance_exact_accuracy",
+        "passed": true,
+        "actual": 1.0,
+        "requirement": ">= 0.99"
+      }
+    ],
+    "note": "Accuracy gates require a frozen engineer-signed GOLD dataset."
+  }
+}

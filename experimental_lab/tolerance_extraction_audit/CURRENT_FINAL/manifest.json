@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "version": "2026-10-10.3",
+  "scope": "experimental_merge_candidate_only",
+  "production_updated": false,
+  "rules": [
+    "existing_projection_topology_verifier",
+    "overall_length_semantic_recovery",
+    "composite_axial_span_recovery",
+    "transverse_diameter_recovery",
+    "blade_curve_tolerance_v1",
+    "full_fan_assembly_dynamic_central_section_v1",
+    "xcaf_placed_occurrence_section_ownership_v1",
+    "component_composite_axial_span_v1",
+    "cross_component_assembly_relation_v1"
+  ],
+  "fan_section_policy": {
+    "geometry_routed": true,
+    "filename_routed": false,
+    "candidates": ["uncut_hlr", "boolean_half_space_hlr", "central_section_curves"],
+    "contour_threshold": 0.72,
+    "extent_threshold": 0.8,
+    "scale_range": [0.92, 1.08],
+    "projection_gate_does_not_imply_feature_gate": true
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "dxf_root": "D:/School/力致/力致_ref/temp_dxf_cache_ref",
+  "samples": [
+    {"family": "AJ0A-軸流扇", "drawing": "1AC086000H-R03.dxf", "pair_evidence": "EMBEDDED_PART_EXACT_REVISION"},
+    {"family": "AN0G-軸流扇", "drawing": "1AL0W6000H-R00.dxf", "pair_evidence": "EXACT_FILENAME"},
+    {"family": "FLBN-單出風-底座組合(側牆)", "drawing": "1FLBN6000H-R00.dxf", "pair_evidence": "GEOMETRY_ONLY_REVIEW_REQUIRED"},
+    {"family": "FNKW-單出風-上蓋組合(側牆)_雙胞胎", "drawing": "1FNKW8000H-R01.dxf", "pair_evidence": "EMBEDDED_PART_EXACT_REVISION"},
+    {"family": "FP3D-雙出風-底座組合(側牆)_雙胞胎", "drawing": "1FP3D6000H-R01.dxf", "pair_evidence": "EXACT_FILENAME"},
+    {"family": "FQ6H-雙出風-底座組合(側牆)", "drawing": "1FQ6H6000H-R00.dxf", "pair_evidence": "EMBEDDED_PART_EXACT_REVISION"},
+    {"family": "FQ6V-單出風-上蓋組合(側牆)", "drawing": "1FQ6V5000H-R01.dxf", "pair_evidence": "EXACT_FILENAME"},
+    {"family": "FQ76-單出風-底座組合(側牆)", "drawing": "1FQ766000H-R01.dxf", "pair_evidence": "EXACT_FILENAME"},
+    {"family": "FQM6-雙出風-上蓋組合(側牆)", "drawing": "1FQM68000H-R00.dxf", "pair_evidence": "CROSS_REVISION_REVIEW_REQUIRED"},
+    {"family": "FQWY-單出風-底座組合(側牆)_雙胞胎", "drawing": "1FQWY6000H-R00.dxf", "pair_evidence": "EMBEDDED_PART_EXACT_REVISION"}
+  ]
+}

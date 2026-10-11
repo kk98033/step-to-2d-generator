@@ -1,0 +1,11 @@
+{
+  "step_paths": [
+    "D:/School/力致/app/step-to-2d-generator/models/1AL0W5000H-R03.stp"
+  ],
+  "dxf_dir": "D:/School/力致/力致_ref/temp_dxf_cache_ref",
+  "expected_dxf_by_component": {
+    "AL0W_BLADE_H-R01": "1AL0W5000H-R03.dxf",
+    "2AL0W5010H-R01": "2AL0W5010H-R01.dxf",
+    "2AL0W4010H-R01": "2AL0W4010H-R00.dxf"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "validated_at": "2026-10-10",
+  "version": "2026-10-10.3",
+  "production_or_web_updated": false,
+  "targeted_fan_section": {
+    "passed": true,
+    "geometry_fan_like": true,
+    "selected_method": "CENTRAL_SECTION_CURVES",
+    "leaf_projection_contour_before": 0.5474,
+    "assembly_section_contour_after": 0.7938,
+    "contour_delta": 0.2464,
+    "projection_gate_before": false,
+    "projection_gate_after": true
+  },
+  "assembly_feature_resolution": {
+    "passed": true,
+    "explicit_tolerance_count": 17,
+    "verified_before": 6,
+    "verified_after": 15,
+    "new_verified": 9,
+    "link_rate_before": 0.352941,
+    "link_rate_after": 0.882353,
+    "component_features": 2,
+    "component_composite_features": 1,
+    "cross_component_features": 6,
+    "candidate_only_after_merge": 1,
+    "unresolved_after_merge": 1
+  },
+  "tests": {
+    "direct_function_tests_passed": 16,
+    "unittest_cases_passed": 7,
+    "total_passed": 23
+  },
+  "silver_benchmark": {
+    "record_count": 20,
+    "source_replay": false,
+    "quality_gates_passed": true,
+    "retrieval_recall_at_1": 0.818182,
+    "retrieval_recall_at_3": 1.0,
+    "retrieval_mrr": 0.909091,
+    "regression_detected": false
+  },
+  "limitations": [
+    "The current benchmark is SILVER, not engineer-signed GOLD.",
+    "The 74.829 mm section diameter remains unresolved because no unique BRep diameter matches it.",
+    "The 22.592 mm cross-component span remains CANDIDATE_ONLY because one endpoint owner is inferred rather than directly attached to a section contour.",
+    "The R2.15 blade bend is nominal-only and remains CANDIDATE_ONLY."
+  ]
+}

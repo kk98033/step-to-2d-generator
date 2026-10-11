@@ -72,6 +72,7 @@ def run(config_path: Path) -> dict:
                     "configured_expected_drawing",
                 ],
             },
+            collect_diagnostics=True,
         )
         cases = [case for case, _keys in cases_with_keys]
         public_stats = {key: value for key, value in stats.items() if not key.startswith("_")}
@@ -91,6 +92,8 @@ def run(config_path: Path) -> dict:
             ],
             "cases": [case.to_dict() for case in cases],
             "verification_stats": public_stats,
+            "dimension_diagnostics": stats.get("_dimension_diagnostics") or [],
+            "projection_overlays": stats.get("_projection_overlays") or {},
         })
 
     return {

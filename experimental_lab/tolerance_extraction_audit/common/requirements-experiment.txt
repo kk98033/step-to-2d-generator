@@ -1,0 +1,6 @@
+# The recommended interpreter is the repository's pyoccenv.
+numpy
+Pillow
+ezdxf
+vtk
+pythonocc-core

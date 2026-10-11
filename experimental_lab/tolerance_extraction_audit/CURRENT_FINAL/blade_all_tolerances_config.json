@@ -1,0 +1,9 @@
+{
+  "step_paths": [
+    "D:/School/力致/app/step-to-2d-generator/models/1AL0W5000H-R03.stp"
+  ],
+  "dxf_dir": "D:/School/力致/app/step-to-2d-generator/experimental_lab/tolerance_extraction_audit/experiments/2026-10-08/blade_curve_tolerance_v1",
+  "expected_dxf_by_component": {
+    "AL0W_BLADE_H-R01": "source_1AL0W5000H-R03.dxf"
+  }
+}
