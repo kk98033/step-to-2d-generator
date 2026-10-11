@@ -81,6 +81,26 @@ class TopologyFeatureMapperTests(unittest.TestCase):
         self.assertFalse(result["passed"])
         self.assertEqual(result["status"], "NO_UNIQUE_DXF_CIRCULAR_PROFILE")
 
+    def test_cylindrical_shaft_step_maps_to_same_brep_surface(self):
+        step_node = types.SimpleNamespace(
+            id="step_01",
+            feature_type="locating_shoulder",
+            source_info={
+                **self.node.source_info,
+                "type": "step",
+            },
+        )
+
+        result = self.mapper.map_dimension(
+            self.dimension,
+            step_node,
+            "diameter",
+            self._association(),
+        )
+
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["feature_id"], "step_01")
+
 
 if __name__ == "__main__":
     unittest.main()

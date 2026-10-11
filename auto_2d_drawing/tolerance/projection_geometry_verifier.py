@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import bisect
 import math
+from types import SimpleNamespace
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from auto_2d_drawing.tolerance.dxf_structure_2d import DxfStructure2DAnalyzer
@@ -39,6 +40,11 @@ class ProjectionGeometryVerifier:
     MIN_ROBUST_INLIER_RATIO = 0.70
     MAX_ROBUST_CHAMFER = 0.045
     MAX_RANKED_HAUSDORFF = 0.14
+    MIN_ROBUST_SOURCE_COVERAGE = 0.60
+    MIN_ROBUST_TARGET_COVERAGE = 0.65
+    MIN_ROBUST_EXTENT_SCORE = 0.72
+    MIN_ROBUST_SPAN_RATIO = 0.84
+    MAX_ROBUST_BBOX_EDGE_ERROR = 0.06
     MIN_VERIFIED_SCORE = 0.80
 
     def __init__(
@@ -47,6 +53,9 @@ class ProjectionGeometryVerifier:
         shape=None,
         step_views: Optional[Dict[str, Any]] = None,
         feature_nodes: Optional[Iterable[Any]] = None,
+        locked_view_registration: Optional[Dict[str, Any]] = None,
+        allow_secondary_view_search: bool = False,
+        secondary_dxf_regions: Optional[Iterable[Dict[str, Any]]] = None,
     ):
         self.structure = DxfStructure2DAnalyzer(modelspace)
         self.registration_engine = ProjectionRegistrationEngine()
@@ -55,6 +64,17 @@ class ProjectionGeometryVerifier:
         self._view_match_cache: Dict[Tuple[str, Tuple[str, ...]], Dict[str, Any]] = {}
         self._shape = shape
         self._feature_nodes = list(feature_nodes or ())
+        self._locked_view_registration = (
+            dict(locked_view_registration)
+            if isinstance(locked_view_registration, dict)
+            else None
+        )
+        self._allow_secondary_view_search = bool(allow_secondary_view_search)
+        self._secondary_dxf_regions = {
+            str(item.get("view_id")): dict(item)
+            for item in (secondary_dxf_regions or ())
+            if item.get("view_id") and len(item.get("bbox") or ()) == 4
+        }
         try:
             self.topology_mapper = TopologyFeatureMapper(shape) if shape is not None else None
         except Exception:
@@ -101,14 +121,39 @@ class ProjectionGeometryVerifier:
         if projection is None:
             projection = self._step_projection_evidence(feature_type, matched_field, category, nominal)
             projection_cache[projection_key] = projection
+        # A generic HLR may contain an unrelated line whose length happens to
+        # equal a planar span.  For plane-to-plane composites the stored 3D
+        # axis is the authoritative view signature, so do not let that
+        # incidental segment keep the upstream view locked.
+        if feature_type == "composite_planar_span":
+            projection = self._spatial_feature_projection_evidence(
+                node, matched_field, category, nominal
+            )
+        elif not projection.get("passed"):
+            spatial_projection = self._spatial_feature_projection_evidence(
+                node, matched_field, category, nominal
+            )
+            if spatial_projection.get("passed"):
+                projection = spatial_projection
         signature_views = {
             str(item.get("view"))
             for item in projection.get("matching_views", [])
             if item.get("view")
         }
-        view_match = self._best_view_match(
+        locked_feature_compatible = self._locked_projection_supports_feature(
+            dimension,
+            node,
+            matched_field,
+            association,
+        )
+        view_match = self._best_dimension_view_match(
+            dimension,
             association.get("primary_view_id"),
             allowed_step_views=signature_views,
+            locked_feature_compatible=locked_feature_compatible,
+            require_locked_feature_compatibility=(
+                feature_type == "composite_planar_span"
+            ),
         )
         if (
             float(view_match.get("score", 0.0) or 0.0) < self.MIN_VIEW_SCORE
@@ -121,10 +166,21 @@ class ProjectionGeometryVerifier:
                 for item in projection.get("matching_views", [])
                 if item.get("view")
             }
-            view_match = self._best_view_match(
+            view_match = self._best_dimension_view_match(
+                dimension,
                 association.get("primary_view_id"),
                 allowed_step_views=signature_views,
+                locked_feature_compatible=locked_feature_compatible,
+                require_locked_feature_compatibility=(
+                    feature_type == "composite_planar_span"
+                ),
             )
+        view_match = self._select_orientation_for_dimension_feature(
+            dimension,
+            node,
+            association,
+            view_match,
+        )
         localization = self._node_projection_localization(
             dimension,
             node,
@@ -150,28 +206,10 @@ class ProjectionGeometryVerifier:
                 "score": 0.0,
             }
         )
-        local_topology_proof = (
-            bool(topology_mapping.get("passed"))
-            and topology_mapping.get("mode") == "LOCAL_CIRCULAR_PROFILE"
-            and float(association.get("association_confidence", 0.0) or 0.0) >= 0.95
-        )
-        if local_topology_proof:
-            # Assembly drawings frequently rearrange components on the sheet,
-            # so a full-shape registration is intentionally not treated as a
-            # prerequisite when two exact DXF diameter points map to one
-            # unique STEP logical cylindrical surface.
-            localization = {
-                **localization,
-                "passed": True,
-                "score": max(
-                    float(localization.get("score", 0.0) or 0.0),
-                    float(topology_mapping.get("score", 0.0) or 0.0),
-                ),
-                "status": "LOCAL_PROFILE_TOPOLOGY_ALIGNED",
-                "topology_mapping": topology_mapping,
-            }
         contour_score = view_match.get("contour_score")
-        registration_confident = self._registration_is_confident(view_match)
+        registration_confident = self._registration_is_confident_for_feature(
+            view_match, dimension, node, local, localization, topology_mapping
+        )
         view_match["quality_gate_passed"] = registration_confident
         if view_match.get("registration_method") == ProjectionRegistrationEngine.METHOD:
             view_match["quality_thresholds"] = {
@@ -179,27 +217,37 @@ class ProjectionGeometryVerifier:
                 "minimum_inlier_ratio": self.MIN_ROBUST_INLIER_RATIO,
                 "maximum_normalized_chamfer": self.MAX_ROBUST_CHAMFER,
                 "maximum_ranked_hausdorff": self.MAX_RANKED_HAUSDORFF,
+                "minimum_source_coverage": self.MIN_ROBUST_SOURCE_COVERAGE,
+                "minimum_target_coverage": self.MIN_ROBUST_TARGET_COVERAGE,
+                "minimum_extent_score": self.MIN_ROBUST_EXTENT_SCORE,
+                "minimum_span_ratio": self.MIN_ROBUST_SPAN_RATIO,
+                "maximum_bbox_edge_error": self.MAX_ROBUST_BBOX_EDGE_ERROR,
             }
 
+        exact_linear_endpoints = (
+            category in {"LINEAR", "CHAMFER"}
+            and bool(local.get("passed"))
+            and str(local.get("signature") or "") == "TWO_EXACT_EXTENSION_ENDPOINTS"
+        )
         checks = {
             "reliable_dimension_attachment": (
-                association.get("association_status") in {
-                    "NATIVE_ASSOCIATIVE",
-                    "GEOMETRIC_ATTACHMENT",
-                    "RECOVERED_DIMENSION_GEOMETRY",
-                }
-                and float(association.get("association_confidence", 0.0) or 0.0) >= 0.90
-                and bool(association.get("primary_view_id"))
-            ),
+                (
+                    association.get("association_status") in {
+                        "NATIVE_ASSOCIATIVE",
+                        "GEOMETRIC_ATTACHMENT",
+                        "RECOVERED_DIMENSION_GEOMETRY",
+                    }
+                    and float(association.get("association_confidence", 0.0) or 0.0) >= 0.90
+                )
+                or exact_linear_endpoints
+            )
+            and bool(association.get("primary_view_id")),
             "local_feature_semantics": bool(local.get("passed")),
             "step_projection_signature": bool(projection.get("passed")),
             "drawing_view_matches_step_projection": (
-                local_topology_proof
-                or (
-                    float(view_match.get("score", 0.0) or 0.0) >= self.MIN_VIEW_SCORE
-                    and (contour_score is None or float(contour_score) >= self.MIN_CONTOUR_SCORE)
-                    and registration_confident
-                )
+                float(view_match.get("score", 0.0) or 0.0) >= self.MIN_VIEW_SCORE
+                and (contour_score is None or float(contour_score) >= self.MIN_CONTOUR_SCORE)
+                and registration_confident
             ),
             "dimension_matches_projected_feature_location": bool(localization.get("passed")),
             "dimension_endpoints_map_to_brep_topology": bool(topology_mapping.get("passed")),
@@ -247,14 +295,131 @@ class ProjectionGeometryVerifier:
         inlier = float(view_match.get("inlier_ratio", 0.0) or 0.0)
         chamfer = view_match.get("normalized_chamfer")
         ranked = view_match.get("ranked_hausdorff")
-        if chamfer is None or ranked is None:
+        source_coverage = float(view_match.get("source_coverage", 0.0) or 0.0)
+        target_coverage = float(view_match.get("target_coverage", 0.0) or 0.0)
+        extent_score = float(view_match.get("extent_score", 0.0) or 0.0)
+        span_ratio = float(view_match.get("span_ratio", 0.0) or 0.0)
+        bbox_edge_error = view_match.get("bbox_edge_error")
+        if chamfer is None or ranked is None or bbox_edge_error is None:
             return False
         return (
             contour >= cls.MIN_ROBUST_CONTOUR_SCORE
             and inlier >= cls.MIN_ROBUST_INLIER_RATIO
             and float(chamfer) <= cls.MAX_ROBUST_CHAMFER
             and float(ranked) <= cls.MAX_RANKED_HAUSDORFF
+            and source_coverage >= cls.MIN_ROBUST_SOURCE_COVERAGE
+            and target_coverage >= cls.MIN_ROBUST_TARGET_COVERAGE
+            and extent_score >= cls.MIN_ROBUST_EXTENT_SCORE
+            and span_ratio >= cls.MIN_ROBUST_SPAN_RATIO
+            and float(bbox_edge_error) <= cls.MAX_ROBUST_BBOX_EDGE_ERROR
         )
+
+    @classmethod
+    def _registration_is_confident_for_feature(
+        cls,
+        view_match: Dict[str, Any],
+        dimension,
+        node,
+        local_evidence: Dict[str, Any],
+        localization: Dict[str, Any],
+        topology_mapping: Dict[str, Any],
+    ) -> bool:
+        if cls._registration_is_confident(view_match):
+            return True
+        # Overall extents are intentionally judged by extrema agreement.  A
+        # side view often contains center lines and internal detail that lower
+        # point-cloud source coverage even when the STEP silhouette covers the
+        # complete drawing extent.  This gate remains stricter on extent and
+        # cannot promote a local or partial-overlap feature.
+        category = str(getattr(dimension, "dimension_category", "") or "").upper()
+        exact_linear = (
+            category == "LINEAR"
+            and str(local_evidence.get("signature") or "") == "TWO_EXACT_EXTENSION_ENDPOINTS"
+        )
+        if not exact_linear or view_match.get("registration_method") != ProjectionRegistrationEngine.METHOD:
+            return False
+        chamfer = view_match.get("normalized_chamfer")
+        bbox_error = view_match.get("bbox_edge_error")
+        if chamfer is None or bbox_error is None:
+            return False
+        extent_gate = (
+            float(view_match.get("contour_score", 0.0) or 0.0) >= 0.35
+            and float(chamfer) <= cls.MAX_ROBUST_CHAMFER
+            and float(view_match.get("target_coverage", 0.0) or 0.0) >= 0.95
+            and float(view_match.get("extent_score", 0.0) or 0.0) >= 0.94
+            and float(view_match.get("span_ratio", 0.0) or 0.0) >= 0.96
+            and float(bbox_error) <= 0.015
+        )
+        if not extent_gate:
+            return False
+        if str(getattr(node, "feature_type", "") or "") == "overall_dimension":
+            return True
+        target_edge = dict(localization.get("target_edge_evidence") or {})
+        return bool(localization.get("passed")) and (
+            bool(topology_mapping.get("passed"))
+            or (
+                bool(target_edge.get("passed"))
+                and float(target_edge.get("score", 0.0) or 0.0) >= 0.80
+            )
+        )
+
+    def _spatial_feature_projection_evidence(
+        self,
+        node,
+        matched_field: str,
+        category: str,
+        nominal: float,
+    ) -> Dict[str, Any]:
+        """Use canonical feature vectors when an HLR signature is sparse.
+
+        Short lips and steps may not yield an isolated HLR segment equal to
+        their axial length.  Their 3D axis and stored nominal still determine
+        which views can expose that length; endpoint and topology checks remain
+        mandatory afterwards.
+        """
+        if category not in {"LINEAR", "CHAMFER"} or matched_field not in {
+            "length", "step_height", "groove_width", "chamfer_height"
+        }:
+            return {"passed": False, "matching_views": []}
+        source = dict(getattr(node, "source_info", {}) or {})
+        axis = source.get("axis_dir")
+        if not isinstance(axis, (list, tuple)) or len(axis) < 3:
+            return {"passed": False, "matching_views": []}
+        axis_norm = math.sqrt(sum(float(value) ** 2 for value in axis[:3]))
+        if axis_norm <= 1e-9:
+            return {"passed": False, "matching_views": []}
+        axis = tuple(float(value) / axis_norm for value in axis[:3])
+        stored = float(
+            source.get("length", (getattr(node, "nominal", {}) or {}).get(matched_field, 0.0))
+            or 0.0
+        )
+        if abs(stored - nominal) > max(0.02, abs(nominal) * 0.006):
+            return {"passed": False, "matching_views": []}
+        matches = []
+        for view_name, view in self.step_views.items():
+            projection = dict(view.get("projection") or VIEW_CONFIG.get(view_name) or {})
+            direction = projection.get("direction")
+            if not isinstance(direction, (list, tuple)) or len(direction) < 3:
+                continue
+            direction_norm = math.sqrt(sum(float(value) ** 2 for value in direction[:3]))
+            if direction_norm <= 1e-9:
+                continue
+            alignment = abs(sum(
+                axis[index] * float(direction[index]) / direction_norm
+                for index in range(3)
+            ))
+            if alignment <= 0.15:
+                matches.append({
+                    "view": view_name,
+                    "signature": "FEATURE_AXIS_VISIBLE_FROM_SPATIAL_PROVENANCE",
+                    "axis_view_alignment": round(alignment, 6),
+                })
+        return {
+            "passed": bool(matches),
+            "nominal_value": nominal,
+            "tolerance": round(max(0.02, abs(nominal) * 0.006), 6),
+            "matching_views": matches,
+        }
 
     def _ensure_feature_axis_views(self) -> bool:
         if (
@@ -329,18 +494,18 @@ class ProjectionGeometryVerifier:
                 passed, signature = True, "OUTER_VISIBLE_PARALLEL_PAIR"
             elif feature_type == "retaining_ring_groove" and (visible_pairs or hidden_pairs):
                 passed, signature = True, "GROOVE_DIAMETER_CROSS_VIEW_PAIR"
-            elif feature_type in {"hole", "shaft_segment"} and exact_attached_circle:
+            elif feature_type in {"hole", "shaft_segment", "locating_shoulder", "annular_rim"} and exact_attached_circle:
                 # The circle proves that the callout is attached to local
                 # cylindrical geometry.  Hole-vs-shaft identity still comes
                 # from the unique STEP node plus the independent projection
                 # localization check; 2D geometry alone is not promoted.
                 passed, signature = True, "EXACT_ATTACHED_CIRCLE_WITH_3D_CLASSIFICATION"
-            elif feature_type in {"hole", "shaft_segment"} and exact_attached_circular_profile:
+            elif feature_type in {"hole", "shaft_segment", "locating_shoulder", "annular_rim"} and exact_attached_circular_profile:
                 # A split ARC ring is one geometric profile, not multiple
                 # competing entities.  STEP topology still decides whether
                 # the profile is a hole or an external shaft surface.
                 passed, signature = True, "EXACT_COINCIDENT_ARC_PROFILE_WITH_3D_CLASSIFICATION"
-            elif feature_type in {"hole", "shaft_segment", "retaining_ring_groove"} and recovered_diameter_pair:
+            elif feature_type in {"hole", "shaft_segment", "retaining_ring_groove", "locating_shoulder", "annular_rim"} and recovered_diameter_pair:
                 # The endpoint pair proves the local measured diameter.  The
                 # separate STEP projection and node-location checks must still
                 # pass before this case can become AUTO_VERIFIED.
@@ -422,24 +587,168 @@ class ProjectionGeometryVerifier:
             "matching_views": matches,
         }
 
+    def _best_dimension_view_match(
+        self,
+        dimension,
+        dxf_view_id: Optional[str],
+        allowed_step_views: Optional[Iterable[str]] = None,
+        locked_feature_compatible: bool = False,
+        require_locked_feature_compatibility: bool = False,
+    ) -> Dict[str, Any]:
+        primary = self._best_view_match(
+            dxf_view_id,
+            allowed_step_views=allowed_step_views,
+            locked_feature_compatible=locked_feature_compatible,
+            require_locked_feature_compatibility=require_locked_feature_compatibility,
+        )
+        if primary.get("upstream_projection_locked"):
+            return primary
+        if not require_locked_feature_compatibility:
+            return primary
+        locked = getattr(self, "_locked_view_registration", None)
+        if (
+            isinstance(locked, dict)
+            and str(locked.get("dxf_view_id") or "") == str(dxf_view_id or "")
+            and not require_locked_feature_compatibility
+        ):
+            return primary
+        region_ids: List[str] = []
+        points = dict(getattr(dimension, "points", {}) or {})
+        endpoints = [points.get("defpoint2"), points.get("defpoint3")]
+        if all(isinstance(point, (list, tuple)) and len(point) >= 2 for point in endpoints):
+            nominal = abs(float(getattr(dimension, "nominal_value", 0.0) or 0.0))
+            margin = max(0.35, nominal * 0.025)
+            matches = []
+            for region_id, region in getattr(self, "_secondary_dxf_regions", {}).items():
+                bbox = region["bbox"]
+                if all(
+                    float(bbox[0]) - margin <= float(point[0]) <= float(bbox[2]) + margin
+                    and float(bbox[1]) - margin <= float(point[1]) <= float(bbox[3]) + margin
+                    for point in endpoints
+                ):
+                    width = max(float(bbox[2]) - float(bbox[0]), 1e-9)
+                    height = max(float(bbox[3]) - float(bbox[1]), 1e-9)
+                    span = math.dist(tuple(endpoints[0][:2]), tuple(endpoints[1][:2]))
+                    # Reject tiny fragments that contain the extension points
+                    # but cannot represent a full projected part view.
+                    if max(width, height) >= max(span * 1.15, 1.0):
+                        matches.append((width * height, region_id))
+            # Multiscale extraction intentionally produces nested candidates.
+            # Test a bounded set across the area range and let robust contour
+            # registration select the actual view.
+            matches.sort()
+            region_ids = [item[1] for item in matches[:4] + matches[-2:]]
+        candidate_ids = list(dict.fromkeys(region_ids))
+        results = [
+            self._best_view_match(
+                candidate_id,
+                allowed_step_views=allowed_step_views,
+                locked_feature_compatible=locked_feature_compatible,
+                require_locked_feature_compatibility=require_locked_feature_compatibility,
+            )
+            for candidate_id in candidate_ids
+            if candidate_id
+        ]
+        if not results:
+            return primary
+        best = dict(max(results, key=lambda item: float(item.get("score", 0.0) or 0.0)))
+        alternatives = []
+        for result in results:
+            if result.get("transform") and result.get("step_view"):
+                alternatives.append({
+                    key: value for key, value in result.items()
+                    if key not in {"orientation_candidates", "orientation_disambiguation"}
+                })
+            alternatives.extend(result.get("orientation_candidates") or [])
+        alternatives.sort(
+            key=lambda item: float(item.get("score", 0.0) or 0.0),
+            reverse=True,
+        )
+        best["orientation_candidates"] = alternatives[:48]
+        return best
+
     def _best_view_match(
         self,
         dxf_view_id: Optional[str],
         allowed_step_views: Optional[Iterable[str]] = None,
+        locked_feature_compatible: bool = False,
+        require_locked_feature_compatibility: bool = False,
     ) -> Dict[str, Any]:
         if not dxf_view_id:
             return {"score": 0.0, "dxf_view_id": None, "step_view": None}
-        cluster = next((item for item in self.structure.view_clusters if item.view_id == dxf_view_id), None)
+        locked = getattr(self, "_locked_view_registration", None)
+        if locked is not None:
+            locked_dxf_view = str(locked.get("dxf_view_id") or "")
+            locked_step_view = str(locked.get("step_view") or "")
+            allowed = set(allowed_step_views or ())
+            same_dxf_view = str(dxf_view_id) == locked_dxf_view
+            semantic_name_match = allowed_step_views is None or locked_step_view in allowed
+            if not same_dxf_view and not self._allow_secondary_view_search:
+                return {
+                    "score": 0.0,
+                    "dxf_view_id": dxf_view_id,
+                    "step_view": None,
+                    "registration_status": "LOCKED_UPSTREAM_VIEW_MISMATCH",
+                }
+            if same_dxf_view:
+                locked_incompatible = (
+                    (not semantic_name_match and not locked_feature_compatible)
+                    or (require_locked_feature_compatibility and not locked_feature_compatible)
+                )
+                if locked_incompatible and (
+                    not getattr(self, "_allow_secondary_view_search", False)
+                    or not require_locked_feature_compatibility
+                ):
+                    return {
+                        "score": 0.0,
+                        "dxf_view_id": dxf_view_id,
+                        "step_view": None,
+                        "registration_status": "LOCKED_UPSTREAM_VIEW_MISMATCH",
+                    }
+                if not locked_incompatible:
+                    return {
+                        **locked,
+                        "dxf_view_id": locked_dxf_view,
+                        "step_view": locked_step_view,
+                        "orientation_candidates": [],
+                        "upstream_projection_locked": True,
+                        "registration_status": (
+                            "LOCKED_UPSTREAM_VECTOR_COMPATIBLE"
+                            if not semantic_name_match and locked_feature_compatible
+                            else locked.get("registration_status", locked.get("status", "REGISTERED"))
+                        ),
+                    }
+                # Experimental multi-view audit only: the drawing cluster is
+                # still authoritative, but this feature cannot be expressed
+                # by the parent's STEP direction.  Register the same cluster
+                # against the feature-compatible STEP directions below.
+        external_region = getattr(self, "_secondary_dxf_regions", {}).get(str(dxf_view_id))
+        if external_region is not None:
+            bbox = tuple(float(value) for value in external_region["bbox"])
+            cluster = SimpleNamespace(
+                view_id=str(dxf_view_id),
+                bbox=bbox,
+                width=bbox[2] - bbox[0],
+                height=bbox[3] - bbox[1],
+                primitive_indexes=range(int(external_region.get("primitive_count", 0) or 0)),
+            )
+        else:
+            cluster = next((item for item in self.structure.view_clusters if item.view_id == dxf_view_id), None)
         if cluster is None or cluster.width <= 0.0 or cluster.height <= 0.0:
             return {"score": 0.0, "dxf_view_id": dxf_view_id, "step_view": None}
 
-        dxf_points = self._dxf_cluster_points(cluster)
+        dxf_points = (
+            [tuple(float(value) for value in point[:2]) for point in external_region.get("points", [])]
+            if external_region is not None
+            else self._dxf_cluster_points(cluster)
+        )
         best = {
             "score": 0.0,
             "dxf_view_id": dxf_view_id,
             "step_view": None,
             "contour_score": None,
         }
+        orientation_candidates: List[Dict[str, Any]] = []
         allowed = set(allowed_step_views or ())
         if allowed_step_views is not None and not allowed:
             return best
@@ -472,6 +781,46 @@ class ProjectionGeometryVerifier:
                     rotated_height,
                 )
                 score = 0.15 * shape_score + 0.85 * contour
+                for alternative in registration.get("alternatives") or []:
+                    alternative_rotation = float(alternative.get("rotation_degrees", 0.0) or 0.0)
+                    alternative_contour = float(alternative.get("contour_score", 0.0) or 0.0)
+                    alternative_width, alternative_height = self._rotated_size(
+                        width,
+                        height,
+                        alternative_rotation,
+                    )
+                    alternative_shape = self._shape_score(
+                        cluster.width,
+                        cluster.height,
+                        alternative_width,
+                        alternative_height,
+                    )
+                    alternative_score = 0.15 * alternative_shape + 0.85 * alternative_contour
+                    orientation_candidates.append({
+                        "score": round(alternative_score, 4),
+                        "dxf_view_id": dxf_view_id,
+                        "step_view": name,
+                        "rotation_degrees": alternative_rotation,
+                        "mirrored": bool(alternative.get("mirrored", False)),
+                        "contour_score": round(alternative_contour, 4),
+                        "dxf_entity_count": len(cluster.primitive_indexes),
+                        "dxf_bbox": [round(value, 4) for value in cluster.bbox],
+                        "step_bbox": [round(float(value), 4) for value in (view.get("bbox") or ())],
+                        "registration_method": registration.get("method"),
+                        "registration_status": registration.get("status"),
+                        "normalized_chamfer": alternative.get("normalized_chamfer"),
+                        "inlier_ratio": alternative.get("inlier_ratio"),
+                        "source_coverage": alternative.get("source_coverage"),
+                        "target_coverage": alternative.get("target_coverage"),
+                        "ranked_hausdorff": alternative.get("ranked_hausdorff"),
+                        "extent_score": alternative.get("extent_score"),
+                        "bbox_edge_error": alternative.get("bbox_edge_error"),
+                        "span_ratio": alternative.get("span_ratio"),
+                        "scale": alternative.get("scale"),
+                        "translation": alternative.get("translation"),
+                        "transform": alternative.get("transform"),
+                        "projection": dict(view.get("projection") or {}),
+                    })
             else:
                 # Sparse legacy tests and severely degraded DXFs may not have
                 # enough curve samples for ICP.  Keep the former cardinal
@@ -523,14 +872,262 @@ class ProjectionGeometryVerifier:
                     "source_coverage": registration.get("source_coverage"),
                     "target_coverage": registration.get("target_coverage"),
                     "ranked_hausdorff": registration.get("ranked_hausdorff"),
+                    "extent_score": registration.get("extent_score"),
+                    "bbox_edge_error": registration.get("bbox_edge_error"),
+                    "span_ratio": registration.get("span_ratio"),
                     "score_margin": registration.get("score_margin"),
                     "scale": registration.get("scale"),
                     "translation": registration.get("translation"),
                     "transform": registration.get("transform"),
                     "projection": dict(view.get("projection") or {}),
                 }
+        orientation_candidates.sort(key=lambda item: float(item.get("score", 0.0) or 0.0), reverse=True)
+        best["orientation_candidates"] = orientation_candidates[:24]
         getattr(self, "_view_match_cache", {})[cache_key] = best
         return best
+
+    def _locked_projection_supports_feature(
+        self,
+        dimension,
+        node,
+        matched_field: str,
+        association: Dict[str, Any],
+    ) -> bool:
+        """Resolve canonical-view naming disagreements from actual 3D vectors.
+
+        The robust pose search and the semantic verifier historically used
+        literal names such as ``top`` and ``front`` as if those names encoded
+        a part's functional axis.  They do not: a cylinder aligned to global Y
+        is seen end-on in the canonical top projection.  This check is narrow
+        and geometry-backed; it does not waive contour, topology or anchor
+        verification.
+        """
+        locked = getattr(self, "_locked_view_registration", None)
+        if not isinstance(locked, dict):
+            return False
+        source = dict(getattr(node, "source_info", {}) or {})
+        axis = source.get("axis_dir")
+        if not isinstance(axis, (list, tuple)) or len(axis) < 3:
+            return False
+        axis_length = math.sqrt(sum(float(value) ** 2 for value in axis[:3]))
+        if axis_length <= 1e-9:
+            return False
+        axis = tuple(float(value) / axis_length for value in axis[:3])
+        projection = dict(locked.get("projection") or {})
+        if not projection:
+            view_name = str(locked.get("step_view") or "")
+            view = dict(self.step_views.get(view_name) or {})
+            projection = dict(view.get("projection") or VIEW_CONFIG.get(view_name) or {})
+        direction = projection.get("direction")
+        if not isinstance(direction, (list, tuple)) or len(direction) < 3:
+            return False
+        direction_length = math.sqrt(sum(float(value) ** 2 for value in direction[:3]))
+        if direction_length <= 1e-9:
+            return False
+        direction = tuple(float(value) / direction_length for value in direction[:3])
+        alignment = abs(sum(axis[index] * direction[index] for index in range(3)))
+        category = str(getattr(dimension, "dimension_category", "") or "").upper()
+        exact_circle = any(
+            str(item.get("relation") or "") == "EXACT_ATTACHMENT"
+            and str(item.get("entity_type") or "") in {"CIRCLE", "ARC"}
+            and float(item.get("radius", 0.0) or 0.0) > 0.0
+            for item in association.get("dimension_target_edges") or []
+        )
+        if category == "DIAMETER" and matched_field in {"diameter", "groove_diameter"}:
+            if exact_circle:
+                return alignment >= 0.985
+            cross_view = dict(association.get("cross_view_evidence") or {})
+            has_parallel_pair = bool(
+                cross_view.get("matching_visible_pairs")
+                or cross_view.get("matching_hidden_pairs")
+            )
+            return has_parallel_pair and alignment <= 0.15
+        if category in {"LINEAR", "CHAMFER"} and matched_field in {
+            "length", "step_height", "groove_width", "chamfer_height"
+        }:
+            # The measured axis must be visible in this projection and must
+            # run parallel to the DXF definition-point span after applying the
+            # locked similarity transform.  This distinguishes equal 3D
+            # spans on different axes without using model-specific rules.
+            if alignment > 0.15:
+                return False
+            points = dict(getattr(dimension, "points", {}) or {})
+            start, end = points.get("defpoint2"), points.get("defpoint3")
+            if not (
+                isinstance(start, (list, tuple)) and len(start) >= 2
+                and isinstance(end, (list, tuple)) and len(end) >= 2
+            ):
+                return False
+            up = projection.get("up")
+            if not isinstance(up, (list, tuple)) or len(up) < 3:
+                return False
+            side = (
+                direction[1] * float(up[2]) - direction[2] * float(up[1]),
+                direction[2] * float(up[0]) - direction[0] * float(up[2]),
+                direction[0] * float(up[1]) - direction[1] * float(up[0]),
+            )
+            projected = [
+                sum(axis[index] * float(up[index]) for index in range(3)),
+                sum(axis[index] * side[index] for index in range(3)),
+            ]
+            transform = dict(locked.get("transform") or {})
+            if bool(transform.get("mirrored", locked.get("mirrored", False))):
+                projected[0] = -projected[0]
+            rotation = math.radians(float(
+                transform.get("rotation_degrees", locked.get("rotation_degrees", 0.0))
+                or 0.0
+            ))
+            cosine, sine = math.cos(rotation), math.sin(rotation)
+            projected = (
+                projected[0] * cosine - projected[1] * sine,
+                projected[0] * sine + projected[1] * cosine,
+            )
+            measured = (
+                float(end[0]) - float(start[0]),
+                float(end[1]) - float(start[1]),
+            )
+            projected_length = math.hypot(*projected)
+            measured_length = math.hypot(*measured)
+            if projected_length <= 1e-9 or measured_length <= 1e-9:
+                return False
+            cosine_alignment = abs(
+                (projected[0] * measured[0] + projected[1] * measured[1])
+                / (projected_length * measured_length)
+            )
+            return cosine_alignment >= 0.94
+        return False
+
+    def _select_orientation_for_dimension_feature(
+        self,
+        dimension,
+        node,
+        association: Dict[str, Any],
+        view_match: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Resolve symmetric contour orientations using annotation semantics.
+
+        Outline-only registration cannot distinguish a left/right or up/down
+        reversal when a part is nearly symmetric.  Rank the retained six-view
+        and mirror hypotheses by where the measured DXF edge and dimension
+        anchor fall inside the projected candidate feature.
+        """
+        alternatives = [
+            dict(item)
+            for item in view_match.get("orientation_candidates") or []
+            if item.get("transform") and item.get("step_view") in self.step_views
+        ]
+        if not alternatives:
+            return view_match
+        ranked = []
+        for candidate in alternatives:
+            localization = self._node_projection_localization(
+                dimension,
+                node,
+                association,
+                candidate,
+            )
+            edge_alignment = self._target_edge_alignment(node, association, candidate)
+            contour_score = float(candidate.get("contour_score", 0.0) or 0.0)
+            localization_score = float(localization.get("score", 0.0) or 0.0)
+            edge_score = float(edge_alignment.get("score", 0.0) or 0.0)
+            extent_score = float(candidate.get("extent_score", 0.0) or 0.0)
+            semantic_base = (
+                0.50 * localization_score
+                + 0.35 * edge_score
+                + 0.15 * contour_score
+            )
+            # Annotation geometry resolves symmetric directions, but it must
+            # never promote a tail-to-middle partial overlap.  Whole-contour
+            # extent agreement therefore acts as a multiplicative gate.
+            semantic_score = semantic_base * (0.25 + 0.75 * extent_score)
+            ranked.append({
+                "candidate": candidate,
+                "localization": localization,
+                "edge_alignment": edge_alignment,
+                "semantic_score": semantic_score,
+            })
+        ranked.sort(key=lambda item: item["semantic_score"], reverse=True)
+        selected = dict(ranked[0]["candidate"])
+        selected["orientation_disambiguation"] = {
+            "method": "DIMENSION_ANCHOR_AND_TARGET_EDGE_V1",
+            "selected_semantic_score": round(float(ranked[0]["semantic_score"]), 4),
+            "candidate_count": len(ranked),
+            "selected_by_annotation_geometry": True,
+            "candidates": [
+                {
+                    "step_view": item["candidate"].get("step_view"),
+                    "mirrored": item["candidate"].get("mirrored"),
+                    "rotation_degrees": item["candidate"].get("rotation_degrees"),
+                    "contour_score": item["candidate"].get("contour_score"),
+                    "localization_score": item["localization"].get("score"),
+                    "target_edge_score": item["edge_alignment"].get("score"),
+                    "extent_score": item["candidate"].get("extent_score"),
+                    "source_coverage": item["candidate"].get("source_coverage"),
+                    "target_coverage": item["candidate"].get("target_coverage"),
+                    "semantic_score": round(float(item["semantic_score"]), 4),
+                }
+                for item in ranked[:8]
+            ],
+        }
+        return selected
+
+    def _target_edge_alignment(
+        self,
+        node,
+        association: Dict[str, Any],
+        view_match: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        target_edges = list(association.get("dimension_target_edges") or [])
+        step_view = str(view_match.get("step_view") or "")
+        view = self.step_views.get(step_view)
+        transform_payload = view_match.get("transform")
+        if not target_edges or not view or not isinstance(transform_payload, dict):
+            return {"status": "TARGET_EDGE_UNAVAILABLE", "score": 0.0, "passed": False}
+        footprint = FeatureFootprintProjector().project(
+            node,
+            step_view,
+            view,
+            transform_payload,
+        )
+        if not footprint.points:
+            return {"status": footprint.status, "score": 0.0, "passed": False}
+        distances = []
+        for edge in target_edges:
+            center = edge.get("center")
+            radius = float(edge.get("radius", 0.0) or 0.0)
+            points = list(edge.get("points") or [])
+            if center and radius > 0.0:
+                distances.append(min(
+                    abs(math.dist(point, center[:2]) - radius)
+                    for point in footprint.points
+                ))
+            elif len(points) >= 2:
+                distances.append(min(
+                    DxfStructure2DAnalyzer._distance_to_segment(
+                        projected,
+                        tuple(start[:2]),
+                        tuple(end[:2]),
+                    )
+                    for projected in footprint.points
+                    for start, end in zip(points, points[1:])
+                ))
+        if not distances:
+            return {"status": "TARGET_EDGE_GEOMETRY_UNAVAILABLE", "score": 0.0, "passed": False}
+        dxf_bbox = view_match.get("dxf_bbox") or ()
+        diagonal = (
+            math.hypot(float(dxf_bbox[2]) - float(dxf_bbox[0]), float(dxf_bbox[3]) - float(dxf_bbox[1]))
+            if len(dxf_bbox) == 4
+            else 1.0
+        )
+        normalized_distance = min(distances) / max(diagonal, 1e-9)
+        score = math.exp(-normalized_distance / 0.025)
+        return {
+            "status": "TARGET_EDGE_ALIGNED" if normalized_distance <= 0.04 else "TARGET_EDGE_MISMATCH",
+            "passed": normalized_distance <= 0.04,
+            "score": round(score, 4),
+            "normalized_distance": round(normalized_distance, 6),
+            "edge_handles": [str(item.get("handle") or "") for item in target_edges],
+        }
 
     def _node_projection_localization(
         self,
@@ -551,7 +1148,7 @@ class ProjectionGeometryVerifier:
         source = dict(getattr(node, "source_info", {}) or {})
         center = source.get("center")
         step_view = view_match.get("step_view")
-        dxf_view_id = association.get("primary_view_id")
+        dxf_view_id = view_match.get("dxf_view_id") or association.get("primary_view_id")
         if not isinstance(center, (list, tuple)) or len(center) < 3:
             return {
                 "passed": False,
@@ -560,7 +1157,16 @@ class ProjectionGeometryVerifier:
             }
         if not step_view or step_view not in self.step_views or not dxf_view_id:
             return {"passed": False, "score": 0.0, "status": "VIEW_REGISTRATION_UNAVAILABLE"}
-        cluster = next((item for item in self.structure.view_clusters if item.view_id == dxf_view_id), None)
+        external_region = getattr(self, "_secondary_dxf_regions", {}).get(str(dxf_view_id))
+        if external_region is not None:
+            bbox = tuple(float(value) for value in external_region["bbox"])
+            cluster = SimpleNamespace(
+                bbox=bbox,
+                width=bbox[2] - bbox[0],
+                height=bbox[3] - bbox[1],
+            )
+        else:
+            cluster = next((item for item in self.structure.view_clusters if item.view_id == dxf_view_id), None)
         if cluster is None or cluster.width <= 0.0 or cluster.height <= 0.0:
             return {"passed": False, "score": 0.0, "status": "DXF_VIEW_UNAVAILABLE"}
 
@@ -633,6 +1239,40 @@ class ProjectionGeometryVerifier:
         if footprint_evidence is not None and footprint_evidence.get("status") != "MISSING_SPATIAL_PROVENANCE":
             passed = bool(footprint_evidence.get("passed"))
             score = float(footprint_evidence.get("score", 0.0) or 0.0)
+        target_edge_evidence = None
+        if category in {"LINEAR", "CHAMFER"} and axis is not None:
+            target_edge_evidence = self._target_edge_alignment(node, association, view_match)
+            exact_endpoint_count = sum(
+                bool(link.get("nearest_geometry"))
+                and any(
+                    item.get("relation") == "EXACT_ATTACHMENT"
+                    for item in link.get("nearest_geometry") or []
+                )
+                for link in association.get("definition_point_links") or []
+            )
+            if (
+                str(getattr(node, "feature_type", "") or "") == "composite_planar_span"
+                and exact_endpoint_count >= 2
+                and along_error <= 0.025
+            ):
+                # Plane-to-plane distance is invariant along either plane.
+                # Extension points may legitimately sit at a remote edge, so
+                # require exact attachment and projected-axis agreement rather
+                # than proximity to the planes' centre of mass.
+                passed = True
+                score = max(score, 0.95 * math.exp(-along_error / 0.04))
+            if (
+                exact_endpoint_count >= 2
+                and along_error <= 0.12
+                and bool(target_edge_evidence.get("passed"))
+                and float(target_edge_evidence.get("score", 0.0) or 0.0) >= 0.80
+            ):
+                passed = True
+                score = max(
+                    score,
+                    0.55 * math.exp(-along_error / 0.08)
+                    + 0.45 * float(target_edge_evidence.get("score", 0.0) or 0.0),
+                )
         return {
             "passed": passed,
             "score": round(score, 4),
@@ -641,12 +1281,17 @@ class ProjectionGeometryVerifier:
             "node_center_3d": [round(float(value), 4) for value in center[:3]],
             "projected_step_point": [round(value, 4) for value in projected],
             "expected_dxf_point": [round(value, 4) for value in expected_dxf],
+            "observed_dxf_anchor": [round(value, 4) for value in anchor],
             "expected_normalized_point": [round(value, 4) for value in expected],
             "observed_normalized_anchor": [round(value, 4) for value in observed],
             "normalized_distance": round(distance, 4),
             "along_axis_error": round(along_error, 4),
             "cross_axis_error": round(cross_error, 4),
+            "plane_span_axis_invariant": (
+                str(getattr(node, "feature_type", "") or "") == "composite_planar_span"
+            ),
             "projected_feature_footprint": footprint_evidence,
+            "target_edge_evidence": target_edge_evidence,
         }
 
     @staticmethod

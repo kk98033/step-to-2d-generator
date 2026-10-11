@@ -54,7 +54,15 @@ from auto_2d_drawing.tolerance.assembly_components import (
 from auto_2d_drawing.tolerance.historical_manifest import build_pair_manifest
 from auto_2d_drawing.tolerance.global_geometry_search import GlobalGeometryPairSearcher
 from auto_2d_drawing.tolerance.projection_geometry_verifier import ProjectionGeometryVerifier
-from auto_2d_drawing.tolerance.projected_feature_mapper import GlobalFeatureAssignmentResolver
+from auto_2d_drawing.tolerance.composite_features import (
+    build_annular_rim_features,
+    build_planar_span_features,
+)
+from auto_2d_drawing.tolerance.projection_registration_v2 import SimilarityTransform2D
+from auto_2d_drawing.tolerance.projected_feature_mapper import (
+    FeatureFootprintProjector,
+    GlobalFeatureAssignmentResolver,
+)
 
 
 DEFAULT_SOURCE_DIRS = (
@@ -383,11 +391,77 @@ class HistoricalDataIngestor:
         elif node.feature_type == "transition_fillet":
             yield "radius", float(nominal.get("radius", 0.0) or 0.0), ("RADIUS",)
         elif node.feature_type == "locating_shoulder":
+            yield "diameter", float(nominal.get("diameter", 0.0) or 0.0), ("DIAMETER",)
             yield "step_height", float(nominal.get("step_height", nominal.get("length", 0.0)) or 0.0), ("LINEAR",)
+        elif node.feature_type in {"overall_dimension", "composite_planar_span"}:
+            yield "length", float(nominal.get("length", 0.0) or 0.0), ("LINEAR",)
+        elif node.feature_type == "annular_rim":
+            yield "outer_diameter", float(nominal.get("outer_diameter", 0.0) or 0.0), ("DIAMETER",)
+            yield "inner_diameter", float(nominal.get("inner_diameter", 0.0) or 0.0), ("DIAMETER",)
+            yield "length", float(nominal.get("length", 0.0) or 0.0), ("LINEAR",)
+
+    @staticmethod
+    def _candidate_semantic_prior(dim, node: FeatureNode, evidence: Dict[str, Any]) -> float:
+        """Small deterministic tie-breaker after full geometry verification.
+
+        Duplicate canonical records may describe the same cylindrical surface
+        as both a shaft and a step.  Visible outer profiles should prefer the
+        functional outer feature; hidden circular profiles should prefer the
+        bore.  The prior is intentionally too small to rescue failed geometry.
+        """
+        if not evidence.get("passed"):
+            return 0.0
+        category = str(getattr(dim, "dimension_category", "") or "").upper()
+        association = dict(evidence.get("association") or {})
+        edges = list(association.get("dimension_target_edges") or [])
+        if category == "LINEAR":
+            exact_edges = [
+                item for item in edges
+                if str(item.get("relation") or "") == "EXACT_ATTACHMENT"
+            ]
+            if len(exact_edges) < 2:
+                return 0.0
+            hidden = all(
+                "HID" in str(item.get("layer") or "").upper()
+                or "HIDDEN" in str(item.get("linetype") or "").upper()
+                for item in exact_edges
+            )
+            if hidden and node.feature_type == "hole":
+                return 0.06
+            if not hidden and node.feature_type in {"locating_shoulder", "composite_planar_span"}:
+                return 0.06
+            return 0.0
+        if category != "DIAMETER":
+            return 0.0
+        exact_circles = [
+            item for item in edges
+            if str(item.get("relation") or "") == "EXACT_ATTACHMENT"
+            and str(item.get("entity_type") or "") in {"CIRCLE", "ARC"}
+        ]
+        if not exact_circles:
+            return 0.0
+        hidden = all(
+            "HID" in str(item.get("layer") or "").upper()
+            or "HIDDEN" in str(item.get("linetype") or "").upper()
+            for item in exact_circles
+        )
+        role = str(node.inferred_role or "").upper()
+        if hidden and node.feature_type == "annular_rim":
+            return 0.09
+        if hidden and node.feature_type == "hole":
+            return 0.06
+        if not hidden and node.feature_type == "annular_rim":
+            return 0.09
+        if not hidden and (node.feature_type == "shaft_segment" or "OUTER" in role):
+            return 0.06
+        return 0.0
 
     @staticmethod
     def _match_threshold(value: float) -> float:
-        return max(0.005, min(0.02, abs(value) * 0.0005))
+        # STEP tessellation/chamfer recovery can turn a nominal 3.000 mm end
+        # step into 2.994 mm.  Spatial verification decides between the wider
+        # candidate set, so keep a conservative 0.01 mm geometry allowance.
+        return max(0.01, min(0.02, abs(value) * 0.0005))
 
     @staticmethod
     def _tolerance_signature(config: Dict[str, Any]) -> str:
@@ -411,6 +485,7 @@ class HistoricalDataIngestor:
         dxf_path: str,
         dimensions: Sequence[ExtractedDimension],
         pair_evidence: Optional[Dict[str, Any]] = None,
+        collect_diagnostics: bool = False,
     ) -> Tuple[List[Tuple[ToleranceCase, List[Tuple[str, str]]]], Dict[str, Any]]:
         component_label_entry = str((pair_evidence or {}).get("component_label_entry") or "")
         shape = (
@@ -421,15 +496,196 @@ class HistoricalDataIngestor:
         graph = self.frg_extractor.build_graph(shape) if shape is not None else None
         if graph is None or not graph.nodes:
             return [], {"pair_load_failures": 1}
+        for composite_node in build_annular_rim_features(graph):
+            graph.add_node(composite_node)
+        requested_linear_lengths = [
+            float(dim.nominal_value)
+            for dim in dimensions
+            if str(dim.dimension_category or "").upper() == "LINEAR"
+        ]
+        atomic_linear_values = [
+            abs(float(value))
+            for node in graph.nodes
+            for _field, value, categories in self._node_targets(node)
+            if "LINEAR" in categories and abs(float(value)) > 1e-9
+        ]
+        requested_linear_lengths = [
+            value for value in requested_linear_lengths
+            if not any(
+                abs(abs(float(value)) - atomic) <= self._match_threshold(value)
+                for atomic in atomic_linear_values
+            )
+        ]
+        for composite_node in build_planar_span_features(
+            shape, graph, requested_linear_lengths
+        ):
+            graph.add_node(composite_node)
         try:
             modelspace = ezdxf.readfile(dxf_path).modelspace()
             geometry_verifier = ProjectionGeometryVerifier(
                 modelspace,
                 shape=shape,
                 feature_nodes=graph.nodes,
+                locked_view_registration=(pair_evidence or {}).get("locked_view_registration"),
+                allow_secondary_view_search=bool(
+                    (pair_evidence or {}).get("allow_secondary_view_search", False)
+                ),
+                secondary_dxf_regions=(pair_evidence or {}).get("secondary_dxf_regions"),
             )
         except Exception:
             return [], {"projection_verifier_failures": 1}
+
+        diagnostic_order = [self._evidence_key(dxf_path, dim) for dim in dimensions]
+        dimension_diagnostics: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        projection_overlays: Dict[str, Dict[str, Any]] = {}
+        if collect_diagnostics:
+            for dim in dimensions:
+                dimension_key = self._evidence_key(dxf_path, dim)
+                association = geometry_verifier.structure.analyze_dimension(dim)
+                geometry_verifier._association_cache[id(dim)] = association
+                observed_anchor = geometry_verifier._dimension_anchor(dim, association)
+                dimension_diagnostics[dimension_key] = {
+                    "entity_handle": str(dim.entity_handle or ""),
+                    "dimension_category": dim.dimension_category,
+                    "nominal_value": dim.nominal_value,
+                    "status": "PENDING",
+                    "candidate_count": 0,
+                    "association": association,
+                    "observed_dxf_anchor": (
+                        [round(float(value), 4) for value in observed_anchor]
+                        if observed_anchor is not None
+                        else None
+                    ),
+                    "candidates": [],
+                }
+
+        def update_diagnostic_candidate(
+            dim: ExtractedDimension,
+            node: FeatureNode,
+            field_name: str,
+            difference: float,
+            threshold: float,
+            evidence: Optional[Dict[str, Any]] = None,
+        ) -> None:
+            if not collect_diagnostics:
+                return
+            diagnostic = dimension_diagnostics[self._evidence_key(dxf_path, dim)]
+            candidates = diagnostic["candidates"]
+            candidate = next(
+                (
+                    item for item in candidates
+                    if item["feature_id"] == node.id and item["nominal_field"] == field_name
+                ),
+                None,
+            )
+            if candidate is None:
+                candidate = {
+                    "feature_id": node.id,
+                    "feature_type": node.feature_type,
+                    "nominal_field": field_name,
+                    "value_difference_mm": round(difference, 6),
+                    "match_threshold_mm": round(threshold, 6),
+                }
+                candidates.append(candidate)
+            if evidence is not None:
+                association = dict(evidence.get("association") or {})
+                localization = dict(evidence.get("feature_localization") or {})
+                candidate["geometry_verification"] = {
+                    "method": evidence.get("method"),
+                    "status": evidence.get("status"),
+                    "passed": bool(evidence.get("passed")),
+                    "score": evidence.get("score"),
+                    "checks": dict(evidence.get("checks") or {}),
+                    "association": {
+                        key: association.get(key)
+                        for key in (
+                            "association_status",
+                            "association_confidence",
+                            "primary_view_id",
+                            "attached_geometry_handles",
+                            "common_attachment_handles",
+                            "dimension_target_edges",
+                        )
+                    },
+                    "view_registration": dict(evidence.get("view_registration") or {}),
+                    "feature_localization": {
+                        key: localization.get(key)
+                        for key in (
+                            "passed",
+                            "score",
+                            "status",
+                            "step_view",
+                            "node_center_3d",
+                            "projected_step_point",
+                            "expected_dxf_point",
+                            "observed_dxf_anchor",
+                            "expected_normalized_point",
+                            "observed_normalized_anchor",
+                            "normalized_distance",
+                            "along_axis_error",
+                            "cross_axis_error",
+                        )
+                    },
+                }
+
+        node_by_id = {str(node.id): node for node in graph.nodes}
+
+        def build_registered_step_projection(registration: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+            view_name = str(registration.get("step_view") or "")
+            transform_payload = registration.get("transform")
+            view = geometry_verifier.step_views.get(view_name)
+            if not view or not isinstance(transform_payload, dict):
+                return None
+            transform = SimilarityTransform2D(
+                scale=float(transform_payload.get("scale", 1.0) or 1.0),
+                rotation_degrees=float(transform_payload.get("rotation_degrees", 0.0) or 0.0),
+                translation=tuple(transform_payload.get("translation") or (0.0, 0.0)),
+                mirrored=bool(transform_payload.get("mirrored", False)),
+            )
+            lines: List[Dict[str, Any]] = []
+            circles: List[Dict[str, Any]] = []
+            for visibility in ("visible", "hidden"):
+                for edge in view.get(visibility) or []:
+                    if edge.get("type") == "line" and edge.get("p1") and edge.get("p2"):
+                        p1 = transform.apply_point(tuple(edge["p1"][:2]))
+                        p2 = transform.apply_point(tuple(edge["p2"][:2]))
+                        lines.append({
+                            "p1": [round(float(value), 4) for value in p1],
+                            "p2": [round(float(value), 4) for value in p2],
+                            "visibility": visibility,
+                        })
+                    elif edge.get("type") == "circle" and edge.get("center") and edge.get("radius"):
+                        center = transform.apply_point(tuple(edge["center"][:2]))
+                        circles.append({
+                            "center": [round(float(value), 4) for value in center],
+                            "radius": round(abs(float(edge["radius"])) * abs(transform.scale), 4),
+                            "visibility": visibility,
+                        })
+            if len(lines) > 1200:
+                stride = len(lines) / 1200.0
+                lines = [lines[min(int(index * stride), len(lines) - 1)] for index in range(1200)]
+            return {
+                "step_view": view_name,
+                "dxf_view_id": registration.get("dxf_view_id"),
+                "lines": lines,
+                "circles": circles,
+            }
+
+        def build_feature_footprint(candidate: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+            node = node_by_id.get(str(candidate.get("feature_id") or ""))
+            evidence = candidate.get("geometry_verification") or {}
+            registration = evidence.get("view_registration") or {}
+            view_name = str(registration.get("step_view") or "")
+            view = geometry_verifier.step_views.get(view_name)
+            if node is None or not view or not isinstance(registration.get("transform"), dict):
+                return None
+            footprint = FeatureFootprintProjector().project(
+                node,
+                view_name,
+                view,
+                registration.get("transform"),
+            )
+            return footprint.to_dict(include_points=True)
 
         allowed_dxf_views = {
             str(value)
@@ -437,7 +693,9 @@ class HistoricalDataIngestor:
             if value
         }
         view_filtered_dimensions = 0
-        if allowed_dxf_views:
+        if allowed_dxf_views and not bool(
+            (pair_evidence or {}).get("allow_secondary_view_search", False)
+        ):
             retained_dimensions = []
             for dim in dimensions:
                 association = geometry_verifier.structure.analyze_dimension(dim)
@@ -446,6 +704,8 @@ class HistoricalDataIngestor:
                     retained_dimensions.append(dim)
                 else:
                     view_filtered_dimensions += 1
+                    if collect_diagnostics:
+                        dimension_diagnostics[self._evidence_key(dxf_path, dim)]["status"] = "OUTSIDE_MATCHED_VIEW"
             dimensions = retained_dimensions
 
         unique_matches: List[Tuple[ExtractedDimension, FeatureNode, str, float, float]] = []
@@ -465,6 +725,11 @@ class HistoricalDataIngestor:
                     if difference <= threshold:
                         candidates.append((node, field_name, difference, threshold))
             candidate_keys = {(item[0].id, item[1]) for item in candidates}
+            if collect_diagnostics:
+                diagnostic = dimension_diagnostics[self._evidence_key(dxf_path, dim)]
+                diagnostic["candidate_count"] = len(candidate_keys)
+                for node, field_name, difference, threshold in candidates:
+                    update_diagnostic_candidate(dim, node, field_name, difference, threshold)
             if len(candidate_keys) == 1:
                 node, field_name, difference, threshold = min(candidates, key=lambda item: item[2])
                 unique_matches.append((dim, node, field_name, difference, threshold))
@@ -478,6 +743,7 @@ class HistoricalDataIngestor:
                 dimension_key = self._evidence_key(dxf_path, dim)
                 for node, field_name, difference, threshold in best_by_key.values():
                     evidence = geometry_verifier.verify(dim, node, field_name)
+                    update_diagnostic_candidate(dim, node, field_name, difference, threshold, evidence)
                     cache_key = (dimension_key, node.id, field_name)
                     geometry_cache[cache_key] = evidence
                     primary_view = str((evidence.get("association") or {}).get("primary_view_id") or "NONE")
@@ -488,6 +754,7 @@ class HistoricalDataIngestor:
                         (evidence.get("feature_localization") or {}).get("score", 0.0) or 0.0
                     )
                     overall_score = float(evidence.get("score", 0.0) or 0.0)
+                    semantic_prior = self._candidate_semantic_prior(dim, node, evidence)
                     # Candidate identity is primarily a spatial question.  A
                     # high overall verification score must not hide a weak
                     # feature location merely because the nominal value and
@@ -496,6 +763,7 @@ class HistoricalDataIngestor:
                         0.68 * localization_score
                         + 0.22 * registration_score
                         + 0.10 * overall_score
+                        + semantic_prior
                     )
                     ambiguous_candidates.append({
                         "dimension_key": "|".join(dimension_key),
@@ -505,12 +773,15 @@ class HistoricalDataIngestor:
                             "feature_localization": round(localization_score, 6),
                             "view_registration": round(registration_score, 6),
                             "overall_verification": round(overall_score, 6),
+                            "semantic_prior": round(semantic_prior, 6),
                         },
                         "passed": bool(evidence.get("passed")),
                         "payload": (dim, node, field_name, difference, threshold),
                     })
             else:
                 no_match += 1
+                if collect_diagnostics:
+                    dimension_diagnostics[self._evidence_key(dxf_path, dim)]["status"] = "NO_3D_NOMINAL_CANDIDATE"
 
         assignment = GlobalFeatureAssignmentResolver().resolve(ambiguous_candidates)
         for selected in assignment["selected"]:
@@ -527,11 +798,6 @@ class HistoricalDataIngestor:
         insufficient_geometry = 0
         rejected_evidence: List[Dict[str, Any]] = []
         for (_node_id, field_name), matches in grouped.items():
-            signatures = {self._tolerance_signature(item[0].tolerance_config) for item in matches}
-            if len(signatures) != 1:
-                conflicts += len(matches)
-                continue
-
             matches.sort(key=lambda item: item[2])
             geometry_results = [
                 (
@@ -542,29 +808,61 @@ class HistoricalDataIngestor:
                 )
                 for match in matches
             ]
+            if collect_diagnostics:
+                for (candidate_dim, candidate_node, difference, threshold), evidence in geometry_results:
+                    update_diagnostic_candidate(
+                        candidate_dim,
+                        candidate_node,
+                        field_name,
+                        difference,
+                        threshold,
+                        evidence,
+                    )
             accepted_geometry = [item for item in geometry_results if item[1].get("passed")]
+            rejected_geometry = [item for item in geometry_results if not item[1].get("passed")]
+            for (rejected_dim, rejected_node, difference, threshold), evidence in rejected_geometry:
+                if collect_diagnostics:
+                    dimension_diagnostics[self._evidence_key(dxf_path, rejected_dim)]["status"] = "INSUFFICIENT_GEOMETRY_EVIDENCE"
+                rejected_evidence.append({
+                    "evidence_key": list(self._evidence_key(dxf_path, rejected_dim)),
+                    "candidate_feature_id": rejected_node.id,
+                    "candidate_feature_type": rejected_node.feature_type,
+                    "candidate_nominal_field": field_name,
+                    "value_difference_mm": round(difference, 6),
+                    "match_threshold_mm": round(threshold, 6),
+                    "geometry_verification": evidence,
+                })
             if not accepted_geometry:
                 insufficient_geometry += len(matches)
-                for (rejected_dim, rejected_node, difference, threshold), evidence in geometry_results:
-                    rejected_evidence.append({
-                        "evidence_key": list(self._evidence_key(dxf_path, rejected_dim)),
-                        "candidate_feature_id": rejected_node.id,
-                        "candidate_feature_type": rejected_node.feature_type,
-                        "candidate_nominal_field": field_name,
-                        "value_difference_mm": round(difference, 6),
-                        "match_threshold_mm": round(threshold, 6),
-                        "geometry_verification": evidence,
-                    })
+                continue
+            signatures = {
+                self._tolerance_signature(item[0][0].tolerance_config)
+                for item in accepted_geometry
+            }
+            if len(signatures) != 1:
+                conflicts += len(accepted_geometry)
+                if collect_diagnostics:
+                    for (dim, node, difference, threshold), evidence in accepted_geometry:
+                        dimension_diagnostics[self._evidence_key(dxf_path, dim)]["status"] = "CONFLICTING_TOLERANCE_DEFINITIONS"
+                        update_diagnostic_candidate(
+                            dim,
+                            node,
+                            field_name,
+                            difference,
+                            threshold,
+                            evidence,
+                        )
                 continue
             accepted_geometry.sort(key=lambda item: (-float(item[1].get("score", 0.0)), item[0][2]))
             (primary_dim, node, difference, threshold), geometry_evidence = accepted_geometry[0]
             if node.feature_type not in CANONICAL_FEATURE_TYPES:
                 conflicts += len(matches)
                 continue
-            evidence_keys = [self._evidence_key(dxf_path, item[0]) for item in matches]
+            accepted_matches = [item[0] for item in accepted_geometry]
+            evidence_keys = [self._evidence_key(dxf_path, item[0]) for item in accepted_matches]
             supporting_handles = sorted({
                 handle
-                for item in matches
+                for item in accepted_matches
                 for handle in [item[0].entity_handle, *item[0].duplicate_entity_handles]
                 if handle
             })
@@ -656,6 +954,49 @@ class HistoricalDataIngestor:
                 },
             )
             verified.append((case, evidence_keys))
+            if collect_diagnostics:
+                for matched_dim, _matched_node, _difference, _threshold in accepted_matches:
+                    dimension_diagnostics[self._evidence_key(dxf_path, matched_dim)]["status"] = "AUTO_VERIFIED"
+
+        if collect_diagnostics:
+            for diagnostic in dimension_diagnostics.values():
+                if diagnostic["status"] == "PENDING":
+                    diagnostic["status"] = "AMBIGUOUS_3D_FEATURE_CANDIDATES"
+                diagnostic["candidates"].sort(
+                    key=lambda item: (
+                        -float((item.get("geometry_verification") or {}).get("score", 0.0) or 0.0),
+                        float(item.get("value_difference_mm", 0.0) or 0.0),
+                        str(item.get("feature_id") or ""),
+                    )
+                )
+                diagnostic["candidates"] = diagnostic["candidates"][:8]
+                for candidate in diagnostic["candidates"]:
+                    footprint = build_feature_footprint(candidate)
+                    if footprint is not None:
+                        candidate["projected_feature_footprint"] = footprint
+                first_registered = next(
+                    (
+                        candidate.get("geometry_verification", {}).get("view_registration")
+                        for candidate in diagnostic["candidates"]
+                        if candidate.get("geometry_verification", {}).get("view_registration", {}).get("transform")
+                    ),
+                    None,
+                )
+                if first_registered:
+                    overlay_key_payload = {
+                        "dxf_view_id": first_registered.get("dxf_view_id"),
+                        "step_view": first_registered.get("step_view"),
+                        "transform": first_registered.get("transform"),
+                    }
+                    overlay_id = hashlib.sha1(
+                        json.dumps(overlay_key_payload, sort_keys=True).encode("utf-8")
+                    ).hexdigest()[:16]
+                    if overlay_id not in projection_overlays:
+                        overlay = build_registered_step_projection(first_registered)
+                        if overlay is not None:
+                            projection_overlays[overlay_id] = overlay
+                    if overlay_id in projection_overlays:
+                        diagnostic["registered_step_projection_id"] = overlay_id
 
         return verified, {
             "unique_dimension_matches": len(unique_matches),
@@ -666,6 +1007,11 @@ class HistoricalDataIngestor:
             "insufficient_geometry_evidence": insufficient_geometry,
             "global_view_filtered_dimensions": view_filtered_dimensions,
             "_rejected_evidence": rejected_evidence,
+            "_dimension_diagnostics": [
+                dimension_diagnostics[key] for key in diagnostic_order
+                if key in dimension_diagnostics
+            ],
+            "_projection_overlays": projection_overlays,
         }
 
     @staticmethod

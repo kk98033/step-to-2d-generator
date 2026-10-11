@@ -63,6 +63,8 @@ class ProjectionRegistrationV2Tests(unittest.TestCase):
             for left, right in zip(recovered.apply(self.step_points), dxf_points)
         ]
         self.assertLess(sum(distances) / len(distances), 0.05)
+        self.assertGreaterEqual(len(result["alternatives"]), 2)
+        self.assertTrue(all(item.get("transform") for item in result["alternatives"]))
 
     def test_handles_mirror_missing_curves_and_outliers(self):
         expected = SimilarityTransform2D(
@@ -122,6 +124,23 @@ class ProjectionRegistrationV2Tests(unittest.TestCase):
         self.assertLess(mean_error, 0.08)
         self.assertGreater(result["inlier_ratio"], 0.75)
 
+    def test_extent_metrics_penalize_tail_to_middle_partial_overlap(self):
+        source = self.step_points
+        target = self.step_points
+        engine = ProjectionRegistrationEngine()
+        prepared_source = engine._prepare(source)
+        prepared_target = engine._prepare(target)
+        aligned = engine._distance_metrics(prepared_source, prepared_target)
+        shifted = engine._distance_metrics(
+            prepared_source + (4.5, 0.0),
+            prepared_target,
+        )
+
+        self.assertGreater(aligned["extent_score"], 0.99)
+        self.assertLess(shifted["extent_score"], 0.5)
+        self.assertGreater(shifted["bbox_edge_error"], 0.1)
+        self.assertGreater(aligned["score"], shifted["score"] + 0.2)
+
     def test_adaptive_candidates_include_feature_axis_without_duplicates(self):
         nodes = [
             types.SimpleNamespace(source_info={"axis_dir": [1.0, 1.0, 0.0]}),
@@ -135,6 +154,20 @@ class ProjectionRegistrationV2Tests(unittest.TestCase):
         for index, left in enumerate(directions):
             for right in directions[index + 1:]:
                 self.assertLess(sum(a * b for a, b in zip(left, right)), 0.9995)
+
+    def test_requested_oblique_direction_is_added_without_changing_defaults(self):
+        generator = AdaptiveProjectionCandidateGenerator(max_views=12)
+        default_specs = generator.build_specs(include_feature_axes=False)
+        oblique_specs = generator.build_specs(
+            include_feature_axes=False,
+            extra_directions=[(-0.8660254, 0.0, -0.5)],
+        )
+
+        self.assertEqual(len(default_specs), 6)
+        self.assertEqual(len(oblique_specs), 7)
+        self.assertEqual(oblique_specs[-1].source, "requested_extra_direction")
+        self.assertAlmostEqual(oblique_specs[-1].direction[0], -0.8660254, places=6)
+        self.assertAlmostEqual(oblique_specs[-1].direction[2], -0.5, places=6)
 
     def test_inverse_round_trip(self):
         transform = SimilarityTransform2D(2.0, 71.0, (4.0, -9.0), mirrored=True)

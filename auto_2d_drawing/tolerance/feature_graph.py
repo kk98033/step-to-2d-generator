@@ -28,11 +28,17 @@ CANONICAL_FEATURE_TYPES = frozenset({
     "locating_shoulder",
     "pilot_chamfer",
     "transition_fillet",
+    "compound_axial_span",
+    "overall_dimension",
+    "annular_rim",
+    "composite_planar_span",
 })
 
 DIMENSION_CATEGORY_FEATURE_CANDIDATES = {
-    "DIAMETER": ("shaft_segment", "hole", "retaining_ring_groove"),
-    "LINEAR": ("shaft_segment", "hole", "retaining_ring_groove", "locating_shoulder", "pilot_chamfer"),
+    # A shaft step is still a cylindrical diameter-bearing feature.  Omitting
+    # it forced end-journal callouts onto a same-diameter middle journal.
+    "DIAMETER": ("shaft_segment", "hole", "retaining_ring_groove", "locating_shoulder", "annular_rim"),
+    "LINEAR": ("shaft_segment", "hole", "retaining_ring_groove", "locating_shoulder", "pilot_chamfer", "overall_dimension", "compound_axial_span", "composite_planar_span", "annular_rim"),
     "RADIUS": ("transition_fillet",),
     "CHAMFER": ("pilot_chamfer",),
     "ANGULAR": ("pilot_chamfer",),

@@ -69,7 +69,7 @@ def _source_info(record: Dict[str, Any], main_axis: str) -> Dict[str, Any]:
     source["canonical_schema"] = CANONICAL_FEATURE_SCHEMA
     source["canonical_record"] = record
 
-    if kind == "cylinder":
+    if kind in {"cylinder", "step", "axial_step"}:
         diameter = float(geometry.get("diameter", (record.get("nominal") or {}).get("diameter", 0.0)) or 0.0)
         source.setdefault("radius", diameter / 2.0)
         source.setdefault("length", float(geometry.get("length", (record.get("nominal") or {}).get("length", 0.0)) or 0.0))
@@ -108,10 +108,18 @@ class CanonicalFeatureGraphExtractor:
                 span_length = abs(float((record.get("nominal") or {}).get("length", 0.0) or 0.0))
 
             raw_type = str(record.get("type") or "general_feature")
+            mapped_type = FEATURE_TYPE_MAP.get(raw_type, raw_type)
+            nominal = _canonical_nominal(record)
+            if mapped_type == "overall_dimension" and span_length > 0.0:
+                # W/H/D are presentation fields.  Historical dimension
+                # matching needs an axis-normalized value that remains valid
+                # when the model orientation changes.
+                nominal.setdefault("length", round(span_length, 6))
+                nominal.setdefault("axis", main_axis)
             graph.add_node(FeatureNode(
                 id=str(record["id"]),
-                feature_type=FEATURE_TYPE_MAP.get(raw_type, raw_type),
-                nominal=_canonical_nominal(record),
+                feature_type=mapped_type,
+                nominal=nominal,
                 axial_span=[
                     round(center_axial - span_length / 2.0, 3),
                     round(center_axial + span_length / 2.0, 3),

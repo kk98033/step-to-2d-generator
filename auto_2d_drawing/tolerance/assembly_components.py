@@ -56,6 +56,8 @@ def shape_fingerprint(shape) -> str:
     """Return a placement-independent, deterministic coarse B-Rep signature."""
     bbox = Bnd_Box()
     brepbndlib.Add(shape, bbox)
+    if bbox.IsVoid():
+        raise ValueError("Cannot fingerprint a shape with a void bounding box")
     xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
     extents = sorted((xmax - xmin, ymax - ymin, zmax - zmin))
     volume_props = GProp_GProps()
@@ -134,13 +136,20 @@ def extract_leaf_components(
         shape = shape_tool.GetShape(label)
         if shape.IsNull():
             return
+        try:
+            fingerprint = shape_fingerprint(shape)
+        except (RuntimeError, ValueError):
+            # Some vendor assemblies contain XCAF leaf labels without any
+            # measurable B-Rep topology.  They are metadata placeholders, not
+            # candidate 3D parts, and must not abort extraction of siblings.
+            return
         components.append(NamedComponent(
             step_path=os.path.abspath(step_path),
             label_entry=entry,
             name=name,
             identity=identity,
             shape=shape,
-            fingerprint=shape_fingerprint(shape),
+            fingerprint=fingerprint,
         ))
 
     for index in range(1, free_shapes.Length() + 1):

@@ -250,6 +250,173 @@ class ProjectionGeometryVerifierTests(unittest.TestCase):
 
         self.assertEqual(result["step_view"], "front")
 
+    def test_locked_upstream_registration_prevents_view_reselection(self):
+        verifier = _verifier({})
+        verifier._locked_view_registration = {
+            "dxf_view_id": "view_001",
+            "step_view": "front",
+            "score": 0.91,
+            "transform": {
+                "scale": 2.0,
+                "rotation_degrees": 30.0,
+                "translation": [4.0, 5.0],
+                "mirrored": True,
+            },
+        }
+
+        locked = verifier._best_view_match("view_001", allowed_step_views={"front"})
+        rejected = verifier._best_view_match("view_001", allowed_step_views={"top"})
+
+        self.assertTrue(locked["upstream_projection_locked"])
+        self.assertEqual(locked["step_view"], "front")
+        self.assertEqual(locked["orientation_candidates"], [])
+        self.assertIsNone(rejected["step_view"])
+        self.assertEqual(
+            rejected["registration_status"],
+            "LOCKED_UPSTREAM_VIEW_MISMATCH",
+        )
+
+    def test_locked_projection_accepts_geometry_backed_axis_compatibility(self):
+        verifier = _verifier({})
+        verifier._locked_view_registration = {
+            "dxf_view_id": "view_001",
+            "step_view": "top",
+            "score": 0.93,
+            "projection": {"direction": [0.0, 1.0, 0.0], "up": [1.0, 0.0, 0.0]},
+            "transform": {
+                "scale": 1.0,
+                "rotation_degrees": 0.0,
+                "translation": [0.0, 0.0],
+                "mirrored": False,
+            },
+        }
+        dimension = types.SimpleNamespace(dimension_category="DIAMETER")
+        node = types.SimpleNamespace(source_info={"axis_dir": [0.0, 1.0, 0.0]})
+        association = {
+            "dimension_target_edges": [{
+                "entity_type": "CIRCLE",
+                "relation": "EXACT_ATTACHMENT",
+                "radius": 16.0,
+            }],
+        }
+
+        compatible = verifier._locked_projection_supports_feature(
+            dimension, node, "diameter", association
+        )
+        result = verifier._best_view_match(
+            "view_001",
+            allowed_step_views={"front", "back", "left", "right"},
+            locked_feature_compatible=compatible,
+        )
+
+        self.assertTrue(compatible)
+        self.assertEqual(result["step_view"], "top")
+        self.assertEqual(
+            result["registration_status"],
+            "LOCKED_UPSTREAM_VECTOR_COMPATIBLE",
+        )
+
+    def test_secondary_dimension_view_can_search_without_replacing_primary_lock(self):
+        verifier = _verifier({})
+        verifier._locked_view_registration = {
+            "dxf_view_id": "view_001",
+            "step_view": "front",
+            "score": 0.91,
+        }
+        verifier._allow_secondary_view_search = True
+        verifier.structure.view_clusters.append(types.SimpleNamespace(
+            view_id="view_002",
+            width=20.0,
+            height=10.0,
+            bbox=(0.0, 0.0, 20.0, 10.0),
+            primitive_indexes=[],
+        ))
+
+        result = verifier._best_view_match(
+            "view_002",
+            allowed_step_views={"front"},
+        )
+
+        self.assertEqual(result["dxf_view_id"], "view_002")
+        self.assertEqual(result["step_view"], "front")
+
+    def test_dimension_target_edge_resolves_mirrored_orientation(self):
+        association = {
+            "primary_view_id": "view_001",
+            "dimension_target_edges": [{
+                "handle": "EDGE-LEFT",
+                "points": [[2.0, 0.0], [2.0, 10.0]],
+                "center": None,
+                "radius": 0.0,
+            }],
+        }
+        dimension = types.SimpleNamespace(
+            dimension_category="DIAMETER",
+            points={"defpoint": (2.0, 5.0), "defpoint4": (2.0, 5.0)},
+        )
+        node = types.SimpleNamespace(
+            id="shaft_right",
+            feature_type="shaft_segment",
+            nominal={"diameter": 2.0, "length": 2.0},
+            source_info={
+                "type": "cylinder",
+                "center": (0.0, 8.0, 0.0),
+                "axis_dir": (0.0, 0.0, 1.0),
+                "radius": 1.0,
+                "length": 2.0,
+            },
+        )
+        base = {
+            "score": 0.9,
+            "contour_score": 0.9,
+            "dxf_view_id": "view_001",
+            "step_view": "front",
+            "dxf_bbox": [0.0, 0.0, 20.0, 10.0],
+            "registration_method": ProjectionRegistrationEngine.METHOD,
+            "normalized_chamfer": 0.01,
+            "inlier_ratio": 0.9,
+            "ranked_hausdorff": 0.05,
+        }
+        view_match = {
+            **base,
+            "orientation_candidates": [
+                {
+                    **base,
+                    "mirrored": False,
+                    "rotation_degrees": 0.0,
+                    "transform": {
+                        "scale": 1.0,
+                        "rotation_degrees": 0.0,
+                        "translation": [10.0, 5.0],
+                        "mirrored": False,
+                    },
+                },
+                {
+                    **base,
+                    "mirrored": True,
+                    "rotation_degrees": 0.0,
+                    "transform": {
+                        "scale": 1.0,
+                        "rotation_degrees": 0.0,
+                        "translation": [10.0, 5.0],
+                        "mirrored": True,
+                    },
+                },
+            ],
+        }
+
+        selected = _verifier(association)._select_orientation_for_dimension_feature(
+            dimension,
+            node,
+            association,
+            view_match,
+        )
+
+        self.assertTrue(selected["mirrored"])
+        self.assertTrue(
+            selected["orientation_disambiguation"]["selected_by_annotation_geometry"]
+        )
+
     def test_linear_dimension_requires_two_exact_geometry_endpoints(self):
         association = {
             "association_status": "GEOMETRIC_ATTACHMENT",
@@ -317,6 +484,71 @@ class ProjectionGeometryVerifierTests(unittest.TestCase):
         self.assertFalse(result["passed"])
         self.assertFalse(result["checks"]["dimension_matches_projected_feature_location"])
 
+    def test_local_circle_topology_does_not_override_bad_global_registration(self):
+        association = {
+            "association_status": "GEOMETRIC_ATTACHMENT",
+            "association_confidence": 0.96,
+            "primary_view_id": "view_001",
+        }
+        verifier = _verifier(association)
+        verifier.topology_mapper = types.SimpleNamespace(
+            map_dimension=lambda *args, **kwargs: {
+                "passed": True,
+                "score": 0.98,
+                "mode": "LOCAL_CIRCULAR_PROFILE",
+                "status": "TOPOLOGY_FACE_MAPPED",
+            }
+        )
+        verifier._local_feature_evidence = lambda *args, **kwargs: {"passed": True}
+        verifier._step_projection_evidence = lambda *args, **kwargs: {
+            "passed": True,
+            "matching_views": [{"view": "front"}],
+        }
+        verifier._best_view_match = lambda *args, **kwargs: {
+            "score": 0.82,
+            "contour_score": 0.82,
+            "dxf_view_id": "view_001",
+            "dxf_bbox": [0.0, 0.0, 20.0, 10.0],
+            "step_view": "front",
+            "registration_method": ProjectionRegistrationEngine.METHOD,
+            "normalized_chamfer": 0.018,
+            "inlier_ratio": 0.50,
+            "source_coverage": 0.68,
+            "target_coverage": 0.31,
+            "ranked_hausdorff": 0.07,
+            "extent_score": 0.80,
+            "span_ratio": 0.95,
+            "bbox_edge_error": 0.02,
+            "transform": {
+                "scale": 1.0,
+                "rotation_degrees": 0.0,
+                "translation": [0.0, 0.0],
+                "mirrored": False,
+            },
+        }
+        verifier._node_projection_localization = lambda *args, **kwargs: {
+            "passed": False,
+            "score": 0.15,
+            "status": "PROJECTED_NODE_MISMATCH",
+        }
+        dimension = types.SimpleNamespace(
+            dimension_category="DIAMETER",
+            nominal_value=32.0,
+            points={},
+        )
+        node = types.SimpleNamespace(
+            id="shaft_01",
+            feature_type="shaft_segment",
+            source_info={"type": "cylinder", "center": [0.0, 0.0, 0.0]},
+        )
+
+        result = verifier.verify(dimension, node, "diameter")
+
+        self.assertFalse(result["passed"])
+        self.assertFalse(result["checks"]["drawing_view_matches_step_projection"])
+        self.assertFalse(result["checks"]["dimension_matches_projected_feature_location"])
+        self.assertEqual(result["feature_localization"]["status"], "PROJECTED_NODE_MISMATCH")
+
     def test_v3_registration_quality_gate_rejects_weak_overlap(self):
         evidence = {
             "registration_method": ProjectionRegistrationEngine.METHOD,
@@ -334,8 +566,45 @@ class ProjectionGeometryVerifierTests(unittest.TestCase):
             "inlier_ratio": 0.86,
             "normalized_chamfer": 0.018,
             "ranked_hausdorff": 0.07,
+            "source_coverage": 0.82,
+            "target_coverage": 0.84,
+            "extent_score": 0.90,
+            "span_ratio": 0.95,
+            "bbox_edge_error": 0.02,
         }
         self.assertTrue(ProjectionGeometryVerifier._registration_is_confident(evidence))
+
+    def test_secondary_v2_regions_do_not_replace_existing_atomic_feature_view(self):
+        verifier = ProjectionGeometryVerifier.__new__(ProjectionGeometryVerifier)
+        verifier._locked_view_registration = {"dxf_view_id": "locked_view"}
+        verifier._secondary_dxf_regions = {
+            "local_view": {
+                "view_id": "local_view",
+                "bbox": [0.0, 0.0, 20.0, 20.0],
+                "points": [[0.0, 0.0], [20.0, 20.0]],
+            }
+        }
+        calls = []
+
+        def best(view_id, **_kwargs):
+            calls.append(view_id)
+            return {"score": 0.72, "dxf_view_id": view_id, "step_view": "front"}
+
+        verifier._best_view_match = best
+        dimension = types.SimpleNamespace(
+            nominal_value=15.0,
+            points={"defpoint2": [1.0, 1.0], "defpoint3": [16.0, 1.0]},
+        )
+
+        result = verifier._best_dimension_view_match(
+            dimension,
+            "existing_view",
+            allowed_step_views={"front"},
+            require_locked_feature_compatibility=False,
+        )
+
+        self.assertEqual(result["dxf_view_id"], "existing_view")
+        self.assertEqual(calls, ["existing_view"])
 
 
 if __name__ == "__main__":

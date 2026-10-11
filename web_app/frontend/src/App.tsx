@@ -3067,7 +3067,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, color: '#dbeafe', fontSize: 9, fontWeight: 600 }}>
                                           <span>{evidence.case_id} · {evidence.drawing || '未知圖面'} · {evidence.same_product_family ? '同產品族' : (evidence.product_family ? `跨產品族 ${evidence.product_family}` : '通用標準')}</span>
                                           <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: evidence.used_for_decision ? '#6ee7b7' : (evidence.used_as_context ? '#93c5fd' : '#94a3b8') }}>
-                                            {evidence.used_for_decision ? '已採用' : (evidence.used_as_context ? '規則參考' : (!evidence.decision_eligible ? '待驗證' : (evidence.dimension_compatible ? '候選' : '語意不符')))} · {percent}%
+                                            {evidence.used_for_decision ? '已採用' : (evidence.engineer_review_required ? '低信賴候選・需確認' : (evidence.used_as_context ? '規則參考' : (!evidence.decision_eligible ? '待驗證' : (evidence.dimension_compatible ? '候選' : '語意不符'))))} · {percent}%
                                             {evidence.has_source_drawing && <ExternalLink size={9} />}
                                           </span>
                                         </div>

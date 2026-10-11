@@ -151,19 +151,31 @@ class ProjectionRegistrationEngine:
         hypotheses: List[Tuple[float, SimilarityTransform2D]] = []
         for mirrored in (False, True):
             for angle in range(0, 360, self.angle_step_degrees):
-                transform = self._centered_transform(
-                    source_center,
-                    target_center,
-                    initial_scale,
-                    float(angle),
-                    mirrored,
-                )
-                metrics = self._distance_metrics(transform.apply_array(source), target)
-                hypotheses.append((metrics["score"], transform))
+                transforms = [
+                    self._centered_transform(
+                        source_center,
+                        target_center,
+                        initial_scale,
+                        float(angle),
+                        mirrored,
+                    ),
+                    self._extent_aligned_transform(
+                        source,
+                        target,
+                        float(angle),
+                        mirrored,
+                    ),
+                ]
+                for transform in transforms:
+                    metrics = self._distance_metrics(transform.apply_array(source), target)
+                    hypotheses.append((metrics["score"], transform))
 
         hypotheses.sort(key=lambda item: item[0], reverse=True)
         refined: List[Dict[str, Any]] = []
-        for _score, transform in hypotheses[:8]:
+        # Two complementary seeds are emitted per orientation.  Keep enough
+        # coarse candidates that extent-aligned seeds cannot crowd the robust
+        # centered seed of the correct orientation out of ICP refinement.
+        for _score, transform in hypotheses[:16]:
             fitted = self._refine(source, target, transform)
             transformed = fitted.apply_array(source)
             metrics = self._distance_metrics(transformed, target)
@@ -180,6 +192,28 @@ class ProjectionRegistrationEngine:
         )
         runner_score = float(distinct_runner_up["score"]) if distinct_runner_up else 0.0
         transform = best["transform"]
+        alternatives = []
+        for item in refined[:8]:
+            alternative_transform = item["transform"]
+            alternatives.append({
+                "score": round(float(item["score"]), 4),
+                "contour_score": round(float(item["score"]), 4),
+                "normalized_chamfer": round(float(item["normalized_chamfer"]), 6),
+                "inlier_ratio": round(float(item["inlier_ratio"]), 4),
+                "source_coverage": round(float(item["source_coverage"]), 4),
+                "target_coverage": round(float(item["target_coverage"]), 4),
+                "ranked_hausdorff": round(float(item["ranked_hausdorff"]), 6),
+                "extent_score": round(float(item["extent_score"]), 4),
+                "bbox_edge_error": round(float(item["bbox_edge_error"]), 6),
+                "span_ratio": round(float(item["span_ratio"]), 4),
+                "transform": alternative_transform.to_dict(),
+                "rotation_degrees": round(float(alternative_transform.rotation_degrees), 4),
+                "mirrored": bool(alternative_transform.mirrored),
+                "scale": round(float(alternative_transform.scale), 8),
+                "translation": [
+                    round(float(value), 6) for value in alternative_transform.translation
+                ],
+            })
         return {
             "method": self.METHOD,
             "status": "REGISTERED",
@@ -190,6 +224,9 @@ class ProjectionRegistrationEngine:
             "source_coverage": round(float(best["source_coverage"]), 4),
             "target_coverage": round(float(best["target_coverage"]), 4),
             "ranked_hausdorff": round(float(best["ranked_hausdorff"]), 6),
+            "extent_score": round(float(best["extent_score"]), 4),
+            "bbox_edge_error": round(float(best["bbox_edge_error"]), 6),
+            "span_ratio": round(float(best["span_ratio"]), 4),
             "runner_up_score": round(runner_score, 4),
             "score_margin": round(float(best["score"]) - runner_score, 4),
             "transform": transform.to_dict(),
@@ -199,6 +236,7 @@ class ProjectionRegistrationEngine:
             "translation": [round(float(value), 6) for value in transform.translation],
             "dxf_point_count": int(len(target)),
             "step_point_count": int(len(source)),
+            "alternatives": alternatives,
         }
 
     def _prepare(self, points: Sequence[Point2D]) -> np.ndarray:
@@ -309,6 +347,39 @@ class ProjectionRegistrationEngine:
         return current
 
     @staticmethod
+    def _extent_aligned_transform(
+        source: np.ndarray,
+        target: np.ndarray,
+        angle_degrees: float,
+        mirrored: bool,
+    ) -> SimilarityTransform2D:
+        working = np.asarray(source, dtype=float).copy()
+        if mirrored:
+            working[:, 0] *= -1.0
+        radians = math.radians(angle_degrees)
+        cosine, sine = math.cos(radians), math.sin(radians)
+        rotated = np.column_stack((
+            working[:, 0] * cosine - working[:, 1] * sine,
+            working[:, 0] * sine + working[:, 1] * cosine,
+        ))
+        source_min, source_max = np.min(rotated, axis=0), np.max(rotated, axis=0)
+        target_min, target_max = np.min(target, axis=0), np.max(target, axis=0)
+        source_span = np.maximum(source_max - source_min, 1e-10)
+        target_span = np.maximum(target_max - target_min, 1e-10)
+        ratios = target_span / source_span
+        finite_ratios = ratios[np.isfinite(ratios) & (ratios > 1e-10)]
+        scale = float(np.median(finite_ratios)) if len(finite_ratios) else 1.0
+        source_bbox_center = (source_min + source_max) / 2.0
+        target_bbox_center = (target_min + target_max) / 2.0
+        translation = target_bbox_center - scale * source_bbox_center
+        return SimilarityTransform2D(
+            scale=max(abs(scale), 1e-10),
+            rotation_degrees=angle_degrees,
+            translation=(float(translation[0]), float(translation[1])),
+            mirrored=mirrored,
+        )
+
+    @staticmethod
     def _fit_similarity(
         reflected_source: np.ndarray,
         target: np.ndarray,
@@ -368,10 +439,28 @@ class ProjectionRegistrationEngine:
             np.concatenate((source_distances, target_distances)),
             85.0,
         )) / normalizer
-        score = (
+        source_min, source_max = np.min(transformed_source, axis=0), np.max(transformed_source, axis=0)
+        target_min, target_max = np.min(target, axis=0), np.max(target, axis=0)
+        source_span = np.maximum(source_max - source_min, 1e-9)
+        target_span = np.maximum(target_max - target_min, 1e-9)
+        axis_span_ratio = np.minimum(source_span / target_span, target_span / source_span)
+        span_ratio = float(math.sqrt(max(float(axis_span_ratio[0] * axis_span_ratio[1]), 0.0)))
+        bbox_edge_error = float(np.mean(np.abs(np.concatenate((source_min - target_min, source_max - target_max))))) / normalizer
+        source_bbox_center = (source_min + source_max) / 2.0
+        target_bbox_center = (target_min + target_max) / 2.0
+        bbox_center_error = float(np.linalg.norm(source_bbox_center - target_bbox_center)) / normalizer
+        extent_score = (
+            math.exp(-5.0 * bbox_edge_error - 3.0 * bbox_center_error)
+            * span_ratio
+        )
+        local_score = (
             math.exp(-8.0 * chamfer - 1.5 * ranked_hausdorff)
             * (0.40 + 0.60 * inlier_ratio)
         )
+        # Extent agreement breaks partial-overlap ties, while local contour
+        # evidence remains dominant so missing DXF curves and sparse outliers
+        # cannot pull an otherwise correct registration away from the part.
+        score = local_score * (0.75 + 0.25 * extent_score)
         return {
             "score": max(0.0, min(1.0, score)),
             "normalized_chamfer": chamfer,
@@ -379,6 +468,9 @@ class ProjectionRegistrationEngine:
             "source_coverage": source_coverage,
             "target_coverage": target_coverage,
             "ranked_hausdorff": ranked_hausdorff,
+            "extent_score": extent_score,
+            "bbox_edge_error": bbox_edge_error,
+            "span_ratio": span_ratio,
         }
 
     @staticmethod
@@ -419,6 +511,7 @@ class AdaptiveProjectionCandidateGenerator:
         self,
         feature_nodes: Optional[Iterable[Any]] = None,
         include_feature_axes: bool = True,
+        extra_directions: Optional[Iterable[Vector3D]] = None,
     ) -> List[CandidateViewSpec]:
         requested: List[Tuple[Vector3D, str]] = [
             ((0.0, 0.0, 1.0), "canonical_front"),
@@ -428,6 +521,10 @@ class AdaptiveProjectionCandidateGenerator:
             ((-1.0, 0.0, 0.0), "canonical_right"),
             ((1.0, 0.0, 0.0), "canonical_left"),
         ]
+        requested.extend(
+            (tuple(direction), "requested_extra_direction")
+            for direction in (extra_directions or ())
+        )
         for node in (feature_nodes or ()) if include_feature_axes else ():
             source = dict(getattr(node, "source_info", {}) or {})
             raw_axis = source.get("axis_dir")
@@ -475,6 +572,7 @@ class AdaptiveProjectionCandidateGenerator:
         feature_nodes: Optional[Iterable[Any]] = None,
         include_feature_axes: bool = False,
         exclude_names: Optional[Iterable[str]] = None,
+        extra_directions: Optional[Iterable[Vector3D]] = None,
     ) -> Dict[str, Any]:
         # OCC imports are delayed so the registration math remains testable in
         # lightweight environments that do not install pythonocc-core.
@@ -505,7 +603,11 @@ class AdaptiveProjectionCandidateGenerator:
             True,
         )
         mesher.Perform()
-        for spec in self.build_specs(feature_nodes, include_feature_axes=include_feature_axes):
+        for spec in self.build_specs(
+            feature_nodes,
+            include_feature_axes=include_feature_axes,
+            extra_directions=extra_directions,
+        ):
             if spec.name in excluded:
                 continue
             axis = gp_Ax2(

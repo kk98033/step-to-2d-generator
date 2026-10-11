@@ -58,6 +58,31 @@ class ProjectedFeatureMapperTests(unittest.TestCase):
         expected_center = self.transform.apply_point((0.0, -4.0))
         self.assertLess(math.dist(footprint.center, expected_center), 1e-8)
 
+    def test_shaft_step_projects_as_local_cylindrical_segment(self):
+        node = types.SimpleNamespace(
+            id="step_02",
+            feature_type="locating_shoulder",
+            nominal={"diameter": 2.994, "length": 0.9},
+            source_info={
+                "type": "step",
+                "center": [0.0, -1.55, 0.0],
+                "axis": "Y",
+                "diameter": 2.994,
+                "length": 0.9,
+            },
+        )
+        footprint = FeatureFootprintProjector().project(
+            node,
+            "front",
+            self.view,
+            None,
+        )
+
+        self.assertEqual(footprint.status, "PROJECTED")
+        self.assertEqual(footprint.geometry_kind, "step")
+        self.assertEqual(len(footprint.points), 120)
+        self.assertGreater(footprint.bbox[2] - footprint.bbox[0], 0.8)
+
     def test_anchor_selects_correct_same_diameter_feature_by_position(self):
         projector = FeatureFootprintProjector()
         left = projector.project(
