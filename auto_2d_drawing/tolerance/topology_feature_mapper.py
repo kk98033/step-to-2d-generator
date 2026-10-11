@@ -163,7 +163,7 @@ class TopologyFeatureMapper:
     ) -> Dict[str, Any]:
         nominal = abs(float(getattr(dimension, "nominal_value", 0.0) or 0.0))
         source = dict(getattr(node, "source_info", {}) or {})
-        if str(source.get("type") or "").lower() != "cylinder":
+        if str(source.get("type") or "").lower() not in {"cylinder", "step", "axial_step"}:
             return self._failure(node, "LOCAL_PROFILE_REQUIRES_CYLINDER")
         profile_tolerance = max(0.01, min(0.08, nominal * 0.002))
         profiles = [
@@ -336,7 +336,7 @@ class TopologyFeatureMapper:
     def _match_node_face(self, node: Any) -> Dict[str, Any]:
         source = dict(getattr(node, "source_info", {}) or {})
         kind = str(source.get("type") or "").lower()
-        if kind != "cylinder":
+        if kind not in {"cylinder", "step", "axial_step"}:
             return {"passed": False, "unique": False, "status": "UNSUPPORTED_FEATURE_SURFACE"}
         center = source.get("center") or ()
         axis = source.get("axis_dir") or ()

@@ -189,6 +189,65 @@ class FeatureFootprintProjector:
         kind = str(source.get("type") or "unknown").lower()
         axis = self._normalize3(source.get("axis_dir"))
 
+        if kind == "composite_planar_span" and axis is not None:
+            surface_points = [
+                tuple(float(value) for value in point[:3])
+                for point in source.get("surface_points", [])
+                if self._valid_point3(point)
+            ]
+            if surface_points:
+                return surface_points, "planar_surface_boundaries"
+            length = abs(float(source.get("length", nominal.get("length", 0.0)) or 0.0))
+            if length > 1e-10:
+                return [
+                    tuple(float(value) for value in center_array - axis * length / 2.0),
+                    tuple(float(value) for value in center_array + axis * length / 2.0),
+                ], kind
+
+        if kind == "annular_rim" and axis is not None:
+            radial_a, radial_b = self._plane_basis(axis)
+            outer_radius = abs(float(source.get("outer_radius", 0.0) or 0.0))
+            inner_radius = abs(float(source.get("inner_radius", 0.0) or 0.0))
+            length = abs(float(source.get("length", nominal.get("length", 0.0)) or 0.0))
+            return (
+                self._sample_rings(center_array, axis, radial_a, radial_b, outer_radius, outer_radius, length)
+                + self._sample_rings(center_array, axis, radial_a, radial_b, inner_radius, inner_radius, length),
+                kind,
+            )
+
+        if kind in {"bbox", "overall", "overall_size", "overall_bounds"}:
+            size = source.get("size")
+            if isinstance(size, (list, tuple)) and len(size) >= 3:
+                half = np.asarray([abs(float(value)) / 2.0 for value in size[:3]], dtype=float)
+                points = []
+                for sx in (-1.0, 1.0):
+                    for sy in (-1.0, 1.0):
+                        for sz in (-1.0, 1.0):
+                            point = center_array + half * np.asarray((sx, sy, sz), dtype=float)
+                            points.append(tuple(float(value) for value in point))
+                return points, kind
+
+        if kind in {"step", "axial_step"}:
+            if axis is None:
+                axis = self._normalize3({
+                    "X": (1.0, 0.0, 0.0),
+                    "Y": (0.0, 1.0, 0.0),
+                    "Z": (0.0, 0.0, 1.0),
+                }.get(str(source.get("axis") or "").upper(), ()))
+            if axis is not None:
+                radial_a, radial_b = self._plane_basis(axis)
+                radius = abs(float(source.get("diameter", nominal.get("diameter", 0.0)) or 0.0)) / 2.0
+                length = abs(float(source.get("length", nominal.get("length", 0.0)) or 0.0))
+                return self._sample_rings(
+                    center_array,
+                    axis,
+                    radial_a,
+                    radial_b,
+                    radius,
+                    radius,
+                    length,
+                ), kind
+
         if kind in {"cylinder", "torus", "cone"} and axis is not None:
             radial_a, radial_b = self._plane_basis(axis)
             if kind == "cylinder":

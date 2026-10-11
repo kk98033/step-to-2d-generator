@@ -116,7 +116,11 @@ class DxfStructure2DAnalyzer:
         for key, point in references:
             ranked = heapq.nsmallest(
                 4,
-                ((self._distance_to_primitive(point, item), index, item) for index, item in enumerate(self.primitives)),
+                (
+                    (self._distance_to_primitive(point, item), index, item)
+                    for index, item in enumerate(self.primitives)
+                    if not self._is_annotation_layer(item.layer)
+                ),
                 key=lambda row: row[0],
             )
             nearest = []
@@ -228,6 +232,7 @@ class DxfStructure2DAnalyzer:
                 )
                 recovered_geometry["candidate_view_ids"] = recovered_view_ids
         cross_view = self._cross_view_evidence(dimension, attached_indexes, primary_view)
+        dimension_target_edges = self._dimension_target_edges(reference_results)
 
         return {
             "method": self.METHOD,
@@ -243,8 +248,61 @@ class DxfStructure2DAnalyzer:
             "primary_view_id": primary_view,
             "recovered_dimension_geometry": recovered_geometry,
             "cross_view_evidence": cross_view,
+            "dimension_target_edges": dimension_target_edges,
             "view_cluster_count": len(self.view_clusters),
         }
+
+    def _dimension_target_edges(
+        self,
+        reference_results: Sequence[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Trace dimension definition points to the measured DXF profiles.
+
+        Native dimension extension origins are the start of the trace.  Exact
+        attachments win; otherwise the nearest non-annotation profile is kept
+        as an explicit review candidate instead of silently becoming truth.
+        """
+        traced: Dict[str, Dict[str, Any]] = {}
+        for reference in reference_results:
+            nearby = list(reference.get("nearest_geometry") or [])
+            exact = [item for item in nearby if item.get("relation") == "EXACT_ATTACHMENT"]
+            selected = exact or nearby[:1]
+            for item in selected:
+                handle = str(item.get("handle") or "")
+                primitive_index = self.handle_index.get(handle)
+                if primitive_index is None:
+                    continue
+                primitive = self.primitives[primitive_index]
+                payload = traced.setdefault(handle, {
+                    "handle": handle,
+                    "entity_type": primitive.entity_type,
+                    "layer": primitive.layer,
+                    "linetype": primitive.linetype,
+                    "relation": item.get("relation"),
+                    "distance": item.get("distance"),
+                    "definition_points": [],
+                    "points": [
+                        [round(float(value), 5) for value in point]
+                        for point in primitive.points
+                    ],
+                    "center": (
+                        [round(float(value), 5) for value in primitive.center]
+                        if primitive.center is not None
+                        else None
+                    ),
+                    "radius": round(float(primitive.radius), 5),
+                })
+                payload["definition_points"].append({
+                    "name": reference.get("definition_point"),
+                    "point": reference.get("point"),
+                })
+                if item.get("relation") == "EXACT_ATTACHMENT":
+                    payload["relation"] = "EXACT_ATTACHMENT"
+                    payload["distance"] = min(
+                        float(payload.get("distance", item.get("distance", 0.0)) or 0.0),
+                        float(item.get("distance", 0.0) or 0.0),
+                    )
+        return list(traced.values())
 
     def _primitive_geometry_group(self, primitive: CadPrimitive2D, tolerance: float) -> str:
         """Return a stable local identity for coincident DXF geometry.

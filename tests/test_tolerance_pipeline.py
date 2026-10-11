@@ -15,6 +15,22 @@ from auto_2d_drawing.tolerance.tolerance_decision_service import ToleranceDecisi
 
 
 class ToleranceCaseQualityTests(unittest.TestCase):
+    def test_diameter_candidates_include_localized_shaft_steps(self):
+        self.assertIn(
+            "locating_shoulder",
+            candidate_feature_types_for_dimension("DIAMETER"),
+        )
+        step = FeatureNode(
+            id="step_02",
+            feature_type="locating_shoulder",
+            nominal={"diameter": 2.994, "length": 0.9, "step_height": 0.9},
+            axial_span=[-2.0, -1.1],
+            center_axial=-1.55,
+        )
+        targets = list(HistoricalDataIngestor._node_targets(step))
+        self.assertIn(("diameter", 2.994, ("DIAMETER",)), targets)
+        self.assertGreaterEqual(HistoricalDataIngestor._match_threshold(2.994), 0.006)
+
     @staticmethod
     def _case(status="AUTO_VERIFIED", feature_verified=True, geometry_passed=True):
         return ToleranceCase(
@@ -163,6 +179,11 @@ class FeatureInference2DTests(unittest.TestCase):
         self.assertFalse(result["native_association_available"])
         self.assertEqual(result["association_status"], "GEOMETRIC_ATTACHMENT")
         self.assertIn(line.dxf.handle, result["attached_geometry_handles"])
+        self.assertTrue(result["dimension_target_edges"])
+        self.assertTrue(any(
+            edge["handle"] == line.dxf.handle
+            for edge in result["dimension_target_edges"]
+        ))
 
     def test_split_arc_circle_is_one_geometric_attachment(self):
         doc = ezdxf.new()

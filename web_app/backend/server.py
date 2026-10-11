@@ -61,7 +61,10 @@ app.include_router(account_router)
 async def add_no_cache_header(request, call_next):
     response = await call_next(request)
     cacheable_visual = (
-        request.url.path.startswith("/api/tolerance/drawing-svg/")
+        (
+            request.url.path.startswith("/api/tolerance/drawing-svg/")
+            and not request.query_params
+        )
         or request.url.path.startswith("/api/tolerance/audit/model-preview/")
     )
     if cacheable_visual:
@@ -475,6 +478,209 @@ def _add_tolerance_highlight(
             pass
 
 
+def _add_uncertainty_overlay(
+    msp,
+    diagnostic: Optional[Dict[str, Any]],
+    *,
+    show_step_projection: bool = True,
+    show_feature_footprints: bool = True,
+    show_target_edges: bool = True,
+    show_anchor: bool = True,
+    show_links: bool = True,
+) -> List[List[float]]:
+    """Draw registered STEP HLR geometry, feature footprints, and the DXF anchor."""
+    if not diagnostic:
+        return []
+    candidates = list(diagnostic.get("candidates") or [])
+    visual_candidates = [
+        item for item in candidates
+        if ((item.get("geometry_verification") or {}).get("feature_localization") or {}).get("expected_dxf_point")
+    ][:5]
+    observed = diagnostic.get("observed_dxf_anchor")
+    if not observed and visual_candidates:
+        observed = (
+            (visual_candidates[0].get("geometry_verification") or {})
+            .get("feature_localization", {})
+            .get("observed_dxf_anchor")
+        )
+    if not visual_candidates and not observed:
+        return []
+    try:
+        from ezdxf import bbox as ezdxf_bbox
+        extents = ezdxf_bbox.extents(msp)
+        marker_size = max(float(extents.size.x), float(extents.size.y), 1.0) * 0.012
+    except Exception:
+        marker_size = 4.0
+
+    registered = diagnostic.get("registered_step_projection") or {}
+    for line in (registered.get("lines") or []) if show_step_projection else []:
+        p1, p2 = line.get("p1"), line.get("p2")
+        if not p1 or not p2:
+            continue
+        color = 0x3B82F6 if line.get("visibility") == "visible" else 0x1E40AF
+        msp.add_line(
+            tuple(p1[:2]),
+            tuple(p2[:2]),
+            dxfattribs={"true_color": 0x050505, "lineweight": 140},
+        )
+        msp.add_line(
+            tuple(p1[:2]),
+            tuple(p2[:2]),
+            dxfattribs={"true_color": color, "lineweight": 80},
+        )
+    for circle in (registered.get("circles") or []) if show_step_projection else []:
+        center, radius = circle.get("center"), float(circle.get("radius", 0.0) or 0.0)
+        if not center or radius <= 0.0:
+            continue
+        color = 0x3B82F6 if circle.get("visibility") == "visible" else 0x1E40AF
+        msp.add_circle(
+            tuple(center[:2]),
+            radius,
+            dxfattribs={"true_color": 0x050505, "lineweight": 140},
+        )
+        msp.add_circle(
+            tuple(center[:2]),
+            radius,
+            dxfattribs={"true_color": color, "lineweight": 80},
+        )
+
+    focus_points: List[List[float]] = []
+    target_edges = (
+        list((diagnostic.get("association") or {}).get("dimension_target_edges") or [])
+        if show_target_edges
+        else []
+    )
+    for edge_index, edge in enumerate(target_edges):
+        points = list(edge.get("points") or [])
+        center = edge.get("center")
+        radius = float(edge.get("radius", 0.0) or 0.0)
+        edge_color = 0xF97316
+        if center and radius > 0.0:
+            msp.add_circle(
+                tuple(center[:2]),
+                radius,
+                dxfattribs={"true_color": 0x050505, "lineweight": 200},
+            )
+            msp.add_circle(
+                tuple(center[:2]),
+                radius,
+                dxfattribs={"true_color": edge_color, "lineweight": 120},
+            )
+            focus_points.extend([
+                [float(center[0]) - radius, float(center[1])],
+                [float(center[0]) + radius, float(center[1])],
+            ])
+        elif len(points) >= 2:
+            msp.add_lwpolyline(
+                [tuple(point[:2]) for point in points],
+                dxfattribs={"true_color": 0x050505, "lineweight": 200},
+            )
+            msp.add_lwpolyline(
+                [tuple(point[:2]) for point in points],
+                dxfattribs={"true_color": edge_color, "lineweight": 120},
+            )
+            focus_points.extend([list(points[0][:2]), list(points[-1][:2])])
+        for reference in edge.get("definition_points") or []:
+            point = reference.get("point")
+            if not isinstance(point, (list, tuple)) or len(point) < 2:
+                continue
+            reference_xy = (float(point[0]), float(point[1]))
+            focus_points.append([*reference_xy])
+            msp.add_circle(
+                reference_xy,
+                marker_size * 0.38,
+                dxfattribs={"true_color": edge_color, "lineweight": 70},
+            )
+        label_origin = None
+        if center:
+            label_origin = (float(center[0]) + radius, float(center[1]))
+        elif points:
+            label_origin = tuple(float(value) for value in points[0][:2])
+        if label_origin:
+            label = msp.add_mtext(
+                f"TARGET EDGE E{edge_index + 1}",
+                dxfattribs={"char_height": marker_size * 0.42, "true_color": edge_color},
+            )
+            label.set_location((label_origin[0] + marker_size * 0.5, label_origin[1]))
+    if show_anchor and isinstance(observed, (list, tuple)) and len(observed) >= 2:
+        observed_xy = (float(observed[0]), float(observed[1]))
+        focus_points.append([*observed_xy])
+        msp.add_circle(
+            observed_xy,
+            marker_size,
+            dxfattribs={"true_color": 0x050505, "lineweight": 200},
+        )
+        msp.add_circle(observed_xy, marker_size, dxfattribs={"color": 4, "lineweight": 110})
+        label = msp.add_mtext(
+            "OBSERVED TOLERANCE ANCHOR",
+            dxfattribs={"char_height": marker_size * 0.42, "color": 4},
+        )
+        label.set_location((observed_xy[0] + marker_size, observed_xy[1] - marker_size * 1.4))
+    else:
+        observed_xy = None
+
+    colors = (0xFACC15, 0xA855F7, 0x22C55E, 0xF97316, 0xEF4444)
+    for index, candidate in enumerate(visual_candidates if show_feature_footprints else []):
+        geometry = candidate.get("geometry_verification") or {}
+        localization = geometry.get("feature_localization") or {}
+        expected = localization.get("expected_dxf_point")
+        if not isinstance(expected, (list, tuple)) or len(expected) < 2:
+            continue
+        expected_xy = (float(expected[0]), float(expected[1]))
+        focus_points.append([*expected_xy])
+        color = colors[index % len(colors)]
+        footprint = candidate.get("projected_feature_footprint") or {}
+        footprint_points = list(footprint.get("points") or [])
+        group_size = 40 if footprint.get("geometry_kind") in {"cylinder", "torus", "cone"} else 32
+        if len(footprint_points) >= group_size:
+            for offset in range(0, len(footprint_points), group_size):
+                group = footprint_points[offset:offset + group_size]
+                if len(group) >= 2:
+                    msp.add_lwpolyline(
+                        [tuple(point[:2]) for point in group],
+                        close=True,
+                        dxfattribs={"true_color": 0x050505, "lineweight": 180},
+                    )
+                    msp.add_lwpolyline(
+                        [tuple(point[:2]) for point in group],
+                        close=True,
+                        dxfattribs={"true_color": color, "lineweight": 100},
+                    )
+        else:
+            msp.add_circle(
+                expected_xy,
+                marker_size * 0.72,
+                dxfattribs={"true_color": 0x050505, "lineweight": 180},
+            )
+            msp.add_circle(
+                expected_xy,
+                marker_size * 0.72,
+                dxfattribs={"true_color": color, "lineweight": 100},
+            )
+        if show_links and observed_xy is not None:
+            msp.add_line(
+                observed_xy,
+                expected_xy,
+                dxfattribs={"true_color": 0x050505, "lineweight": 140},
+            )
+            msp.add_line(
+                observed_xy,
+                expected_xy,
+                dxfattribs={"true_color": color, "lineweight": 70},
+            )
+        candidate_label = (
+            f"C{index + 1} {candidate.get('feature_id', '?')}."
+            f"{candidate.get('nominal_field', '?')} "
+            f"score={float(geometry.get('score', 0.0) or 0.0):.2f}"
+        )
+        label = msp.add_mtext(
+            candidate_label,
+            dxfattribs={"char_height": marker_size * 0.42, "true_color": color},
+        )
+        label.set_location((expected_xy[0] + marker_size, expected_xy[1] + marker_size * (0.8 + index * 0.5)))
+    return focus_points
+
+
 def _focus_box_for_highlight(doc, msp, handles: List[str], points: List[List[float]]):
     """Build a useful zoom window around the selected tolerance and geometry."""
     try:
@@ -544,6 +750,12 @@ def render_dxf_to_svg_cached(
     supporting_handles: Optional[List[str]] = None,
     focus_points: Optional[List[List[float]]] = None,
     focus: bool = False,
+    diagnostic: Optional[Dict[str, Any]] = None,
+    show_step_projection: bool = True,
+    show_feature_footprints: bool = True,
+    show_target_edges: bool = True,
+    show_anchor: bool = True,
+    show_links: bool = True,
 ) -> Optional[str]:
     if not dxf_path or not os.path.exists(dxf_path):
         return None
@@ -560,7 +772,17 @@ def render_dxf_to_svg_cached(
     try:
         doc = ezdxf.readfile(dxf_path)
         msp = doc.modelspace()
-        _add_tolerance_highlight(doc, msp, highlight_handle, supporting_handles)
+        if show_anchor:
+            _add_tolerance_highlight(doc, msp, highlight_handle, supporting_handles)
+        diagnostic_points = _add_uncertainty_overlay(
+            msp,
+            diagnostic,
+            show_step_projection=show_step_projection,
+            show_feature_footprints=show_feature_footprints,
+            show_target_edges=show_target_edges,
+            show_anchor=show_anchor,
+            show_links=show_links,
+        )
         ctx = RenderContext(doc)
         backend = SVGBackend()
         frontend = Frontend(ctx, backend)
@@ -572,7 +794,7 @@ def render_dxf_to_svg_cached(
                 doc,
                 msp,
                 [highlight_handle, *(supporting_handles or [])],
-                focus_points or [],
+                [*(focus_points or []), *diagnostic_points],
             )
             if focused_box is not None:
                 render_box = focused_box
@@ -1016,6 +1238,31 @@ def _find_tolerance_debug_run(component_name: str) -> Optional[Dict[str, Any]]:
     )
 
 
+def _find_tolerance_debug_diagnostic(
+    component_name: str,
+    entity_handle: str,
+) -> Optional[Dict[str, Any]]:
+    run = _find_tolerance_debug_run(component_name)
+    if run is None:
+        return None
+    diagnostic = next(
+        (
+            item for item in run.get("dimension_diagnostics") or []
+            if str(item.get("entity_handle") or "") == str(entity_handle or "")
+        ),
+        None,
+    )
+    if diagnostic is None:
+        return None
+    result = dict(diagnostic)
+    overlay_id = str(result.get("registered_step_projection_id") or "")
+    if overlay_id:
+        result["registered_step_projection"] = (
+            (run.get("projection_overlays") or {}).get(overlay_id)
+        )
+    return result
+
+
 @app.get("/api/tolerance/debug/component-details/{component_name}")
 def get_tolerance_debug_component_details(component_name: str):
     run = _find_tolerance_debug_run(component_name)
@@ -1042,13 +1289,31 @@ def get_tolerance_debug_component_details(component_name: str):
         f"/api/tolerance/debug/component-asset/{component_name}/model.stl"
     )
     for item in result.get("tolerances") or []:
+        diagnostic = _find_tolerance_debug_diagnostic(
+            component_name,
+            str(item.get("entity_handle") or ""),
+        )
+        candidates = list((diagnostic or {}).get("candidates") or [])
+        best_candidate_geometry = next(
+            (
+                candidate.get("geometry_verification")
+                for candidate in candidates
+                if candidate.get("geometry_verification")
+            ),
+            None,
+        )
         item.update({
             "model_available": True,
             "source_model_name": component_name,
             "model_preview_url": model_preview_url,
             "model_download_url": model_download_url,
             "model_asset_type": "STL",
+            "uncertainty_diagnostic": diagnostic,
+            "diagnostic_candidates": candidates,
+            "debug_component_name": component_name,
         })
+        if not item.get("geometry_verification") and best_candidate_geometry:
+            item["geometry_verification"] = best_candidate_geometry
     result.update({
         "model_name": component_name,
         "drawing_model_name": drawing_model_name,
@@ -1116,6 +1381,12 @@ def get_drawing_svg(
     highlight: Optional[str] = None,
     case_id: Optional[str] = None,
     focus: bool = False,
+    debug_component: Optional[str] = None,
+    show_step_projection: bool = True,
+    show_feature_footprints: bool = True,
+    show_target_edges: bool = True,
+    show_anchor: bool = True,
+    show_links: bool = True,
 ):
     """
     動態生成或讀取 DXF 轉出的高解析向量 SVG 圖面
@@ -1134,6 +1405,7 @@ def get_drawing_svg(
 
     supporting_handles: List[str] = []
     focus_points: List[List[float]] = []
+    diagnostic = None
     if case_id:
         case = _find_tolerance_case(case_id)
         if case is not None:
@@ -1154,6 +1426,14 @@ def get_drawing_svg(
                 for value in (metadata.get("points") or {}).values()
                 if isinstance(value, (list, tuple)) and len(value) >= 2
             ]
+    if debug_component and highlight:
+        diagnostic = _find_tolerance_debug_diagnostic(debug_component, highlight)
+        for candidate in (diagnostic or {}).get("candidates") or []:
+            geometry = candidate.get("geometry_verification") or {}
+            association = geometry.get("association") or {}
+            supporting_handles.extend(
+                str(handle) for handle in association.get("attached_geometry_handles") or []
+            )
     svg_str = render_dxf_to_svg_cached(
         dxf_path,
         clean_name,
@@ -1161,6 +1441,12 @@ def get_drawing_svg(
         supporting_handles=supporting_handles,
         focus_points=focus_points,
         focus=focus,
+        diagnostic=diagnostic,
+        show_step_projection=show_step_projection,
+        show_feature_footprints=show_feature_footprints,
+        show_target_edges=show_target_edges,
+        show_anchor=show_anchor,
+        show_links=show_links,
     )
     if not svg_str:
         raise HTTPException(status_code=500, detail="Failed to render DXF to SVG")

@@ -17,6 +17,11 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 
 from auto_2d_drawing.tolerance.feature_graph import FeatureNode
+from auto_2d_drawing.tolerance.composite_features import (
+    COMPOSITE_AXIAL_SPAN,
+    composite_descriptor,
+    composite_structure_similarity,
+)
 
 
 @dataclass
@@ -96,6 +101,17 @@ class FeatureCaseBase:
         "shaft_overall": "overall_dimension",
         "linear_feature": "linear_feature",
         "unresolved_feature": "unresolved_feature",
+        "compound_axial_span": "compound_axial_span",
+        "composite_axial_span": "compound_axial_span",
+        "composite_planar_span": "composite_planar_span",
+        "annular_rim": "annular_rim",
+        "annular_hub": "annular_hub",
+        "annular_interface_gap": "annular_interface_gap",
+        "repeated_radial_pattern": "repeated_radial_pattern",
+        "derived_rotational_envelope_feature": "derived_rotational_envelope_feature",
+        "assembly_relation_feature": "assembly_relation_feature",
+        "component_feature": "component_feature",
+        "component_composite_feature": "component_composite_feature",
     }
     DIMENSION_CATEGORY_ALIASES = {
         "RADIAL": "RADIUS",
@@ -157,6 +173,32 @@ class FeatureCaseBase:
         return cls.DIMENSION_CATEGORY_ALIASES.get(key, key)
 
     @staticmethod
+    def nominal_diameter(nominal: Dict[str, Any]) -> float:
+        """Read atomic, annular and rotational-envelope diameter semantics."""
+        for key in (
+            "diameter", "groove_diameter", "outer_diameter", "inner_diameter",
+            "projected_envelope_diameter", "sectional_outer_envelope_diameter",
+            "outer_member_inner_diameter", "inner_member_outer_diameter",
+        ):
+            value = nominal.get(key)
+            if isinstance(value, (int, float)) and float(value) > 0.0:
+                return float(value)
+        radius = nominal.get("radius")
+        return float(radius) * 2.0 if isinstance(radius, (int, float)) else 0.0
+
+    @staticmethod
+    def nominal_length(nominal: Dict[str, Any]) -> float:
+        """Read linear semantics emitted by both atomic and composite features."""
+        for key in (
+            "length", "groove_width", "chamfer_height", "step_height",
+            "width", "thickness", "axial_span", "assembly_span",
+        ):
+            value = nominal.get(key)
+            if isinstance(value, (int, float)) and float(value) > 0.0:
+                return float(value)
+        return 0.0
+
+    @staticmethod
     def infer_product_family(source_name: str) -> str:
         """Extract the FORCECON product-system code, e.g. 1FQ6H... -> FQ6H."""
         name = os.path.basename(str(source_name or "")).upper()
@@ -178,8 +220,8 @@ class FeatureCaseBase:
             return []
 
         q_nom = query_node.nominal or {}
-        q_dia = float(q_nom.get("diameter", q_nom.get("groove_diameter", q_nom.get("radius", 0.0) * 2)) or 0.0)
-        q_len = float(q_nom.get("length", q_nom.get("groove_width", q_nom.get("chamfer_height", 0.0))) or 0.0)
+        q_dia = self.nominal_diameter(q_nom)
+        q_len = self.nominal_length(q_nom)
         q_neighbors = set(query_node.neighbor_types or [])
         q_feature = self.canonical_feature_type(query_node.feature_type)
         query_part = (part_type or "GENERAL").upper()
@@ -211,8 +253,8 @@ class FeatureCaseBase:
                 continue
 
             c_nom = case.nominal_dimensions or {}
-            c_dia = float(c_nom.get("diameter", c_nom.get("groove_diameter", c_nom.get("radius", 0.0) * 2)) or 0.0)
-            c_len = float(c_nom.get("length", c_nom.get("groove_width", c_nom.get("chamfer_height", 0.0))) or 0.0)
+            c_dia = self.nominal_diameter(c_nom)
+            c_len = self.nominal_length(c_nom)
             c_neighbors = set(case.neighbor_types or [])
             case_part = (case.part_type or "GENERAL").upper()
             case_family = self.infer_product_family(
@@ -257,6 +299,16 @@ class FeatureCaseBase:
             else:
                 length_score = 0.5
 
+            composite_score = 0.5
+            if q_feature == COMPOSITE_AXIAL_SPAN:
+                query_descriptor = composite_descriptor(query_node)
+                case_descriptor = dict(
+                    case_metadata.get("composite_descriptor")
+                    or (case_metadata.get("feature_snapshot") or {}).get("composite_descriptor")
+                    or {}
+                )
+                composite_score = composite_structure_similarity(query_descriptor, case_descriptor)
+
             breakdown = {
                 "part_type": round(part_score, 3),
                 "product_family": round(family_score, 3),
@@ -265,16 +317,28 @@ class FeatureCaseBase:
                 "topology": round(topology_score, 3),
                 "diameter": round(diameter_score, 3),
                 "length": round(length_score, 3),
+                "composite_structure": round(composite_score, 3),
             }
-            total_score = (
-                0.10 * part_score
-                + 0.20 * family_score
-                + 0.20 * feature_score
-                + 0.15 * role_score
-                + 0.10 * topology_score
-                + 0.15 * diameter_score
-                + 0.10 * length_score
-            )
+            if q_feature == COMPOSITE_AXIAL_SPAN:
+                total_score = (
+                    0.10 * part_score
+                    + 0.15 * family_score
+                    + 0.15 * feature_score
+                    + 0.10 * role_score
+                    + 0.10 * topology_score
+                    + 0.15 * length_score
+                    + 0.25 * composite_score
+                )
+            else:
+                total_score = (
+                    0.10 * part_score
+                    + 0.20 * family_score
+                    + 0.20 * feature_score
+                    + 0.15 * role_score
+                    + 0.10 * topology_score
+                    + 0.15 * diameter_score
+                    + 0.10 * length_score
+                )
             scored_cases.append({
                 "case": case,
                 "similarity": round(total_score, 3),

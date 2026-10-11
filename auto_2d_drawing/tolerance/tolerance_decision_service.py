@@ -214,6 +214,7 @@ class ToleranceDecisionService:
             and (allowed_case_ids is None or case.case_id in allowed_case_ids)
         )
         evidence_cases: List[Dict[str, Any]] = []
+        review_matches: List[Dict[str, Any]] = []
         retrieval_trace: Dict[str, Any] = {
             "query_feature_type": node.feature_type if node else category,
             "query_dimension_kind": "DIAMETER" if is_diameter else "LINEAR",
@@ -250,10 +251,18 @@ class ToleranceDecisionService:
                 dimension_category=query_dimension_category,
                 allowed_case_ids=allowed_case_ids,
             )
-            review_matches = [
+            review_pool = [
                 match for match in audit_matches
                 if not match["case"].is_retrieval_eligible()
-            ][:3]
+            ]
+            review_pool.sort(
+                key=lambda match: (
+                    match["case"].effective_verification_status() == "REVIEW_CANDIDATE",
+                    float(match.get("similarity", 0.0)),
+                ),
+                reverse=True,
+            )
+            review_matches = review_pool[:3]
             display_matches = list(raw_matches)
             displayed_ids = {match["case"].case_id for match in display_matches}
             display_matches.extend(
@@ -444,6 +453,74 @@ class ToleranceDecisionService:
                         decision_status="RULE_SUGGESTION",
                         confidence_basis="ENGINEERING_RULE_HEURISTIC",
                     )
+
+        # A CURRENT_FINAL candidate may surface its historical tolerance as a
+        # review-only suggestion.  It must never pass the automatic adoption
+        # gate or masquerade as AUTO_VERIFIED evidence.
+        compatible_review_matches = [
+            match for match in review_matches
+            if match["case"].effective_verification_status() == "REVIEW_CANDIDATE"
+            and self._case_is_dimension_compatible(
+                match["case"], category, is_diameter, dimension_category
+            )
+            and self._case_nominal_is_transferable(
+                match["case"], nominal_val, is_diameter
+            )
+            and float(match.get("similarity", 0.0)) >= 0.65
+        ]
+        if compatible_review_matches:
+            candidate_match = compatible_review_matches[0]
+            candidate = candidate_match["case"]
+            config = candidate.tolerance_config or {}
+            mode = str(config.get("mode") or "NONE").upper()
+            fit_class = config.get("fit_class")
+            is_hole = bool(config.get("is_hole", node.feature_type == "hole" if node else False))
+            upper_dev, lower_dev = self._compute_exact_devs(
+                nominal_val, mode, fit_class, is_hole=is_hole, custom_cfg=config
+            )
+            formatted = format_tolerance_dimension(
+                nominal_val,
+                is_diameter=is_diameter,
+                tol_config={
+                    "mode": mode,
+                    "fit_class": fit_class,
+                    "upper_dev": upper_dev,
+                    "lower_dev": lower_dev,
+                    "dev": abs(upper_dev),
+                    "is_hole": is_hole,
+                },
+            )
+            for item in evidence_cases:
+                if item["case_id"] == candidate.case_id:
+                    item["used_as_context"] = True
+                    item["evidence_role"] = "LOW_CONFIDENCE_REVIEW_SUGGESTION"
+            retrieval_trace.update({
+                "decision_source": "REVIEW_CANDIDATE",
+                "review_candidate_case_id": candidate.case_id,
+            })
+            return ToleranceRecommendation(
+                rule_id=rule_id,
+                feature_type=node.feature_type if node else category,
+                inferred_role=(node.inferred_role if node else None) or candidate.inferred_role,
+                nominal_value=nominal_val,
+                recommended_mode=mode,
+                fit_class=fit_class,
+                upper_dev=upper_dev,
+                lower_dev=lower_dev,
+                formatted_display=formatted,
+                confidence=round(min(0.55, candidate.confidence * float(candidate_match.get("similarity", 0.0))), 2),
+                tier_level="TIER_REVIEW_CANDIDATE",
+                evidence_sources=[candidate.case_id, candidate.evidence_source],
+                evidence_cases=evidence_cases,
+                retrieval_trace=retrieval_trace,
+                reasoning_description=(
+                    "此公差來自尚未完成完整 BRep 驗證的歷史候選案例；"
+                    "僅供工程師覆核，不可自動套用。"
+                ),
+                is_hole=is_hole,
+                decision_status="REVIEW_REQUIRED",
+                confidence_basis="UNVERIFIED_HISTORICAL_CANDIDATE",
+            )
 
         # === Tier 3: 基礎保底 (General Fallback / ISO 2768-m) ===
         if not is_diameter:
@@ -645,21 +722,9 @@ class ToleranceDecisionService:
 
         nominal = case.nominal_dimensions or {}
         if is_diameter:
-            case_value = float(
-                nominal.get(
-                    "diameter",
-                    nominal.get("groove_diameter", float(nominal.get("radius", 0.0) or 0.0) * 2.0),
-                )
-                or 0.0
-            )
+            case_value = FeatureCaseBase.nominal_diameter(nominal)
         else:
-            case_value = float(
-                nominal.get(
-                    "length",
-                    nominal.get("groove_width", nominal.get("chamfer_height", 0.0)),
-                )
-                or 0.0
-            )
+            case_value = FeatureCaseBase.nominal_length(nominal)
         query_value = abs(float(query_nominal or 0.0))
         if case_value <= 0.0 or query_value <= 0.0:
             return False
@@ -691,6 +756,13 @@ class ToleranceDecisionService:
             "similarity": match["similarity"],
             "score_breakdown": match["score_breakdown"],
             "verification_status": match["verification_status"],
+            "engineer_review_required": bool(
+                metadata.get("engineer_review_required")
+                or match["verification_status"] == "REVIEW_CANDIDATE"
+            ),
+            "recommendation_tier": metadata.get("recommendation_tier"),
+            "canonical_feature_id": metadata.get("canonical_feature_id"),
+            "matched_nominal_field": metadata.get("matched_nominal_field"),
             "product_family": match.get("product_family", ""),
             "same_product_family": match.get("same_product_family", False),
             "description": case.description,
