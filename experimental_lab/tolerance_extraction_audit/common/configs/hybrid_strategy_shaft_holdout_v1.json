@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "description": "Unseen shaft holdouts for CATEGORY_FEATURE_ADAPTIVE_LAYOUT_BATCH_HOLDOUT_V1",
+  "cases": [
+    {
+      "component_name": "2AC085010H-R00",
+      "component_label": "0:1:1:4",
+      "step_path": "D:\\School\\力致\\力致_ref\\00_ref\\給成大資料\\FAN\\AJ0A-軸流扇\\3D圖檔\\1AC085000H-R01.stp",
+      "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\2AC085010H-R00.dxf"
+    },
+    {
+      "component_name": "2FMJX5010H-R00",
+      "component_label": "0:1:1:5",
+      "step_path": "D:\\School\\力致\\力致_ref\\00_ref\\給成大資料\\FAN\\FQ6H-雙出風-底座組合(側牆)\\3D圖檔\\blade_assy-1fq6h5000h-a01.stp",
+      "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\2FMJX5010H-R00.dxf"
+    },
+    {
+      "component_name": "2FQ215010H-R00",
+      "component_label": "0:1:1:4",
+      "step_path": "D:\\School\\力致\\力致_ref\\00_ref\\給成大資料\\FAN\\FQ6V-單出風-上蓋組合(側牆)\\3D\\1FQ6V5000H-R01.stp",
+      "dxf_path": "D:\\School\\力致\\力致_ref\\temp_dxf_cache_ref\\2FQ215010H-R00.dxf"
+    }
+  ]
+}

@@ -1,8 +1,10 @@
 import unittest
+from types import SimpleNamespace
 
 from experimental_lab.tolerance_extraction_audit.common.scripts.hybrid_drawing_strategy_experiment import (
     build_drawing_strategy,
     build_shaft_dimension_intents,
+    classify_native_dimension_axis,
     infer_style_prior,
     solve_adaptive_layout,
 )
@@ -79,6 +81,18 @@ class HybridDrawingStrategyExperimentTests(unittest.TestCase):
         overall = next(item for item in planned if item["intent_id"] == "overall_length")
         axial_ranks = [item["placement"]["rank"] for item in planned if item["intent_class"] == "AXIAL"]
         self.assertEqual(overall["placement"]["rank"], max(axial_ranks))
+
+    def test_rotated_linear_dimension_recovers_shaft_semantics(self):
+        axial = SimpleNamespace(
+            dimension_category="LINEAR", dim_type="LINEAR", nominal_value=4.9,
+            points={"defpoint2": [0.0, 0.0], "defpoint3": [4.9, 1.0]},
+        )
+        transverse = SimpleNamespace(
+            dimension_category="LINEAR", dim_type="LINEAR", nominal_value=2.0,
+            points={"defpoint2": [0.0, 0.0], "defpoint3": [0.0, 2.0]},
+        )
+        self.assertEqual(classify_native_dimension_axis(axial, "HORIZONTAL"), "LINEAR")
+        self.assertEqual(classify_native_dimension_axis(transverse, "HORIZONTAL"), "DIAMETER_SURROGATE")
 
 
 if __name__ == "__main__":
