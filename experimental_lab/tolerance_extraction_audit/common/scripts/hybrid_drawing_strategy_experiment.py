@@ -387,7 +387,34 @@ def solve_adaptive_layout(
     }
 
 
-def evaluate_holdout(intents: Sequence[dict[str, Any]], target_dxf: Path) -> dict[str, Any]:
+def classify_native_dimension_axis(dimension: Any, shaft_orientation: str | None) -> str:
+    """Recover axial/transverse semantics from a rotated LINEAR dimension."""
+    category = str(dimension.dimension_category or dimension.dim_type or "").upper()
+    if category != "LINEAR" or shaft_orientation not in {"HORIZONTAL", "VERTICAL"}:
+        return category
+    points = dimension.points or {}
+    left, right = points.get("defpoint2"), points.get("defpoint3")
+    if not isinstance(left, Sequence) or not isinstance(right, Sequence) or len(left) < 2 or len(right) < 2:
+        return category
+    dx = abs(float(right[0]) - float(left[0]))
+    dy = abs(float(right[1]) - float(left[1]))
+    nominal = abs(float(dimension.nominal_value or 0.0))
+    axial_delta, transverse_delta = (dx, dy) if shaft_orientation == "HORIZONTAL" else (dy, dx)
+    axial_error = abs(axial_delta - nominal)
+    transverse_error = abs(transverse_delta - nominal)
+    epsilon = max(1e-4, nominal * 0.002)
+    if transverse_error + epsilon < axial_error:
+        return "DIAMETER_SURROGATE"
+    if axial_error + epsilon < transverse_error:
+        return "LINEAR"
+    return "DIAMETER_SURROGATE" if transverse_delta > axial_delta * 1.5 else "LINEAR"
+
+
+def evaluate_holdout(
+    intents: Sequence[dict[str, Any]],
+    target_dxf: Path,
+    shaft_orientation: str | None = None,
+) -> dict[str, Any]:
     dimensions = DxfToleranceExtractor().extract_from_file(
         str(target_dxf), include_rejected=True, native_dimensions_only=True
     )
@@ -403,8 +430,11 @@ def evaluate_holdout(intents: Sequence[dict[str, Any]], target_dxf: Path) -> dic
             handle = str(dimension.entity_handle or "")
             if handle in consumed_handles:
                 continue
-            category = str(dimension.dimension_category or dimension.dim_type or "").upper()
-            if category != expected_type:
+            category = classify_native_dimension_axis(dimension, shaft_orientation)
+            comparable = category == expected_type or (
+                expected_type == "DIAMETER" and category == "DIAMETER_SURROGATE"
+            )
+            if not comparable:
                 continue
             if abs(float(dimension.nominal_value or 0.0) - nominal) <= tolerance:
                 matches.append({
@@ -425,6 +455,7 @@ def evaluate_holdout(intents: Sequence[dict[str, Any]], target_dxf: Path) -> dic
     results = [results_by_id[intent["intent_id"]] for intent in intents]
     return {
         "policy": "TARGET_DXF_OPENED_ONLY_AFTER_STRATEGY_AND_LAYOUT_ARE_FROZEN",
+        "native_axis_semantics": "DEFPOINT_DIRECTION" if shaft_orientation else "DXF_CATEGORY_ONLY",
         "native_dimension_count": len(dimensions),
         "supported_count": sum(item["supported"] for item in results),
         "evaluated_count": len(results),
