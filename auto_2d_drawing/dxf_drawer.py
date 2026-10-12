@@ -1,7 +1,10 @@
 """
 DXF 繪圖核心模組 — 將 2D 投影邊緣繪製到 DXF 模型空間
 """
-from config import PAPER_SIZES, MARGIN, VIEW_CONFIG
+try:
+    from auto_2d_drawing.config import PAPER_SIZES, MARGIN, VIEW_CONFIG
+except ImportError:
+    from config import PAPER_SIZES, MARGIN, VIEW_CONFIG
 
 
 class DrawingLayout:

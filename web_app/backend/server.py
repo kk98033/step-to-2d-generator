@@ -2294,7 +2294,7 @@ def _candidate_annotation_rules_impl(model_id: str, part_id: str):
         projector = ViewProjector()
         view_data = projector.project_all_views(shape, view_names=['front', 'top', 'right', 'left'])
         engine = SmartAnnotationEngine()
-        rules = engine.get_candidate_rules(shape, view_data)
+        rules = engine.get_candidate_rules(shape, view_data, part_hint=part_id)
         return {
             "status": "ok",
             "model_id": model_id,
@@ -2373,7 +2373,7 @@ def get_part_features(
             try:
                 shape = load_step(stp_path)
                 if shape and not shape.IsNull():
-                    records = extract_canonical_features(shape).records
+                    records = extract_canonical_features(shape, part_hint=part_id).records
                     save_path = json_path or os.path.join(output_dir, f"{part_id}_feature_records.json")
                     with open(save_path, "w", encoding="utf-8") as f:
                         json.dump(records, f, indent=2, ensure_ascii=False)

@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from auto_2d_drawing.feature_extractor import FeatureExtractor
 from auto_2d_drawing.feature_layer import build_feature_records
-from auto_2d_drawing.part_classifier import PartClassifier
+from auto_2d_drawing.part_classifier import PartClassifier, normalize_part_semantic_type
 
 
 CANONICAL_FEATURE_SCHEMA = "web_feature_records_v1"
@@ -30,10 +30,16 @@ class CanonicalFeatureSet:
         return next((record for record in self.records if record.get("id") == feature_id), None)
 
 
-def extract_canonical_features(shape, part_type: Optional[str] = None) -> CanonicalFeatureSet:
+def extract_canonical_features(
+    shape,
+    part_type: Optional[str] = None,
+    part_hint: Optional[str] = None,
+) -> CanonicalFeatureSet:
     """Run exactly the same extractor and record builder used by the main UI."""
     feature_extractor = FeatureExtractor(shape)
-    resolved_part_type = part_type or PartClassifier().classify(feature_extractor, None)
+    classifier = PartClassifier()
+    classified_type = part_type or classifier.classify(feature_extractor, part_hint)
+    resolved_part_type = normalize_part_semantic_type(classified_type, part_hint)
     raw_records = build_feature_records(feature_extractor, resolved_part_type)
     records = normalize_canonical_feature_records(raw_records)
 
