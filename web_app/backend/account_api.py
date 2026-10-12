@@ -28,6 +28,20 @@ AUTH_EXEMPT_PREFIXES = (
     "/api/auth/login",
     "/api/auth/config",
 )
+ADMIN_ONLY_EXACT_PATHS = {
+    "/api/examples",
+    "/api/processed/fan-20260625",
+    "/api/tolerance/cases",
+    "/api/tolerance/open-local",
+    "/tolerance-inspector.html",
+    "/tolerance-audit-v2.html",
+}
+ADMIN_ONLY_PREFIXES = (
+    "/api/examples/",
+    "/api/tolerance/debug/",
+    "/api/tolerance/audit/",
+    "/api/tolerance/download/",
+)
 
 
 store = IdentityStore()
@@ -52,6 +66,12 @@ def require_admin(user: CurrentUser = Depends(require_user)) -> CurrentUser:
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Administrator permission required")
     return user
+
+
+def is_admin_only_path(path: str) -> bool:
+    return path in ADMIN_ONLY_EXACT_PATHS or any(
+        path.startswith(prefix) for prefix in ADMIN_ONLY_PREFIXES
+    )
 
 
 def assert_model_access(user: CurrentUser, model_id: str) -> None:
@@ -104,11 +124,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         if user and not user.is_admin and user.must_change_password and is_api and path not in password_change_paths:
             return JSONResponse({"detail": "PASSWORD_CHANGE_REQUIRED"}, status_code=403)
 
-        admin_only_reference = (
-            path == "/api/examples"
-            or path.startswith("/api/examples/")
-            or path == "/api/processed/fan-20260625"
-        )
+        admin_only_reference = is_admin_only_path(path)
         if admin_only_reference and user and not user.is_admin:
             return JSONResponse(
                 {"detail": "Administrator permission required"},

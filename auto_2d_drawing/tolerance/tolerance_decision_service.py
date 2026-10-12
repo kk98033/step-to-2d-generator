@@ -262,11 +262,16 @@ class ToleranceDecisionService:
                 ),
                 reverse=True,
             )
-            review_matches = review_pool[:3]
+            # Keep the full ranked review pool for the decision gate.  The old
+            # implementation truncated to three rows before checking dimension
+            # semantics, so three unrelated candidates could hide a usable
+            # REVIEW_CANDIDATE farther down the ranking.
+            review_matches = review_pool
+            display_review_matches = review_pool[:6]
             display_matches = list(raw_matches)
             displayed_ids = {match["case"].case_id for match in display_matches}
             display_matches.extend(
-                match for match in review_matches
+                match for match in display_review_matches
                 if match["case"].case_id not in displayed_ids
             )
             rag_matches = [
@@ -306,13 +311,29 @@ class ToleranceDecisionService:
                 sim_score = top_match["similarity"]
                 consensus, consensus_match = self._summarize_case_consensus(rag_matches)
                 retrieval_trace["consensus"] = consensus
-                strong_single_match = sim_score >= 0.85 and not consensus["near_top_conflict"]
+                exact_semantic_match = self._is_exact_semantic_transfer(
+                    top_match,
+                    node,
+                    nominal_val,
+                    is_diameter,
+                )
+                strong_single_match = (
+                    (sim_score >= 0.85 or exact_semantic_match)
+                    and not consensus["near_top_conflict"]
+                )
                 adopted_match = top_match if strong_single_match else consensus_match
                 # === Tier 1: 高信心度歷史案例匹配 (Similarity >= 0.85) ===
                 if adopted_match is not None:
                     top_match = adopted_match
                     top_case = top_match["case"]
                     sim_score = top_match["similarity"]
+                    exact_semantic_match = self._is_exact_semantic_transfer(
+                        top_match,
+                        node,
+                        nominal_val,
+                        is_diameter,
+                    )
+                    decision_similarity = max(sim_score, 0.95) if exact_semantic_match else sim_score
                     for item in evidence_cases:
                         if item["case_id"] == top_case.case_id:
                             item["used_for_decision"] = True
@@ -350,7 +371,7 @@ class ToleranceDecisionService:
                         upper_dev=u_dev,
                         lower_dev=l_dev,
                         formatted_display=formatted,
-                        confidence=round(top_case.confidence * sim_score, 2),
+                        confidence=round(top_case.confidence * decision_similarity, 2),
                         tier_level=(
                             "TIER_1_RAG_MATCH"
                             if strong_single_match
@@ -362,6 +383,12 @@ class ToleranceDecisionService:
                             **retrieval_trace,
                             "decision_source": "HISTORICAL_CASE",
                             "adopted_case_id": top_case.case_id,
+                            "adoption_reason": (
+                                "SAME_FAMILY_EXACT_SEMANTIC_AND_NOMINAL"
+                                if exact_semantic_match
+                                else "HIGH_SIMILARITY"
+                            ),
+                            "decision_similarity": round(decision_similarity, 3),
                         },
                         reasoning_description=desc,
                         is_hole=is_hole,
@@ -463,14 +490,26 @@ class ToleranceDecisionService:
             and self._case_is_dimension_compatible(
                 match["case"], category, is_diameter, dimension_category
             )
-            and self._case_nominal_is_transferable(
-                match["case"], nominal_val, is_diameter
-            )
             and float(match.get("similarity", 0.0)) >= 0.65
         ]
         if compatible_review_matches:
             candidate_match = compatible_review_matches[0]
             candidate = candidate_match["case"]
+            nominal_transfer_compatible = self._case_nominal_is_transferable(
+                candidate, nominal_val, is_diameter
+            )
+            # A decision candidate can rank below the compact UI evidence
+            # preview.  Always append that exact row so its provenance and
+            # original drawing remain inspectable.
+            if not any(item["case_id"] == candidate.case_id for item in evidence_cases):
+                item = self._serialize_evidence_match(candidate_match)
+                item["dimension_compatible"] = True
+                item["nominal_transfer_compatible"] = nominal_transfer_compatible
+                item["decision_eligible"] = False
+                item["used_for_decision"] = False
+                item["used_as_context"] = False
+                item["evidence_role"] = "RETRIEVED_CANDIDATE"
+                evidence_cases.append(item)
             config = candidate.tolerance_config or {}
             mode = str(config.get("mode") or "NONE").upper()
             fit_class = config.get("fit_class")
@@ -494,9 +533,11 @@ class ToleranceDecisionService:
                 if item["case_id"] == candidate.case_id:
                     item["used_as_context"] = True
                     item["evidence_role"] = "LOW_CONFIDENCE_REVIEW_SUGGESTION"
+                    item["candidate_selected_for_review"] = True
             retrieval_trace.update({
                 "decision_source": "REVIEW_CANDIDATE",
                 "review_candidate_case_id": candidate.case_id,
+                "review_candidate_nominal_transfer_compatible": nominal_transfer_compatible,
             })
             return ToleranceRecommendation(
                 rule_id=rule_id,
@@ -508,14 +549,23 @@ class ToleranceDecisionService:
                 upper_dev=upper_dev,
                 lower_dev=lower_dev,
                 formatted_display=formatted,
-                confidence=round(min(0.55, candidate.confidence * float(candidate_match.get("similarity", 0.0))), 2),
+                confidence=round(min(
+                    0.55 if nominal_transfer_compatible else 0.42,
+                    candidate.confidence
+                    * float(candidate_match.get("similarity", 0.0))
+                    * (1.0 if nominal_transfer_compatible else 0.75),
+                ), 2),
                 tier_level="TIER_REVIEW_CANDIDATE",
                 evidence_sources=[candidate.case_id, candidate.evidence_source],
                 evidence_cases=evidence_cases,
                 retrieval_trace=retrieval_trace,
                 reasoning_description=(
                     "此公差來自尚未完成完整 BRep 驗證的歷史候選案例；"
-                    "僅供工程師覆核，不可自動套用。"
+                    + (
+                        "名目尺寸相容，但仍僅供工程師查看原始圖面後覆核，不可自動套用。"
+                        if nominal_transfer_compatible
+                        else "案例名目尺寸與目前特徵不同，僅能作為低信賴參考；請查看原始圖面後再決定，不可自動套用。"
+                    )
                 ),
                 is_hole=is_hole,
                 decision_status="REVIEW_REQUIRED",
@@ -734,6 +784,53 @@ class ToleranceDecisionService:
             return difference <= max(0.20, query_value * 0.10)
         limit = max(0.05, query_value * 0.005)
         return difference <= limit
+
+    @staticmethod
+    def _is_exact_semantic_transfer(
+        match: Dict[str, Any],
+        node: FeatureNode,
+        query_nominal: float,
+        is_diameter: bool,
+    ) -> bool:
+        """Recognize a strong case even when assembly and component labels differ.
+
+        Historical drawings frequently label a shaft component as part of a FAN
+        assembly.  For recurring semantic features such as the overall shaft
+        length, part-type similarity is therefore weaker evidence than an exact
+        same-family nominal match.  This gate remains deliberately narrow: the
+        case must be verified, from the same product family, have the same
+        canonical feature type, and carry an effectively identical nominal.
+        """
+        case = match["case"]
+        if not case.is_retrieval_eligible() or not match.get("same_product_family"):
+            return False
+        if FeatureCaseBase.canonical_feature_type(case.feature_type) != FeatureCaseBase.canonical_feature_type(node.feature_type):
+            return False
+
+        case_nominal = (
+            FeatureCaseBase.nominal_diameter(case.nominal_dimensions or {})
+            if is_diameter
+            else FeatureCaseBase.nominal_length(case.nominal_dimensions or {})
+        )
+        query_value = abs(float(query_nominal or 0.0))
+        if case_nominal <= 0.0 or query_value <= 0.0:
+            return False
+        if abs(case_nominal - query_value) > max(0.02, query_value * 0.001):
+            return False
+
+        metadata = case.source_metadata or {}
+        case_feature_id = str(
+            metadata.get("canonical_feature_id")
+            or metadata.get("matched_feature_id")
+            or ""
+        ).lower()
+        query_feature_id = str(node.id or "").lower()
+        if case_feature_id and query_feature_id and case_feature_id == query_feature_id:
+            return True
+
+        # Overall dimensions may be called bbox_overall, overall_size or
+        # shaft_overall by different layers of the same canonical pipeline.
+        return FeatureCaseBase.canonical_feature_type(node.feature_type) == "overall_dimension"
 
     @staticmethod
     def _serialize_evidence_match(match: Dict[str, Any]) -> Dict[str, Any]:

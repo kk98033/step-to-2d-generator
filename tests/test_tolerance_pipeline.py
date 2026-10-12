@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import MagicMock
 import os
 import tempfile
 
@@ -12,6 +13,48 @@ from auto_2d_drawing.tolerance.feature_graph import FeatureNode, FeatureRelation
 from auto_2d_drawing.tolerance.feature_graph import candidate_feature_types_for_dimension
 from auto_2d_drawing.tolerance.ingest_historical_data import HistoricalDataIngestor
 from auto_2d_drawing.tolerance.tolerance_decision_service import ToleranceDecisionService
+from auto_2d_drawing.dimension_task import DimensionTask
+from auto_2d_drawing.layout_engine import LayoutEngine
+
+
+class SmartLinearToleranceRenderingTests(unittest.TestCase):
+    def test_overall_dimension_passes_asymmetric_tolerance_to_dxf_text(self):
+        layout = MagicMock()
+        layout.scale = 1.0
+        engine = LayoutEngine(layout)
+        engine._draw_hdim = MagicMock()
+        task = DimensionTask(
+            dim_type="LINEAR",
+            value=22.1,
+            text="22.10",
+            tolerance="(+0.000/-0.100)",
+            start_proj=(0.0, 0.0),
+            end_proj=(22.1, 0.0),
+            side="BOTTOM",
+            rank=2,
+            baseline="NONE",
+        )
+
+        engine._render_horizontal(
+            MagicMock(),
+            [task],
+            ox=0.0,
+            oy=0.0,
+            sw=22.1,
+            sh=3.0,
+            bbox=(0.0, 0.0, 22.1, 3.0),
+            scale=1.0,
+            side="BOTTOM",
+        )
+
+        self.assertEqual(
+            engine._draw_hdim.call_args.args[4],
+            "22.10 (+0.000/-0.100)",
+        )
+
+    def test_linear_dimension_without_tolerance_keeps_nominal_text(self):
+        task = DimensionTask(value=16.3, text="16.30", tolerance="")
+        self.assertEqual(LayoutEngine._linear_display_text(task), "16.30")
 
 
 class ToleranceCaseQualityTests(unittest.TestCase):
@@ -540,6 +583,54 @@ class CaseRetrievalTests(unittest.TestCase):
         self.assertTrue(result["evidence_cases"][0]["used_for_decision"])
         self.assertEqual(result["evidence_cases"][0]["evidence_role"], "ADOPTED_HISTORICAL_CASE")
 
+    def test_same_family_exact_overall_length_adopts_verified_assembly_case(self):
+        base = FeatureCaseBase.__new__(FeatureCaseBase)
+        base.cases = [
+            ToleranceCase(
+                case_id="overall-22.1",
+                part_type="FAN",
+                feature_type="overall_dimension",
+                inferred_role="component[2AL0W5010H-R01].shaft_overall.length",
+                nominal_dimensions={"length": 22.1},
+                neighbor_types=[],
+                boundary_position="INTERIOR",
+                tolerance_config={"mode": "CUSTOM_LIMITS", "upper_dev": 0.0, "lower_dev": -0.1},
+                confidence=0.98,
+                evidence_source="2AL0W5010H-R01.dxf",
+                description="verified shaft overall length",
+                verification_status="AUTO_VERIFIED",
+                source_metadata={
+                    "drawing_file": "2AL0W5010H-R01.dxf",
+                    "dimension_category": "LINEAR",
+                    "canonical_feature_id": "shaft_overall",
+                },
+            )
+        ]
+        node = FeatureNode(
+            id="bbox_overall",
+            feature_type="overall_dimension",
+            nominal={"length": 22.1},
+            axial_span=[0.0, 22.1],
+            center_axial=11.05,
+            inferred_role="GENERAL_FEATURE",
+        )
+
+        result = ToleranceDecisionService(case_base=base)._evaluate_recommendation(
+            "shaft_overall", "overall", False, 22.1, node, "SHAFT", product_family="AL0W"
+        ).to_dict()
+
+        self.assertEqual(result["retrieval_trace"]["decision_source"], "HISTORICAL_CASE")
+        self.assertEqual(result["retrieval_trace"]["adopted_case_id"], "overall-22.1")
+        self.assertEqual(
+            result["retrieval_trace"]["adoption_reason"],
+            "SAME_FAMILY_EXACT_SEMANTIC_AND_NOMINAL",
+        )
+        self.assertEqual(result["tolerance_config"]["mode"], "CUSTOM_LIMITS")
+        self.assertEqual(result["tolerance_config"]["upper_dev"], 0.0)
+        self.assertEqual(result["tolerance_config"]["lower_dev"], -0.1)
+        self.assertGreaterEqual(result["confidence"], 0.9)
+        self.assertTrue(result["evidence_cases"][0]["used_for_decision"])
+
     def test_custom_limits_from_different_nominal_are_context_only(self):
         case = ToleranceCase(
             case_id="diameter-35",
@@ -587,6 +678,67 @@ class CaseRetrievalTests(unittest.TestCase):
         self.assertEqual(result["retrieval_trace"]["compatible_case_count"], 0)
         self.assertFalse(result["evidence_cases"][0]["nominal_transfer_compatible"])
         self.assertFalse(result["evidence_cases"][0]["used_for_decision"])
+
+    def test_review_candidate_is_recommended_for_manual_review_with_nominal_warning(self):
+        candidate = ToleranceCase(
+            case_id="review-diameter-35",
+            part_type="FAN_HOUSING",
+            feature_type="shaft_segment",
+            inferred_role="MAIN_SHAFT_BODY",
+            nominal_dimensions={"diameter": 35.0, "length": 16.0},
+            neighbor_types=[],
+            boundary_position="INTERIOR",
+            tolerance_config={"mode": "CUSTOM_LIMITS", "upper_dev": 0.2, "lower_dev": 0.0},
+            confidence=0.88,
+            evidence_source="housing-review.dxf",
+            description="unverified historical drawing candidate",
+            verification_status="REVIEW_CANDIDATE",
+            source_metadata={
+                "drawing_file": "housing-review.dxf",
+                "dimension_category": "DIAMETER",
+                "engineer_review_required": True,
+            },
+        )
+        match = {
+            "case": candidate,
+            "similarity": 0.82,
+            "score_breakdown": {},
+            "verification_status": "REVIEW_CANDIDATE",
+            "product_family": "FQ6H",
+            "same_product_family": True,
+        }
+
+        class StubCaseBase:
+            cases = [candidate]
+
+            @staticmethod
+            def search_similar_cases_detailed(*_args, **kwargs):
+                return [match] if kwargs.get("include_unverified") else []
+
+        node = FeatureNode(
+            id="shaft-32",
+            feature_type="shaft_segment",
+            nominal={"diameter": 32.0, "length": 14.5},
+            axial_span=[0.0, 14.5],
+            center_axial=7.25,
+            inferred_role="MAIN_SHAFT_BODY",
+        )
+        result = ToleranceDecisionService(case_base=StubCaseBase())._evaluate_recommendation(
+            "shaft_32", "shaft", True, 32.0, node, "FAN_HOUSING", product_family="FQ6H"
+        ).to_dict()
+
+        self.assertEqual(result["tier_level"], "TIER_REVIEW_CANDIDATE")
+        self.assertEqual(result["decision_status"], "REVIEW_REQUIRED")
+        self.assertLessEqual(result["confidence"], 0.42)
+        self.assertFalse(result["retrieval_trace"]["review_candidate_nominal_transfer_compatible"])
+        selected = next(
+            row for row in result["evidence_cases"]
+            if row.get("candidate_selected_for_review")
+        )
+        self.assertEqual(selected["case_id"], "review-diameter-35")
+        self.assertEqual(selected["source_model"], "housing-review")
+        self.assertTrue(selected["engineer_review_required"])
+        self.assertFalse(selected["used_for_decision"])
 
     def test_hole_rule_matches_hole_feature_node(self):
         graph = FeatureRelationGraph(part_type="FAN_HOUSING")

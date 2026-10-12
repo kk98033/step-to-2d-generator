@@ -16,6 +16,21 @@ import * as THREE from 'three';
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 axios.defaults.withCredentials = true;
 
+const formatHistoricalTolerance = (config: Record<string, any> = {}) => {
+  const mode = String(config.mode || 'NONE').toUpperCase();
+  if (mode === 'FIT') return config.fit_class || 'FIT';
+  if (mode === 'CUSTOM_SYMMETRIC') {
+    const dev = Math.abs(Number(config.dev ?? config.upper_dev ?? 0));
+    return `±${dev.toFixed(3)} mm`;
+  }
+  if (mode === 'CUSTOM_LIMITS' || mode === 'GROOVE') {
+    const upper = Number(config.upper_dev || 0);
+    const lower = Number(config.lower_dev || 0);
+    return `${upper >= 0 ? '+' : ''}${upper.toFixed(3)} / ${lower >= 0 ? '+' : ''}${lower.toFixed(3)} mm`;
+  }
+  return '未指定公差';
+};
+
 interface TreeNode {
   name: string;
   type: string;
@@ -156,7 +171,9 @@ function SinglePartViewerWithFeatures({
 
       {/* 3D Features Pins & Annotations & 3D Bounding Boxes */}
       {featureRecords.map((feat, idx) => {
-        if (!selectedFeatureIds.has(feat.id)) return null;
+        const featureId = feat.id || feat.rule_id;
+        const isHovered = hoveredFeatureId === featureId || focusedFeatureId === featureId;
+        if (!selectedFeatureIds.has(featureId) && !isHovered) return null;
 
         const geom = feat.geometry || {};
         let rawPos: [number, number, number] | null = null;
@@ -201,8 +218,7 @@ function SinglePartViewerWithFeatures({
           rawPos[2] - modelCenter.z,
         ];
 
-        const isHovered = hoveredFeatureId === feat.id || focusedFeatureId === feat.id;
-        const tag = feat.id || `F${idx + 1}`;
+        const tag = featureId || `F${idx + 1}`;
         const fType = (feat.type || '').toLowerCase();
 
         let tagBg = '#0284c7';
@@ -217,37 +233,45 @@ function SinglePartViewerWithFeatures({
         const boxColor = isHovered ? '#fbbf24' : tagBg;
 
         return (
-          <group key={feat.id || idx} position={pos}>
+          <group key={featureId || idx} position={pos}>
+            {isHovered && (
+              <mesh scale={[1.2, 1.2, 1.2]}>
+                <boxGeometry args={[rawSize[0] * 1.08, rawSize[1] * 1.04, rawSize[2] * 1.08]} />
+                <meshBasicMaterial color="#fde047" wireframe transparent opacity={0.95} depthTest={false} />
+              </mesh>
+            )}
             {/* 3D Wireframe Bounding Box (3D 框框) */}
             <mesh
-              onPointerOver={(e) => { e.stopPropagation(); onHoverFeature(feat.id); }}
+              onPointerOver={(e) => { e.stopPropagation(); onHoverFeature(featureId); }}
               onPointerOut={(e) => { e.stopPropagation(); onHoverFeature(null); }}
-              onClick={(e) => { e.stopPropagation(); onSelectFeature(feat.id); }}
+              onClick={(e) => { e.stopPropagation(); onSelectFeature(featureId); }}
             >
-              <boxGeometry args={[rawSize[0] * 1.08, rawSize[1] * 1.04, rawSize[2] * 1.08]} />
+              <boxGeometry args={[rawSize[0] * (isHovered ? 1.14 : 1.08), rawSize[1] * (isHovered ? 1.1 : 1.04), rawSize[2] * (isHovered ? 1.14 : 1.08)]} />
               <meshBasicMaterial
                 color={boxColor}
                 wireframe={true}
                 transparent={true}
                 opacity={isHovered ? 1.0 : 0.75}
+                depthTest={!isHovered}
               />
             </mesh>
 
             {/* 3D Semi-Transparent Shaded Volumetric Zone */}
             <mesh
-              onPointerOver={(e) => { e.stopPropagation(); onHoverFeature(feat.id); }}
+              onPointerOver={(e) => { e.stopPropagation(); onHoverFeature(featureId); }}
               onPointerOut={(e) => { e.stopPropagation(); onHoverFeature(null); }}
-              onClick={(e) => { e.stopPropagation(); onSelectFeature(feat.id); }}
+              onClick={(e) => { e.stopPropagation(); onSelectFeature(featureId); }}
             >
               <boxGeometry args={[rawSize[0], rawSize[1], rawSize[2]]} />
               <meshStandardMaterial
                 color={boxColor}
                 emissive={boxColor}
-                emissiveIntensity={isHovered ? 0.9 : 0.15}
+                emissiveIntensity={isHovered ? 1.6 : 0.15}
                 transparent={true}
-                opacity={isHovered ? 0.55 : 0.08}
+                opacity={isHovered ? 0.72 : 0.08}
                 roughness={0.2}
                 depthWrite={false}
+                depthTest={!isHovered}
               />
             </mesh>
 
@@ -263,7 +287,7 @@ function SinglePartViewerWithFeatures({
             </mesh>
 
             {/* 3D Floating HTML Label Pin (僅在 Hover、聚焦或特徵數量 <= 8 時渲染，避免畫面過度遮擋) */}
-            {(isHovered || focusedFeatureId === feat.id || selectedFeatureIds.size <= 8) && (
+            {(isHovered || selectedFeatureIds.size <= 8) && (
               <Html
                 position={[0, rawSize[1] / 2 + 0.5, 0]}
                 center
@@ -278,9 +302,9 @@ function SinglePartViewerWithFeatures({
                 }}
               >
                 <div
-                  onMouseEnter={() => onHoverFeature(feat.id)}
+                  onMouseEnter={() => onHoverFeature(featureId)}
                   onMouseLeave={() => onHoverFeature(null)}
-                  onClick={() => onSelectFeature(feat.id)}
+                  onClick={() => onSelectFeature(featureId)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -653,6 +677,9 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('shaft_standard_preset');
   const [candidateRules, setCandidateRules] = useState<any[]>([]);
   const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set());
+  const [expandedRuleIds, setExpandedRuleIds] = useState<Set<string>>(new Set());
+  const [collapsedControllerSections, setCollapsedControllerSections] = useState<Set<string>>(new Set(['templates']));
+  const ruleCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [ruleConfig, setRuleConfig] = useState<Record<string, {
     enabled?: boolean;
     preferred_view?: string;
@@ -950,6 +977,34 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     });
   };
 
+  const toggleRuleDetails = (ruleId: string) => {
+    setExpandedRuleIds(previous => {
+      const next = new Set(previous);
+      if (next.has(ruleId)) next.delete(ruleId);
+      else next.add(ruleId);
+      return next;
+    });
+  };
+
+  const toggleControllerSection = (sectionId: string) => {
+    setCollapsedControllerSections(previous => {
+      const next = new Set(previous);
+      if (next.has(sectionId)) next.delete(sectionId);
+      else next.add(sectionId);
+      return next;
+    });
+  };
+
+  const focusAnnotationRuleFrom3D = (ruleId: string) => {
+    setFocusedFeatureId(ruleId);
+    setRuleFilter('ALL');
+    setRuleSearch('');
+    setExpandedRuleIds(previous => new Set(previous).add(ruleId));
+    window.setTimeout(() => {
+      ruleCardRefs.current[ruleId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 0);
+  };
+
   const selectAllRules = (ids?: string[]) => {
     if (ids && ids.length > 0) {
       setSelectedRuleIds(prev => {
@@ -1074,6 +1129,10 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
             const existing = nextCfg[rId] || {};
             const placement = rec.engineer_placement_recommendation || {};
             const personalSource = rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE';
+            // REVIEW_CANDIDATE is deliberately visible but never silently
+            // adopted.  The engineer must inspect its source drawing and use
+            // the explicit adoption control on the recommendation card.
+            if (rec.tier_level === 'TIER_REVIEW_CANDIDATE') return;
             nextCfg[rId] = {
               ...existing,
               ...(existing.tolerance_source === 'EXTERNAL_NEURAL_MODEL' ? {} : {
@@ -1520,25 +1579,29 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
             <File color="#3B82F6" size={32} />
           </div>
           <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>FORCECON Auto 2D</h1>
-          <a
-            href="/tolerance-audit-v2.html"
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', margin: '16px 0 8px', padding: '10px 14px', background: '#2563eb', border: '1px solid #2563eb', borderRadius: 6, color: '#fff', textDecoration: 'none', fontSize: 14, fontWeight: 600 }}
-          >
-            <Database size={17} />
-            <span>公差提取視覺稽核 V2</span>
-            <ExternalLink size={14} />
-          </a>
-          <a
-            href="/tolerance-inspector.html"
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', margin: '0 0 20px', padding: '10px 14px', background: '#262626', border: '1px solid #444', borderRadius: 6, color: '#dbeafe', textDecoration: 'none', fontSize: 14, fontWeight: 600 }}
-          >
-            <Database size={17} />
-            <span>開啟公差案例檢視器</span>
-            <span style={{ fontSize: 9, lineHeight: 1, padding: '3px 5px', borderRadius: 3, border: '1px solid #b45309', background: '#292117', color: '#fbbf24', letterSpacing: 0.6 }}>
-              BETA
-            </span>
-            <ExternalLink size={14} />
-          </a>
+          {user.role === 'ADMIN' && (
+            <>
+              <a
+                href="/tolerance-audit-v2.html"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', margin: '16px 0 8px', padding: '10px 14px', background: '#2563eb', border: '1px solid #2563eb', borderRadius: 6, color: '#fff', textDecoration: 'none', fontSize: 14, fontWeight: 600 }}
+              >
+                <Database size={17} />
+                <span>公差提取視覺稽核 V2</span>
+                <ExternalLink size={14} />
+              </a>
+              <a
+                href="/tolerance-inspector.html"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', margin: '0 0 20px', padding: '10px 14px', background: '#262626', border: '1px solid #444', borderRadius: 6, color: '#dbeafe', textDecoration: 'none', fontSize: 14, fontWeight: 600 }}
+              >
+                <Database size={17} />
+                <span>開啟公差案例檢視器</span>
+                <span style={{ fontSize: 9, lineHeight: 1, padding: '3px 5px', borderRadius: 3, border: '1px solid #b45309', background: '#292117', color: '#fbbf24', letterSpacing: 0.6 }}>
+                  BETA
+                </span>
+                <ExternalLink size={14} />
+              </a>
+            </>
+          )}
           {/* Mode Toggle */}
           <div style={{ display: 'flex', background: '#222', borderRadius: 8, padding: 4, marginBottom: 24 }}>
             <button onClick={() => setUploadMode('single')} style={{ flex: 1, padding: '8px 0', borderRadius: 6, border: 'none', background: uploadMode === 'single' ? '#3B82F6' : 'transparent', color: uploadMode === 'single' ? '#fff' : '#888', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}>單一模型轉換</button>
@@ -2364,10 +2427,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                           focusedFeatureId={focusedFeatureId}
                           viewMode={feature3DViewMode}
                           onHoverFeature={setHoveredFeatureId}
-                          onSelectFeature={(id) => {
-                            setFocusedFeatureId(id);
-                            toggleRule(id);
-                          }}
+                          onSelectFeature={focusAnnotationRuleFrom3D}
                           onModelLoaded={setFeature3DModelRadius}
                         />
 
@@ -2586,7 +2646,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                 <div style={{ height: 44, borderBottom: '1px solid #262626', background: '#171717', display: 'flex', alignItems: 'center', padding: '0 14px', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#f5f5f5' }}>
                     <Layers size={15} color="#3b82f6" />
-                    <span>標註控制台 (Annotation Controller)</span>
+                    <span>標註控制台</span>
                   </div>
                   <span style={{ fontSize: 11, background: '#262626', color: '#a3a3a3', border: '1px solid #333', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
                     {selectedRuleIds.size} / {candidateRules.length} 規則已選
@@ -2605,14 +2665,26 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                         BETA
                       </span>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#1a2234', border: '1px solid #1e3a8a', padding: '2px 6px', borderRadius: 3 }}>
-                      <Database size={11} color="#60a5fa" />
-                      <span style={{ fontSize: 10, color: '#93c5fd', fontWeight: 600 }}>
-                        案例庫: {toleranceStats?.total_cases ?? 70} 筆
-                      </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#1a2234', border: '1px solid #1e3a8a', padding: '2px 6px', borderRadius: 3 }}>
+                        <Database size={11} color="#60a5fa" />
+                        <span style={{ fontSize: 10, color: '#93c5fd', fontWeight: 600 }}>
+                          案例庫: {toleranceStats?.total_cases ?? 70} 筆
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleControllerSection('cad-rag')}
+                        title={collapsedControllerSections.has('cad-rag') ? '展開智慧公差推薦' : '收合智慧公差推薦'}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, border: '1px solid #404040', borderRadius: 3, background: '#262626', color: '#d4d4d4', cursor: 'pointer', padding: 0 }}
+                      >
+                        {collapsedControllerSections.has('cad-rag') ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                      </button>
                     </div>
                   </div>
 
+                  {!collapsedControllerSections.has('cad-rag') && (
+                    <>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, padding: '6px 8px', borderRadius: 4, border: '1px solid #78350f', background: '#211a12', color: '#fcd34d', fontSize: 10, lineHeight: 1.45 }}>
                     <AlertTriangle size={13} style={{ flex: '0 0 auto', marginTop: 1 }} />
                     <span>Beta 決策輔助：推薦結果與歷史案例必須經工程師覆核，不可直接作為正式製造公差。</span>
@@ -2686,6 +2758,8 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                         : '尚未收到此外部模型／零件的神經網路公差預測；CAD-RAG 與規則結果仍可獨立使用'}
                     </div>
                   )}
+                    </>
+                  )}
                 </div>
 
                 {/* 樣板風格庫與一鍵套用區塊 (Template Preset Section) */}
@@ -2694,28 +2768,28 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                     <span style={{ fontSize: 11, fontWeight: 600, color: '#a3a3a3', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                       風格偏好樣板 (Template Presets)
                     </span>
-                    <button
-                      onClick={() => setSaveTemplateModalOpen(true)}
-                      style={{
-                        background: 'transparent',
-                        border: '1px solid #404040',
-                        borderRadius: 3,
-                        color: '#cbd5e1',
-                        fontSize: 10,
-                        padding: '2px 6px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 3,
-                        fontWeight: 500,
-                      }}
-                    >
-                      <Save size={11} />
-                      <span>儲存為新樣板</span>
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      {!collapsedControllerSections.has('templates') && (
+                        <button
+                          onClick={() => setSaveTemplateModalOpen(true)}
+                          style={{ background: 'transparent', border: '1px solid #404040', borderRadius: 3, color: '#cbd5e1', fontSize: 10, padding: '2px 6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, fontWeight: 500 }}
+                        >
+                          <Save size={11} />
+                          <span>儲存為新樣板</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => toggleControllerSection('templates')}
+                        title={collapsedControllerSections.has('templates') ? '展開風格偏好樣板' : '收合風格偏好樣板'}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, border: '1px solid #404040', borderRadius: 3, background: '#262626', color: '#d4d4d4', cursor: 'pointer', padding: 0 }}
+                      >
+                        {collapsedControllerSections.has('templates') ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                      </button>
+                    </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: collapsedControllerSections.has('templates') ? 'none' : 'flex', gap: 6 }}>
                     <select
                       value={selectedTemplateId}
                       onChange={(e) => setSelectedTemplateId(e.target.value)}
@@ -2909,12 +2983,15 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                       const rId = rule.rule_id || rule.id;
                       const isSelected = selectedRuleIds.has(rId);
                       const isHovered = hoveredFeatureId === rId;
+                      const isFocused = focusedFeatureId === rId;
+                      const isExpanded = expandedRuleIds.has(rId);
                       const cat = (rule.category || rule.type || '').toLowerCase();
                       const cfg = ruleConfig[rId] || {};
                       const rec = aiRecommendations[rId];
                       const externalPrediction = externalPredictionsByRule[rId];
                       const recommendedSource = rec?.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? 'ENGINEER_PERSONAL' : 'HISTORICAL_RAG';
-                      const selectedToleranceSource = cfg.tolerance_source || (rec ? recommendedSource : 'MANUAL');
+                      const selectedToleranceSource = cfg.tolerance_source
+                        || (rec && rec.tier_level !== 'TIER_REVIEW_CANDIDATE' ? recommendedSource : 'MANUAL');
                        const rawSides = cfg.sides || cfg.side || rule.sides || rule.side || ['BOTTOM'];
                       const currentSides: string[] = Array.isArray(rawSides) ? rawSides : [rawSides];
                       const currentViews = cfg.views || rule.target_views || rule.views || ['front', 'top', 'right'];
@@ -2935,13 +3012,15 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                       return (
                         <div
                           key={rId || idx}
+                          ref={(element) => { ruleCardRefs.current[rId] = element; }}
                           onMouseEnter={() => setHoveredFeatureId(rId)}
                           onMouseLeave={() => setHoveredFeatureId(null)}
                           style={{
                             padding: '8px 10px',
-                            background: isHovered ? '#1f2937' : isSelected ? '#172554' : '#171717',
+                            background: isHovered || isFocused ? '#1f2937' : isSelected ? '#172554' : '#171717',
                             borderRadius: 4,
-                            border: `1px solid ${isHovered ? '#3b82f6' : isSelected ? '#2563eb' : '#262626'}`,
+                            border: `1px solid ${isFocused ? '#fbbf24' : isHovered ? '#3b82f6' : isSelected ? '#2563eb' : '#262626'}`,
+                            boxShadow: isFocused ? '0 0 0 2px rgba(251, 191, 36, 0.2)' : 'none',
                             transition: 'all 0.12s ease',
                             display: 'flex',
                             flexDirection: 'column',
@@ -2968,18 +3047,26 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                                     fontSize: 9,
                                     padding: '2px 5px',
                                     borderRadius: 3,
-                                    background: rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? '#3f2b0b' : (rec.tier_level === 'TIER_1_RAG_MATCH' ? '#064e3b' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#1e3a8a' : '#262626')),
-                                    color: rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? '#fbbf24' : (rec.tier_level === 'TIER_1_RAG_MATCH' ? '#6ee7b7' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#93c5fd' : '#a3a3a3')),
-                                    border: `1px solid ${rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? '#a16207' : (rec.tier_level === 'TIER_1_RAG_MATCH' ? '#047857' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#2563eb' : '#404040'))}`,
+                                    background: rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? '#3f2b0b' : (rec.tier_level === 'TIER_1_RAG_MATCH' ? '#064e3b' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#1e3a8a' : (rec.tier_level === 'TIER_REVIEW_CANDIDATE' ? '#422006' : '#262626'))),
+                                    color: rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? '#fbbf24' : (rec.tier_level === 'TIER_1_RAG_MATCH' ? '#6ee7b7' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#93c5fd' : (rec.tier_level === 'TIER_REVIEW_CANDIDATE' ? '#fbbf24' : '#a3a3a3'))),
+                                    border: `1px solid ${rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? '#a16207' : (rec.tier_level === 'TIER_1_RAG_MATCH' ? '#047857' : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? '#2563eb' : (rec.tier_level === 'TIER_REVIEW_CANDIDATE' ? '#b45309' : '#404040')))}`,
                                     fontWeight: 600,
                                   }}
                                 >
-                                  {rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? `個人 ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_1_RAG_MATCH' ? `RAG ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? `推論 ${(rec.confidence * 100).toFixed(0)}%` : '保底'))}
+                                  {rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? `個人 ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_1_RAG_MATCH' ? `RAG ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? `推論 ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_REVIEW_CANDIDATE' ? `候選 ${(rec.confidence * 100).toFixed(0)}%` : '保底')))}
                                 </span>
                               )}
                               <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: badgeBg, color: badgeColor, fontWeight: 500 }}>
                                 {rule.category || rule.type || rule.dim_type}
                               </span>
+                              <button
+                                type="button"
+                                onClick={() => toggleRuleDetails(rId)}
+                                title={isExpanded ? '收合特徵設定' : '展開特徵設定'}
+                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, border: '1px solid #404040', borderRadius: 3, background: '#262626', color: '#d4d4d4', cursor: 'pointer', padding: 0 }}
+                              >
+                                {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                              </button>
                             </div>
                           </div>
 
@@ -2988,6 +3075,8 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                             {rule.name}
                           </div>
 
+                          {isExpanded && (
+                            <>
                           {/* AI Recommendation Reasoning Banner */}
                           {rec && (
                             <div style={{ marginLeft: 22, background: '#131b26', border: '1px solid #1e3a8a', borderRadius: 4, padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -3026,7 +3115,9 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                               )}
                               <div style={{ fontSize: 9, color: '#94a3b8' }}>
                                 {rec.retrieval_trace?.decision_source === 'HISTORICAL_CASE'
-                                  ? `決策來源：已採用歷史案例 ${rec.retrieval_trace?.adopted_case_id || ''}`
+                                  ? `決策來源：已採用歷史案例 ${rec.retrieval_trace?.adopted_case_id || ''}，已套用 ${formatHistoricalTolerance(rec.tolerance_config)}${rec.retrieval_trace?.adoption_reason === 'SAME_FAMILY_EXACT_SEMANTIC_AND_NOMINAL' ? '（同產品族、同特徵語意、名目尺寸一致）' : ''}`
+                                  : rec.retrieval_trace?.decision_source === 'REVIEW_CANDIDATE'
+                                    ? `決策來源：待驗證候選 ${rec.retrieval_trace?.review_candidate_case_id || ''}；${rec.retrieval_trace?.review_candidate_nominal_transfer_compatible ? '名目尺寸相容' : '名目尺寸不同'}，需查看原始圖面後人工採用`
                                   : rec.retrieval_trace?.decision_source === 'RULE_WITH_CASE_CONTEXT'
                                     ? `決策來源：規則推論；案例 ${rec.retrieval_trace?.context_case_id || ''} 僅供情境參考`
                                     : '決策來源：一般規則；未採用任何歷史案例'}
@@ -3045,6 +3136,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                                       `功能角色 ${Math.round((breakdown.functional_role || 0) * 100)}%`,
                                       `鄰接關係 ${Math.round((breakdown.topology || 0) * 100)}%`,
                                     ];
+                                    const evidenceTolerance = formatHistoricalTolerance(evidence.tolerance_config || {});
                                     return (
                                       <button
                                         key={`${evidence.case_id}-${index}`}
@@ -3073,6 +3165,9 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                                         </div>
                                         <div style={{ color: '#94a3b8', fontSize: 9, marginTop: 2 }}>
                                           {reasons.join(' · ')} · {evidence.verification_status || 'UNVERIFIED'}
+                                        </div>
+                                        <div style={{ color: evidence.used_for_decision ? '#6ee7b7' : '#cbd5e1', fontSize: 9, marginTop: 3, fontWeight: evidence.used_for_decision ? 700 : 500 }}>
+                                          歷史公差：{evidenceTolerance}{evidence.used_for_decision ? ' · 已選用並套用' : ''}
                                         </div>
                                         <div style={{ color: evidence.has_source_drawing ? '#60a5fa' : '#64748b', fontSize: 9, marginTop: 3 }}>
                                           {evidence.has_source_drawing ? '點擊查看原始 PDF／向量圖' : '無可追溯原始圖面'}
@@ -3124,9 +3219,31 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                                   onClick={(event) => { event.stopPropagation(); applyToleranceSource(rId, 'HISTORICAL_RAG'); }}
                                   style={{ fontSize: 9, padding: '3px 7px', borderRadius: 3, cursor: 'pointer', border: `1px solid ${selectedToleranceSource === recommendedSource ? '#2563eb' : '#334155'}`, background: selectedToleranceSource === recommendedSource ? '#1e3a8a' : '#171717', color: selectedToleranceSource === recommendedSource ? '#bfdbfe' : '#94a3b8' }}
                                 >
-                                  {recommendedSource === 'ENGINEER_PERSONAL' ? '個人歷史案例' : '公司歷史案例／工程規則'}
+                                  {rec.tier_level === 'TIER_REVIEW_CANDIDATE' ? '採用候選公差（需人工確認）' : (recommendedSource === 'ENGINEER_PERSONAL' ? '個人歷史案例' : '公司歷史案例／工程規則')}
                                 </button>
                               )}
+                              {rec?.tier_level === 'TIER_REVIEW_CANDIDATE' && (() => {
+                                const sourceEvidence = (rec.evidence_cases || []).find((item: any) => item.candidate_selected_for_review && item.has_source_drawing)
+                                  || (rec.evidence_cases || []).find((item: any) => item.has_source_drawing);
+                                return sourceEvidence ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setEvidenceViewer({
+                                        caseId: sourceEvidence.case_id,
+                                        modelName: sourceEvidence.source_model || sourceEvidence.drawing,
+                                        pdfUrl: sourceEvidence.drawing_urls.pdf,
+                                        svgUrl: sourceEvidence.drawing_urls.svg,
+                                        mode: 'pdf',
+                                      });
+                                    }}
+                                    style={{ fontSize: 9, padding: '3px 7px', borderRadius: 3, cursor: 'pointer', border: '1px solid #2563eb', background: '#172554', color: '#bfdbfe' }}
+                                  >
+                                    查看候選原始圖面
+                                  </button>
+                                ) : null;
+                              })()}
                               {externalPrediction && (
                                 <button
                                   type="button"
@@ -3280,9 +3397,9 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                                           } else if (val === 'GROOVE') {
                                             updateRuleConfig(rId, { tolerance_config: { mode: 'GROOVE', upper_dev: 0.040, lower_dev: 0.000 }, tolerance: '(+0.040/0.000)', tolerance_source: 'MANUAL' });
                                           } else if (val === 'CUSTOM_SYMMETRIC') {
-                                            updateRuleConfig(rId, { tolerance_config: { mode: 'CUSTOM_SYMMETRIC', dev: currentTolConfig.dev || 0.05 }, tolerance: `±${currentTolConfig.dev || 0.05}`, tolerance_source: 'MANUAL' });
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'CUSTOM_SYMMETRIC', dev: currentTolConfig.dev ?? 0.05 }, tolerance: `±${currentTolConfig.dev ?? 0.05}`, tolerance_source: 'MANUAL' });
                                           } else if (val === 'CUSTOM_LIMITS') {
-                                            updateRuleConfig(rId, { tolerance_config: { mode: 'CUSTOM_LIMITS', upper_dev: currentTolConfig.upper_dev || 0.02, lower_dev: currentTolConfig.lower_dev || -0.01 }, tolerance: `(+${currentTolConfig.upper_dev || 0.02}/${currentTolConfig.lower_dev || -0.01})`, tolerance_source: 'MANUAL' });
+                                            updateRuleConfig(rId, { tolerance_config: { mode: 'CUSTOM_LIMITS', upper_dev: currentTolConfig.upper_dev ?? 0.02, lower_dev: currentTolConfig.lower_dev ?? -0.01 }, tolerance: `(+${currentTolConfig.upper_dev ?? 0.02}/${currentTolConfig.lower_dev ?? -0.01})`, tolerance_source: 'MANUAL' });
                                           } else {
                                             const isHole = cat.includes('hole') || val.startsWith('H') || val.startsWith('P') || val.startsWith('JS');
                                             updateRuleConfig(rId, { tolerance_config: { mode: 'FIT', fit_class: val, is_hole: isHole }, tolerance: val, tolerance_source: 'MANUAL' });
@@ -3377,6 +3494,8 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                                 })()}
                               </div>
                             </div>
+                          )}
+                            </>
                           )}
                         </div>
                       );
