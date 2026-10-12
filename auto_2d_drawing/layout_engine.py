@@ -22,6 +22,19 @@ class LayoutEngine:
         self.layer_spacing = 8.0
         self.ext_gap = 12.0
 
+    @staticmethod
+    def _linear_display_text(task):
+        """Compose the complete label for linear dimensions.
+
+        Diameter callouts render their tolerance on a separate line, while
+        horizontal and vertical linear dimensions are drawn as one label.
+        Keeping this composition in the layout layer prevents the tolerance
+        from being lost after it has already reached ``DimensionTask``.
+        """
+        nominal = str(task.display_text or "").strip()
+        tolerance = str(task.tolerance or "").strip()
+        return f"{nominal} {tolerance}".strip() if tolerance else nominal
+
     # =================================================================
     # 主入口
     # =================================================================
@@ -145,7 +158,7 @@ class LayoutEngine:
                         (end_paper, layer_pos + sign * (-2)),
                         dxfattribs={'layer': 'DIM', 'color': 2}
                     )
-                    self._draw_hdim(msp, left_paper, end_paper, layer_pos, t.display_text)
+                    self._draw_hdim(msp, left_paper, end_paper, layer_pos, self._linear_display_text(t))
 
                 # 右側基準標註
                 if i < len(right_baseline):
@@ -156,7 +169,7 @@ class LayoutEngine:
                         (start_paper, layer_pos + sign * (-2)),
                         dxfattribs={'layer': 'DIM', 'color': 2}
                     )
-                    self._draw_hdim(msp, start_paper, right_paper, layer_pos, t.display_text)
+                    self._draw_hdim(msp, start_paper, right_paper, layer_pos, self._linear_display_text(t))
 
             if overall:
                 overall.sort(key=lambda t: (t.rank, -t.value))
@@ -164,7 +177,7 @@ class LayoutEngine:
                     p1 = self._proj_to_paper_x(t.start_proj[0], bbox[0], scale, ox)
                     p2 = self._proj_to_paper_x(t.end_proj[0], bbox[0], scale, ox)
                     overall_pos = contour_edge + sign * (self.ext_gap + (num_layers + oi) * self.layer_spacing)
-                    self._draw_hdim(msp, p1, p2, overall_pos, t.display_text)
+                    self._draw_hdim(msp, p1, p2, overall_pos, self._linear_display_text(t))
 
         elif chain:
             # === 串聯標註 ===
@@ -192,10 +205,11 @@ class LayoutEngine:
 
                 paper_dist = abs(p2 - p1)
                 stagger = 0.0
-                req_space = len(t.display_text) * char_width + 1.0
+                linear_text = self._linear_display_text(t)
+                req_space = len(linear_text) * char_width + 1.0
                 if paper_dist < req_space:
                     stagger = 2.5 if idx % 2 == 0 else -2.5
-                self._draw_hdim(msp, p1, p2, inner_pos, t.display_text, text_stagger=stagger)
+                self._draw_hdim(msp, p1, p2, inner_pos, linear_text, text_stagger=stagger)
 
             # 2. 外層總尺寸 (Tier 2 / Tier 3): 延伸線由實體端點拉至外層尺寸線
             if overall:
@@ -209,7 +223,7 @@ class LayoutEngine:
 
                     msp.add_line((p1, py1), (p1, outer_pos + sign * (-1.5)), dxfattribs={'layer': 'DIM', 'color': 2})
                     msp.add_line((p2, py2), (p2, outer_pos + sign * (-1.5)), dxfattribs={'layer': 'DIM', 'color': 2})
-                    self._draw_hdim(msp, p1, p2, outer_pos, t.display_text)
+                    self._draw_hdim(msp, p1, p2, outer_pos, self._linear_display_text(t))
 
         elif overall:
             # 只有總尺寸
@@ -224,7 +238,7 @@ class LayoutEngine:
                 pos = contour_edge + sign * (self.ext_gap + oi * self.layer_spacing)
                 msp.add_line((p1, py1), (p1, pos + sign * (-2)), dxfattribs={'layer': 'DIM', 'color': 2})
                 msp.add_line((p2, py2), (p2, pos + sign * (-2)), dxfattribs={'layer': 'DIM', 'color': 2})
-                self._draw_hdim(msp, p1, p2, pos, t.display_text)
+                self._draw_hdim(msp, p1, p2, pos, self._linear_display_text(t))
 
     # =================================================================
     # 垂直標註渲染 (RIGHT / LEFT for linear)
@@ -289,7 +303,7 @@ class LayoutEngine:
                         (layer_pos + sign * (-2), end_paper),
                         dxfattribs={'layer': 'DIM', 'color': 2}
                     )
-                    self._draw_vdim(msp, bottom_paper, end_paper, layer_pos, t.display_text)
+                    self._draw_vdim(msp, bottom_paper, end_paper, layer_pos, self._linear_display_text(t))
 
                 # 頂部基準標註
                 if i < len(top_baseline):
@@ -300,7 +314,7 @@ class LayoutEngine:
                         (layer_pos + sign * (-2), start_paper),
                         dxfattribs={'layer': 'DIM', 'color': 2}
                     )
-                    self._draw_vdim(msp, start_paper, top_paper, layer_pos, t.display_text)
+                    self._draw_vdim(msp, start_paper, top_paper, layer_pos, self._linear_display_text(t))
 
             if overall:
                 overall.sort(key=lambda t: (t.rank, -t.value))
@@ -308,7 +322,7 @@ class LayoutEngine:
                     p1 = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy)
                     p2 = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy)
                     overall_pos = contour_edge + sign * (self.ext_gap + (num_layers + oi) * self.layer_spacing)
-                    self._draw_vdim(msp, p1, p2, overall_pos, t.display_text)
+                    self._draw_vdim(msp, p1, p2, overall_pos, self._linear_display_text(t))
 
         elif chain:
             # === 串聯標註 ===
@@ -341,10 +355,11 @@ class LayoutEngine:
                 p2 = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy)
                 paper_dist = abs(p2 - p1)
                 stagger = 0.0
-                req_space = len(t.display_text) * char_width + 1.0
+                linear_text = self._linear_display_text(t)
+                req_space = len(linear_text) * char_width + 1.0
                 if paper_dist < req_space:
                     stagger = 2.5 if idx % 2 == 0 else -2.5
-                self._draw_vdim(msp, p1, p2, inner_pos, t.display_text, text_stagger=stagger)
+                self._draw_vdim(msp, p1, p2, inner_pos, linear_text, text_stagger=stagger)
 
             if overall:
                 overall.sort(key=lambda t: (t.rank, -t.value))
@@ -352,7 +367,7 @@ class LayoutEngine:
                     outer_pos = inner_pos + sign * self.layer_spacing * (oi + 1)
                     p1 = self._proj_to_paper_y(t.start_proj[1], bbox[1], scale, oy)
                     p2 = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy)
-                    self._draw_vdim(msp, p1, p2, outer_pos, t.display_text)
+                    self._draw_vdim(msp, p1, p2, outer_pos, self._linear_display_text(t))
 
         elif overall:
             contour_edge = ox + sw if side == "RIGHT" else ox
@@ -364,7 +379,7 @@ class LayoutEngine:
                 p2 = self._proj_to_paper_y(t.end_proj[1], bbox[1], scale, oy)
                 msp.add_line((contour_edge, p1), (pos + sign * (-2), p1), dxfattribs={'layer': 'DIM', 'color': 2})
                 msp.add_line((contour_edge, p2), (pos + sign * (-2), p2), dxfattribs={'layer': 'DIM', 'color': 2})
-                self._draw_vdim(msp, p1, p2, pos, t.display_text)
+                self._draw_vdim(msp, p1, p2, pos, self._linear_display_text(t))
 
     # =================================================================
     # 兩側直徑標註渲染 (水平延伸線 + 垂直尺寸線，左側/右側自適應)

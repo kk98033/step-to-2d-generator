@@ -4,10 +4,11 @@ from pathlib import Path
 import ezdxf
 
 from auto_2d_drawing.tolerance.audit_visual_assets import _feature_box
+from web_app.backend.account_api import is_admin_only_path, require_admin
 from web_app.backend.server import (
     _add_uncertainty_overlay,
     _modelspace_render_box,
-    get_tolerance_debug_component_details,
+    app as server_app,
     list_tolerance_cases,
     list_tolerance_debug_cases,
 )
@@ -17,6 +18,23 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class ToleranceAuditVisualTests(unittest.TestCase):
+    def test_tolerance_audit_pages_and_case_browser_are_admin_only(self):
+        protected_paths = (
+            "/tolerance-audit-v2.html",
+            "/tolerance-inspector.html",
+            "/api/tolerance/cases",
+            "/api/tolerance/debug/cases",
+            "/api/tolerance/audit/model-preview/case.png",
+        )
+        self.assertTrue(all(is_admin_only_path(path) for path in protected_paths))
+        self.assertFalse(is_admin_only_path("/api/tolerance/recommend"))
+        self.assertFalse(is_admin_only_path("/api/tolerance/drawing-pdf/example"))
+
+        for path in ("/tolerance-audit-v2.html", "/tolerance-inspector.html"):
+            route = next(route for route in server_app.routes if getattr(route, "path", None) == path)
+            dependency_calls = [item.call for item in route.dependant.dependencies]
+            self.assertIn(require_admin, dependency_calls)
+
     def test_cylindrical_feature_box_follows_axis(self):
         result = _feature_box({
             "matched_feature_source_info": {
@@ -160,40 +178,17 @@ class ToleranceAuditVisualTests(unittest.TestCase):
         self.assertTrue(drawings["cases"])
         self.assertTrue(all(item["product_family"] == selected for item in drawings["cases"]))
 
-    def test_debug_category_reads_isolated_latest_canonical_snapshot(self):
+    def test_debug_category_reads_latest_deployed_v1_database_snapshot(self):
         payload = list_tolerance_debug_cases()
         self.assertTrue(payload["debug_snapshot"])
-        self.assertEqual(payload["algorithm"], "CANONICAL_COMPONENT_TOLERANCE_REPLAY")
-        self.assertEqual(payload["total_count"], 5)
-        self.assertEqual(payload["verified_count"], 5)
-        self.assertEqual(len(payload["cases"]), 5)
-        blade = next(item for item in payload["cases"] if item["model_name"] == "AL0W_BLADE_H-R01")
-        self.assertEqual(blade["drawing_verified_extraction_count"], 0)
-        details = get_tolerance_debug_component_details(blade["model_name"])
-        linked = [
-            item for item in details["tolerances"]
-            if item.get("case_id") and (item.get("geometry_verification") or {}).get("passed")
-        ]
-        self.assertEqual(linked, [])
+        self.assertEqual(payload["algorithm"], "TOLERANCE_EXTRACTOR_V1_FULL_DATABASE")
+        self.assertEqual(payload["evidence_count"], 2181)
+        self.assertEqual(payload["verified_count"], 112)
+        self.assertGreater(payload["total_count"], 5)
         shaft = next(item for item in payload["cases"] if item["model_name"] == "2AL0W5010H-R01")
         self.assertEqual(shaft["drawing_case_count"], 5)
-        self.assertEqual(shaft["drawing_verified_extraction_count"], 2)
-        shaft_details = get_tolerance_debug_component_details(shaft["model_name"])
-        self.assertEqual(len(shaft_details["tolerances"]), 5)
-        shaft_links = {
-            item["entity_handle"]: item["matched_feature_id"]
-            for item in shaft_details["tolerances"]
-            if item.get("case_id")
-        }
-        self.assertEqual(shaft_links, {"2B11": "journal_main", "2B36": "step_01"})
-        wrong_fan = next(item for item in payload["cases"] if item["model_name"] == "2AL0W4010H-R01")
-        self.assertEqual(wrong_fan["drawing_verified_extraction_count"], 0)
-        self.assertTrue(all(item["model_available"] for item in shaft_details["tolerances"]))
-        self.assertTrue(all(item["uncertainty_diagnostic"] for item in shaft_details["tolerances"]))
-        self.assertEqual(
-            {item["uncertainty_diagnostic"]["status"] for item in shaft_details["tolerances"]},
-            {"NO_3D_NOMINAL_CANDIDATE", "INSUFFICIENT_GEOMETRY_EVIDENCE", "AUTO_VERIFIED"},
-        )
+        self.assertEqual(shaft["drawing_verified_extraction_count"], 4)
+        self.assertIn("debug=true", shaft["details_url"])
 
 
 if __name__ == "__main__":

@@ -368,14 +368,10 @@ AUDIT_MODEL_CACHE_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "auto_2d_drawing", "tolerance", "data", "audit_model_cache"
 )
-TOLERANCE_DEBUG_MANIFEST_PATH = os.path.abspath(os.environ.get(
-    "CAD_TOLERANCE_DEBUG_MANIFEST",
-    os.path.join(
-        PROJECT_ROOT,
-        "experimental_lab", "tolerance_extraction_audit", "experiments",
-        "2026-10-07", "latest_tolerance_debug.json",
-    ),
-))
+_debug_manifest_override = os.environ.get("CAD_TOLERANCE_DEBUG_MANIFEST")
+TOLERANCE_DEBUG_MANIFEST_PATH = (
+    os.path.abspath(_debug_manifest_override) if _debug_manifest_override else None
+)
 TOLERANCE_DEBUG_COMPONENT_ASSET_DIR = os.path.join(
     PROJECT_ROOT,
     "experimental_lab", "tolerance_extraction_audit", "experiments",
@@ -386,26 +382,75 @@ os.makedirs(PDF_CACHE_DIR, exist_ok=True)
 os.makedirs(AUDIT_MODEL_CACHE_DIR, exist_ok=True)
 TOLERANCE_VISUAL_CACHE_VERSION = "v2"
 _tolerance_debug_cache: Dict[str, Any] = {
+    "source_path": None,
     "mtime": None,
     "manifest": {},
     "cases": [],
 }
 
 
+def _resolve_latest_tolerance_debug_source() -> tuple[Optional[str], Dict[str, Any]]:
+    """Resolve DEBUG to the newest deployed V1 rebuild, not a dated fixture."""
+    if TOLERANCE_DEBUG_MANIFEST_PATH:
+        return TOLERANCE_DEBUG_MANIFEST_PATH, {}
+
+    experiments_root = os.path.join(
+        PROJECT_ROOT, "experimental_lab", "tolerance_extraction_audit", "experiments"
+    )
+    deployments = []
+    if os.path.isdir(experiments_root):
+        for root, _dirs, files in os.walk(experiments_root):
+            if "deployment_summary.json" not in files:
+                continue
+            summary_path = os.path.join(root, "deployment_summary.json")
+            try:
+                with open(summary_path, "r", encoding="utf-8") as handle:
+                    summary = json.load(handle)
+            except (OSError, ValueError):
+                continue
+            if str(summary.get("status") or "").upper() != "DEPLOYED":
+                continue
+            staging_path = os.path.join(root, "03_staging", "feature_case_base.json")
+            if os.path.isfile(staging_path):
+                deployments.append((os.path.getmtime(summary_path), staging_path, summary))
+    if deployments:
+        _mtime, source_path, summary = max(deployments, key=lambda item: item[0])
+        return source_path, summary
+
+    active_db = FeatureCaseBase.DEFAULT_DB_PATH
+    return (active_db, {}) if os.path.isfile(active_db) else (None, {})
+
+
 def _load_tolerance_debug_snapshot() -> tuple[Dict[str, Any], List[ToleranceCase]]:
     """Load the isolated latest experiment snapshot without mutating the case base."""
-    if not os.path.isfile(TOLERANCE_DEBUG_MANIFEST_PATH):
+    source_path, deployment = _resolve_latest_tolerance_debug_source()
+    if not source_path or not os.path.isfile(source_path):
         return {}, []
-    mtime = os.path.getmtime(TOLERANCE_DEBUG_MANIFEST_PATH)
-    if _tolerance_debug_cache["mtime"] != mtime:
-        with open(TOLERANCE_DEBUG_MANIFEST_PATH, "r", encoding="utf-8") as handle:
-            manifest = json.load(handle)
+    mtime = os.path.getmtime(source_path)
+    if (
+        _tolerance_debug_cache["source_path"] != source_path
+        or _tolerance_debug_cache["mtime"] != mtime
+    ):
+        with open(source_path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
         cases = []
-        result_groups = manifest.get("runs") or manifest.get("boards") or []
-        for result in result_groups:
-            for item in result.get("cases") or []:
-                cases.append(ToleranceCase(**item))
+        if isinstance(payload, list):
+            cases = [ToleranceCase(**item) for item in payload]
+            manifest = {
+                "algorithm": "TOLERANCE_EXTRACTOR_V1_FULL_DATABASE",
+                "generated_at": deployment.get("finished_at_utc")
+                or datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat(),
+                "source": os.path.relpath(source_path, PROJECT_ROOT),
+                "deployment": deployment,
+            }
+        else:
+            manifest = payload
+            result_groups = manifest.get("runs") or manifest.get("boards") or []
+            for result in result_groups:
+                for item in result.get("cases") or []:
+                    cases.append(ToleranceCase(**item))
         _tolerance_debug_cache.update({
+            "source_path": source_path,
             "mtime": mtime,
             "manifest": manifest,
             "cases": cases,
@@ -1202,9 +1247,13 @@ def list_tolerance_debug_cases(search: Optional[str] = None):
             "product_family": FeatureCaseBase.infer_product_family(model_name) or "DEBUG",
             "drawing_case_count": len(cases),
             "drawing_verified_extraction_count": sum(
-                1 for case in cases if case.is_verified_extraction()
+                1 for case in cases
+                if case.effective_verification_status() in {"AUTO_VERIFIED", "ENGINEER_VERIFIED"}
             ),
-            "verified_extraction": all(case.is_verified_extraction() for case in cases),
+            "verified_extraction": all(
+                case.effective_verification_status() in {"AUTO_VERIFIED", "ENGINEER_VERIFIED"}
+                for case in cases
+            ),
             "preview_image_url": f"/api/tolerance/drawing-svg/{model_name}",
             "svg_url": f"/api/tolerance/drawing-svg/{model_name}",
             "pdf_url": f"/api/tolerance/drawing-pdf/{model_name}",
@@ -1220,6 +1269,10 @@ def list_tolerance_debug_cases(search: Optional[str] = None):
         "generated_at": manifest.get("generated_at"),
         "total_count": len(rows),
         "evidence_count": len(debug_cases),
+        "verified_count": sum(
+            1 for case in debug_cases
+            if case.effective_verification_status() in {"AUTO_VERIFIED", "ENGINEER_VERIFIED"}
+        ),
         "page": 1,
         "page_size": len(rows),
         "total_pages": 1,
@@ -2938,7 +2991,11 @@ async def update_tolerances(
     }
 
 # === 前端網頁路由 ===
-@app.get("/tolerance-inspector.html", include_in_schema=False)
+@app.get(
+    "/tolerance-inspector.html",
+    include_in_schema=False,
+    dependencies=[Depends(require_admin)],
+)
 def tolerance_inspector_page():
     """Serve the source-controlled inspector even before a frontend rebuild."""
     public_page = os.path.join(
@@ -2952,7 +3009,11 @@ def tolerance_inspector_page():
     return FileResponse(public_page, media_type="text/html")
 
 
-@app.get("/tolerance-audit-v2.html", include_in_schema=False)
+@app.get(
+    "/tolerance-audit-v2.html",
+    include_in_schema=False,
+    dependencies=[Depends(require_admin)],
+)
 def tolerance_audit_v2_page():
     """Serve the performance-oriented visual tolerance audit page."""
     public_page = os.path.join(
