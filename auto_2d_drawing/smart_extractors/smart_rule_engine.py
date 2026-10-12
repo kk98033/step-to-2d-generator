@@ -18,29 +18,104 @@ from auto_2d_drawing.layout_engine import LayoutEngine
 from auto_2d_drawing.feature_extractor import FeatureExtractor
 from auto_2d_drawing.canonical_features import extract_canonical_features
 from auto_2d_drawing.part_classifier import PartClassifier
-from auto_2d_drawing.extractors.base_extractor import BaseExtractor
 from auto_2d_drawing.title_block import TitleBlock, setup_document
 from auto_2d_drawing.dxf_drawer import DxfDrawer
 from auto_2d_drawing.config import VIEW_CONFIG, PAPER_SIZES
 from auto_2d_drawing.pdf_exporter import export_pdf, export_png, export_svg
+from auto_2d_drawing.drawing_projection import (
+    diameter_endpoints,
+    feature_view_geometry,
+    linear_endpoints,
+)
 
 
-class SmartRuleExtractor(BaseExtractor):
+class SmartRuleExtractor:
     """
     動態幾何規則提取器：
     根據 3D 模型與 2D 投影，掃描並產出所有可能的幾何標註候選規則。
     """
 
     def extract(self, feature_data, view_data, view_name):
-        """實作 BaseExtractor 抽象介面"""
+        """Compatibility entry point retained for callers of the old interface."""
         return []
 
-    def extract_all_candidate_rules(self, shape, view_data: Dict[str, Any], part_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    @staticmethod
+    def _find_contour_vertices(edges, axis='x', tol=0.15, max_vertices=15):
+        """Cluster projected outline coordinates without importing legacy extractors."""
+        positions = set()
+        coordinate_index = 0 if axis == 'x' else 1
+        for edge in edges:
+            if edge.get('type') == 'line':
+                positions.add(float(edge['p1'][coordinate_index]))
+                positions.add(float(edge['p2'][coordinate_index]))
+            elif edge.get('points'):
+                positions.add(float(edge['points'][0][coordinate_index]))
+                positions.add(float(edge['points'][-1][coordinate_index]))
+        if not positions:
+            return []
+        values = sorted(positions)
+        total_range = values[-1] - values[0] if len(values) > 1 else 1.0
+        current_tolerance = max(float(tol), total_range * 0.005)
+        clustered = values
+        for _attempt in range(10):
+            clustered = [values[0]]
+            for value in values[1:]:
+                if abs(value - clustered[-1]) > current_tolerance:
+                    clustered.append(value)
+                else:
+                    clustered[-1] = (clustered[-1] + value) / 2.0
+            if len(clustered) <= max_vertices:
+                return clustered
+            current_tolerance *= 1.8
+        return clustered[:max_vertices]
+
+    @staticmethod
+    def _build_view_geometry(
+        geometry: Dict[str, Any],
+        view_data: Dict[str, Any],
+        dim_type: str,
+        nominal_value: float,
+        side: str,
+        base_payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Build independent, topology-derived anchors for every available view."""
+        result: Dict[str, Dict[str, Any]] = {}
+        for view_name in ("front", "top", "right", "left", "back"):
+            if view_name not in view_data:
+                continue
+            view_bbox = (view_data.get(view_name) or {}).get("bbox")
+            footprint = feature_view_geometry(geometry, view_name, view_bbox)
+            payload = dict(base_payload or {})
+            if dim_type == "LINEAR":
+                payload.update(linear_endpoints(footprint))
+            elif dim_type == "DIAMETER":
+                payload.update(diameter_endpoints(footprint))
+                payload["diameter"] = nominal_value
+                payload["radius"] = nominal_value / 2.0 if nominal_value > 0 else 0.0
+            elif dim_type == "CENTERLINES":
+                payload.update(linear_endpoints(footprint))
+            elif dim_type == "LEADER":
+                x0, _y0, x1, y1 = footprint["bbox"]
+                payload["start_proj"] = [x0 if side == "LEFT" else x1, y1]
+                payload["center"] = footprint["center"]
+            elif dim_type == "HOLE_PATTERN":
+                payload["center"] = footprint["center"]
+            payload["projected_feature_bbox"] = footprint["bbox"]
+            result[view_name] = payload
+        return result
+
+    def extract_all_candidate_rules(
+        self,
+        shape,
+        view_data: Dict[str, Any],
+        part_type: Optional[str] = None,
+        part_hint: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """
         掃描 3D 實體與所有投影視圖，產生結構化的候選標註規則列表。
         完全繼承 3D 特徵圖層中的所有 3D 特徵幾何定義 (38~44項特徵)，保證 3D 高亮與 2D 尺寸規則 100% 同步。
         """
-        feature_set = extract_canonical_features(shape, part_type=part_type)
+        feature_set = extract_canonical_features(shape, part_type=part_type, part_hint=part_hint)
         feat = feature_set.feature_extractor
         part_type = feature_set.part_type
         raw_3d_records = feature_set.records
@@ -88,6 +163,7 @@ class SmartRuleExtractor(BaseExtractor):
             baseline = "NONE"
             geom_payload = {}
             canonical_nominal_field = None
+            enabled = True
 
             # 1. 軸整體包絡 (overall_size)
             if rec_type in ("overall_size", "overall_bounds", "overall") or "overall" in rec_id:
@@ -96,8 +172,9 @@ class SmartRuleExtractor(BaseExtractor):
                 rank = 2
                 side = "BOTTOM"
                 baseline = "NONE"
-                nominal_val = round(rec_nom.get("length", rec_nom.get("height", overall_len)), 2)
-                canonical_nominal_field = "length" if "length" in rec_nom else ("height" if "height" in rec_nom else None)
+                front_footprint = feature_view_geometry(geo, "front", vd_front.get("bbox"))
+                nominal_val = round(max(front_footprint["width"], front_footprint["height"], overall_len), 2)
+                canonical_nominal_field = "length" if "length" in rec_nom else "projected_extent"
                 default_tol = "±0.10"
                 default_prefix = ""
                 bottom_rim_y = -h_real / 2.0 if is_horizontal else -w_real / 2.0
@@ -106,8 +183,7 @@ class SmartRuleExtractor(BaseExtractor):
                     "end_proj": [base_right, bottom_rim_y] if is_horizontal else [bottom_rim_y, base_right],
                     "axis": 'x' if is_horizontal else 'y'
                 }
-                r_copy["id"] = "shaft_overall"
-                r_copy["name"] = f"軸整體總長度 L{nominal_val:.2f}mm"
+                r_copy["name"] = f"{part_type} 整體投影尺寸 {nominal_val:.2f}mm"
 
             # 2. 基準軸心線 (datum)
             elif rec_type == "datum":
@@ -199,6 +275,9 @@ class SmartRuleExtractor(BaseExtractor):
                         "end_proj": [x_en, bottom_rim_y] if is_horizontal else [bottom_rim_y, x_en],
                         "axis": 'x' if is_horizontal else 'y'
                     }
+                    extra_rule["view_geometry"] = self._build_view_geometry(
+                        geo, view_data, "LINEAR", seg_len, "BOTTOM", extra_rule["geometry_payload"]
+                    )
                     extra_rule["enabled"] = True
                     rules.append(extra_rule)
 
@@ -256,6 +335,9 @@ class SmartRuleExtractor(BaseExtractor):
                         "end_proj": [x_en, bottom_rim_y] if is_horizontal else [bottom_rim_y, x_en],
                         "axis": 'x' if is_horizontal else 'y'
                     }
+                    extra_rule["view_geometry"] = self._build_view_geometry(
+                        geo, view_data, "LINEAR", groove_w, "BOTTOM", extra_rule["geometry_payload"]
+                    )
                     extra_rule["enabled"] = True
                     rules.append(extra_rule)
 
@@ -329,6 +411,20 @@ class SmartRuleExtractor(BaseExtractor):
                 }
 
             # 9. 壁厚 / 基準面 (wall_thickness)
+            elif rec_type == "wall_thickness" and "thickness" not in rec_nom:
+                # A datum face is represented by the same 3D plane record type
+                # as wall thickness in the feature layer.  Do not invent a
+                # false 1.00 mm dimension when no physical thickness exists.
+                category = "datum"
+                dim_type = "DATUM"
+                rank = 1
+                side = "TOP"
+                nominal_val = 0.0
+                default_tol = ""
+                default_prefix = ""
+                enabled = False
+                geom_payload = {}
+
             elif rec_type == "wall_thickness":
                 category = "thickness"
                 dim_type = "LINEAR"
@@ -367,15 +463,16 @@ class SmartRuleExtractor(BaseExtractor):
             else:
                 category = "general"
                 dim_type = "LINEAR"
-                nominal_val = 1.0
-                default_tol = "±0.1"
+                nominal_val = 0.0
+                default_tol = ""
                 geom_payload = {}
+                enabled = False
 
             # 預設多視角標註設定 (合理指派具備可見輪廓的視圖)
             if category in ("overall", "step"):
                 target_views = ["front"]
             elif category in ("shaft", "hole"):
-                target_views = ["front", "top"]
+                target_views = ["front"] if part_type in ("FAN_IMPELLER", "FAN_HOUSING") else ["front", "top"]
             elif category in ("groove",):
                 target_views = ["front", "top"]
             elif category in ("chamfer", "fillet"):
@@ -388,6 +485,18 @@ class SmartRuleExtractor(BaseExtractor):
                 target_views = ["top", "front"]
             else:
                 target_views = ["front"]
+
+            # Build independent anchors for every requested view.  Reusing a
+            # front-view point in top/right view was the main cause of detached
+            # dimensions on non-shaft components.
+            view_geometry = self._build_view_geometry(
+                geo, view_data, dim_type, nominal_val, side, geom_payload
+            )
+
+            if preferred_view not in view_geometry and target_views:
+                preferred_view = target_views[0]
+            if preferred_view in view_geometry:
+                geom_payload = view_geometry[preferred_view]
 
             # 封裝規則物件
             r_copy["rule_id"] = rec_id
@@ -405,7 +514,9 @@ class SmartRuleExtractor(BaseExtractor):
             r_copy["rank"] = rank
             r_copy["baseline"] = baseline
             r_copy["geometry_payload"] = geom_payload
-            r_copy["enabled"] = True
+            r_copy["view_geometry"] = view_geometry
+            r_copy["part_type"] = part_type
+            r_copy["enabled"] = enabled
 
             rules.append(r_copy)
 
@@ -989,9 +1100,15 @@ class SmartDimensionEngine:
     def __init__(self):
         self.rule_extractor = SmartRuleExtractor()
 
-    def get_candidate_rules(self, shape, view_data: Dict[str, Any], part_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_candidate_rules(
+        self,
+        shape,
+        view_data: Dict[str, Any],
+        part_type: Optional[str] = None,
+        part_hint: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """取得該零件的所有候選標註規則"""
-        return self.rule_extractor.extract_all_candidate_rules(shape, view_data, part_type)
+        return self.rule_extractor.extract_all_candidate_rules(shape, view_data, part_type, part_hint)
 
     def render_custom_drawing(
         self,
@@ -1039,6 +1156,7 @@ class SmartDimensionEngine:
             rank = int(rule.get("rank", 1))
             baseline = str(rule.get("baseline", "NONE"))
             payload = rule.get("geometry_payload", {})
+            view_geometry = rule.get("view_geometry") or {}
 
             # 格式化標註文字
             if prefix and not prefix.endswith(" ") and not prefix.endswith("Φ"):
@@ -1069,6 +1187,13 @@ class SmartDimensionEngine:
             for tv in target_views:
                 if tv not in view_tasks:
                     continue
+
+                payload = view_geometry.get(tv) or rule.get("geometry_payload", {})
+                start_proj = tuple(payload.get("start_proj", [0.0, 0.0]))
+                end_proj = tuple(payload.get("end_proj", [0.0, 0.0]))
+                center = tuple(payload.get("center", [0.0, 0.0])[:2]) if "center" in payload else (0.0, 0.0)
+                radius = float(payload.get("radius", val / 2.0 if val > 0 else 10.0))
+                angle = float(payload.get("angle", 45.0))
 
                 for cur_side in rule_sides:
                     tv_side = cur_side
@@ -1102,8 +1227,8 @@ class SmartDimensionEngine:
                         wt, ht = vd_t.get('size', (100, 100))
                         if dim_type == "DIAMETER":
                             tv_dim_type = "DIAMETER"
-                            tv_center = (0.0, 0.0)
-                            tv_radius = val / 2.0 if val > 0 else radius
+                            tv_center = center
+                            tv_radius = radius if radius > 0 else (val / 2.0 if val > 0 else 0.0)
                             # 依規則 ID 錯開頂視圖直徑引線角度 (45°, 135°, -45°)
                             if "overall" in rule_id or "journal" in rule_id:
                                 tv_angle = 45.0
@@ -1116,17 +1241,15 @@ class SmartDimensionEngine:
                             tv_start = start_proj if start_proj and start_proj != (0.0, 0.0) else (-wt / 2.0, 0.0)
                             tv_end = end_proj if end_proj and end_proj != (0.0, 0.0) else (wt / 2.0, 0.0)
                         elif dim_type in ("CENTERLINES",):
-                            tv_center = (0.0, 0.0)
-                            tv_radius = max(wt, ht) / 2.0 + 3.0
-                            tv_start = None
-                            tv_end = None
+                            tv_center = center
+                            tv_radius = radius if radius > 0 else max(wt, ht) / 2.0 + 3.0
                         elif dim_type in ("LEADER",):
                             tv_center = None
                             tv_radius = 0.0
                             tv_start = start_proj
                             tv_angle = float(payload.get("angle", 45.0))
                         elif dim_type in ("HOLE_PATTERN",):
-                            tv_center = (0.0, 0.0)
+                            tv_center = center
                             tv_radius = radius
 
                     elif tv == "right":
@@ -1134,20 +1257,21 @@ class SmartDimensionEngine:
                         wr, hr = vd_r.get('size', (100, 100))
                         if dim_type == "DIAMETER" or category in ("shaft", "hole", "groove"):
                             tv_dim_type = "DIAMETER"
-                            tv_center = (0.0, 0.0)
-                            tv_radius = val / 2.0 if val > 0 else max(wr, hr) / 2.0
+                            tv_center = center
+                            tv_radius = radius if radius > 0 else (val / 2.0 if val > 0 else max(wr, hr) / 2.0)
                             tv_angle = 45.0
                         elif dim_type == "CENTERLINES":
-                            tv_center = (0.0, 0.0)
-                            tv_radius = max(wr, hr) / 2.0
+                            tv_center = center
+                            tv_radius = radius if radius > 0 else max(wr, hr) / 2.0
                         elif dim_type == "LEADER":
-                            tv_center = (0.0, 0.0)
-                            tv_radius = min(wr, hr) / 2.0
+                            tv_center = center
+                            tv_radius = radius if radius > 0 else min(wr, hr) / 2.0
                             tv_angle = 45.0
                         elif dim_type == "LINEAR":
                             tv_side = "RIGHT"
-                            tv_start = (0.0, -hr / 2.0)
-                            tv_end = (0.0, hr / 2.0)
+                            if tv_start == (0.0, 0.0) and tv_end == (0.0, 0.0):
+                                tv_start = (0.0, -hr / 2.0)
+                                tv_end = (0.0, hr / 2.0)
 
                     task = DimensionTask(
                         dim_type=tv_dim_type,

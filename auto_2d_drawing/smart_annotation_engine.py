@@ -6,6 +6,7 @@
   1. TemplateManager: 樣板管理器 (載入、儲存、刪除、比對與一鍵套用風格化樣板)
   2. SmartAnnotationEngine: 由候選標註規則提取器與尺寸排版引擎組成，實現高精度幾何對齊與客製化出圖
 """
+import copy
 import os
 import re
 import json
@@ -86,11 +87,12 @@ class TemplateManager:
         updated_rules = []
 
         for item in candidate_rules:
-            item_copy = dict(item)
+            item_copy = copy.deepcopy(item)
             cat = str(item.get("category", "")).lower()
             dim_type = str(item.get("dim_type", "")).lower()
             rule_id = str(item.get("rule_id", "")).lower()
             name = str(item.get("name", "")).lower()
+            role = str(item.get("role", "")).lower()
 
             matched = False
             for r in rules:
@@ -109,16 +111,36 @@ class TemplateManager:
 
                 if match_cat:
                     if role_pattern:
-                        if not (re.search(role_pattern, name, re.IGNORECASE) or re.search(role_pattern, rule_id, re.IGNORECASE)):
+                        if not any(
+                            re.search(role_pattern, value, re.IGNORECASE)
+                            for value in (name, rule_id, role)
+                        ):
                             continue
 
                     item_copy["enabled"] = r.get("enabled", True)
                     if "preferred_view" in r:
                         item_copy["preferred_view"] = r["preferred_view"]
+                        if "views" not in r and "target_views" not in r:
+                            item_copy["views"] = [r["preferred_view"]]
+                            item_copy["target_views"] = [r["preferred_view"]]
+                    if "views" in r or "target_views" in r:
+                        selected_views = list(r.get("views") or r.get("target_views") or [])
+                        item_copy["views"] = selected_views
+                        item_copy["target_views"] = selected_views
                     if "tolerance" in r:
                         item_copy["tolerance"] = r["tolerance"]
                     if "side" in r:
                         item_copy["side"] = r["side"]
+                        item_copy["sides"] = [r["side"]]
+                    if "sides" in r:
+                        item_copy["sides"] = list(r["sides"])
+                    for key in ("dim_type", "baseline", "rank", "prefix", "default_prefix", "offset"):
+                        if key in r:
+                            item_copy[key] = r[key]
+                    if "leader_angle" in r:
+                        item_copy.setdefault("geometry_payload", {})["angle"] = r["leader_angle"]
+                        for payload in (item_copy.get("view_geometry") or {}).values():
+                            payload["angle"] = r["leader_angle"]
                     matched = True
                     break
 
@@ -136,9 +158,15 @@ class SmartAnnotationEngine:
     def __init__(self):
         self.engine = SmartDimensionEngine()
 
-    def get_candidate_rules(self, shape, view_data: Dict[str, Any], part_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_candidate_rules(
+        self,
+        shape,
+        view_data: Dict[str, Any],
+        part_type: Optional[str] = None,
+        part_hint: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """提取該零件之所有候選標註規則"""
-        return self.engine.get_candidate_rules(shape, view_data, part_type)
+        return self.engine.get_candidate_rules(shape, view_data, part_type, part_hint)
 
     def render_custom_drawing(
         self,
