@@ -11,6 +11,16 @@
 - XCAF 組件實際裝配位置保留與剖面輪廓來源追蹤。
 - 單件特徵、單件複合跨度、跨零件組立跨度三層分類。
 
+## 風扇角度尺寸的判定界線
+
+輪轂附近放射狀肋、槽或邊界的角度尺寸，應分類為
+`hub_radial_feature.included_angle`：數值來自尺寸所附著的兩條實際徑向邊之夾角。
+不得以 `360° / 葉片數` 代替。`360° / N` 只能在圖面明確表達等分重複節距時，作為
+`repeated_radial_pattern.pitch_angle` 的候選值。若兩條參考邊沒有被可靠辨識，必須降級為
+`REVIEW_CANDIDATE` 或 `UNRESOLVED`，而不是自動驗證。
+
+這項語意與 `blade_profile.bend_angle`、葉片攻角／扭轉角及圓角半徑是不同的特徵種類。
+
 組立件流程不使用檔名或固定座標判斷。它沿用完整組立中央剖面的註冊結果，分別投影每個 placed occurrence，再將 DXF 尺寸端點歸屬到來源零件。只有兩端輪廓歸屬與 STEP 量測同時通過時才升級為 `VERIFIED`；推測出的端點只保留為 `CANDIDATE_ONLY`。
 
 執行：

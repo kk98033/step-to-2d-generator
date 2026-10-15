@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "engine_version": "drawing-experimental-v0.18.0",
+  "updated_at": "2026-10-15",
+  "deployment_status": "EXPERIMENT_ONLY",
+  "production_integrated": false,
+  "entrypoint": "DRAWING_CURRENT_FINAL/experimental_main.py",
+  "principles": [
+    "geometry_and_semantics_before_part_name",
+    "no_hardcoded_3d_coordinates",
+    "historical_drawings_rank_intents_but_do_not_invent_geometry",
+    "review_candidates_remain_visible_to_engineers"
+  ],
+  "capabilities": [
+    {
+      "id": "view_plan",
+      "source_experiment": "2026-10-13/01_view_plan_v1",
+      "module": "common/scripts/run_view_plan_experiment.py",
+      "status": "EXPERIMENTAL_VERIFIED"
+    },
+    {
+      "id": "geometry_triggered_half_section",
+      "source_experiment": "2026-10-13/02_fan_section_render_v1",
+      "module": "common/scripts/run_fan_section_render_experiment.py",
+      "status": "EXPERIMENTAL_VERIFIED",
+      "trigger_policy": "geometry_evidence_only_not_filename"
+    },
+    {
+      "id": "classification_tree",
+      "source_experiment": "2026-10-13/04_full_classification_audit_v1",
+      "module": "common/scripts/run_full_classification_audit.py",
+      "status": "EXPERIMENTAL_VERIFIED"
+    },
+    {
+      "id": "feature_anchor_repair",
+      "source_experiment": "2026-10-13/05_feature_anchor_repair_v1",
+      "module": "common/scripts/feature_anchor_repair.py",
+      "status": "EXPERIMENTAL_VERIFIED"
+    },
+    {
+      "id": "annular_composite_features",
+      "source_experiment": "2026-10-13/06_annular_composite_feature_audit_v1",
+      "module": "common/scripts/annular_composite_features.py",
+      "callable": "extract_annular_composites",
+      "status": "ACTIVE_IN_ENTRYPOINT"
+    },
+    {
+      "id": "solid_shaft_features",
+      "source_experiment": "2026-10-13/07_solid_shaft_dimension_audit_v1",
+      "module": "common/scripts/solid_shaft_features.py",
+      "callable": "extract_solid_shaft_features",
+      "status": "ACTIVE_IN_ENTRYPOINT"
+    },
+    {
+      "id": "unified_dimension_intents",
+      "source_experiment": "2026-10-13/08_dimension_intent_unification_v1",
+      "module": "common/scripts/dimension_intents.py",
+      "callable": "build_dimension_intent_set",
+      "status": "ACTIVE_IN_ENTRYPOINT"
+    },
+    {
+      "id": "automatic_dimension_layout",
+      "source_experiment": "2026-10-13/09_automatic_dimension_layout_v1",
+      "module": "common/scripts/dimension_layout.py",
+      "status": "EXPERIMENTAL_VERIFIED"
+    },
+    {
+      "id": "historical_drawing_comparison",
+      "source_experiment": "2026-10-13/10_1_historical_drawing_comparison_v2",
+      "module": "common/scripts/historical_view_comparison.py",
+      "status": "EXPERIMENTAL_VERIFIED"
+    },
+    {
+      "id": "hub_radial_relations",
+      "source_experiment": "2026-10-13/11_relational_dimension_intent_v1",
+      "module": "common/scripts/relational_dimension_intents.py",
+      "callable": "detect_hub_radial_partitions",
+      "status": "ACTIVE_IN_ENTRYPOINT",
+      "note": "Measures detected radial boundaries; never uses 360 divided by blade count."
+    },
+    {
+      "id": "rectangular_hole_relations",
+      "source_experiment": "2026-10-13/11_relational_dimension_intent_v1",
+      "module": "common/scripts/relational_dimension_intents.py",
+      "callable": "detect_rectangular_hole_pattern",
+      "status": "ACTIVE_IN_ENTRYPOINT"
+    },
+    {
+      "id": "angular_dimension_renderer",
+      "source_experiment": "2026-10-13/11_relational_dimension_intent_v1",
+      "module": "common/scripts/angular_dimension_renderer.py",
+      "callable": "build_angular_render_tasks",
+      "status": "EXPERIMENTAL_VERIFIED"
+    },
+    {
+      "id": "generic_paired_surface_thickness",
+      "source_experiment": "2026-10-15/18_thin_wall_dimension_integration_v1",
+      "module": "common/scripts/thin_wall_dimension_pipeline.py",
+      "callable": "extract_thin_wall_dimension",
+      "status": "ACTIVE_IN_ENTRYPOINT",
+      "trigger_policy": "geometry_only_no_part_name",
+      "note": "Supports curved periodic paired boundaries and planar face pairs; variable profiles remain review candidates."
+    },
+    {
+      "id": "local_thickness_dimension_renderer",
+      "source_experiment": "2026-10-15/18_thin_wall_dimension_integration_v1",
+      "module": "common/scripts/thickness_dimension_renderer.py",
+      "callable": "build_thickness_render_task",
+      "status": "EXPERIMENTAL_VERIFIED",
+      "note": "Keeps STEP nominal value, drawing display value, tolerance, and tolerance provenance separate."
+    }
+  ],
+  "known_gaps": [
+    "automatic_selection_of_which_relations_should_be_dimensioned",
+    "automatic_section_plan_for_unknown_models",
+    "persistent_hlr_edge_to_brep_topology_identity",
+    "unified_full_dxf_render_orchestration",
+    "cross_family_false_positive_benchmark",
+    "automatic_historical_tolerance_selection_for_new_thin_walls"
+  ],
+  "next_experiment": "19_cross_family_false_positive_and_view_selection_benchmark"
+}

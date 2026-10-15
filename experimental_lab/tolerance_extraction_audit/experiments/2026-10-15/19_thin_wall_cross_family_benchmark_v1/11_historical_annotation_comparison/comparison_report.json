@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "historical_drawing": "D:\\School\\力致\\app\\step-to-2d-generator\\experimental_lab\\tolerance_extraction_audit\\experiments\\2026-10-15\\19_thin_wall_cross_family_benchmark_v1\\11_historical_annotation_comparison\\00_historical_full_sheet.png",
+  "cases": [
+    {
+      "case": "synthetic_annular_cylindrical_wall",
+      "historical_annotation": null,
+      "reason": "synthetic benchmark control",
+      "typical_annotation": "section view with outer/inner diameters or radial wall thickness"
+    },
+    {
+      "case": "real_complete_radial_blade_assembly",
+      "historical_annotation": "1AC085000H-R02",
+      "direct_blade_thickness_dimension": false,
+      "actual_annotations": [
+        "angular partitions",
+        "diameters",
+        "radii",
+        "E-E hub section"
+      ]
+    },
+    {
+      "case": "real_low_count_radial_blade_component",
+      "historical_annotation": "shared assembly drawing 1AC085000H-R02",
+      "independent_part_drawing": false,
+      "direct_blade_thickness_dimension": false
+    }
+  ],
+  "conclusion": "The two real false negatives are geometry-feature recall failures, not proven historical dimension-selection failures."
+}

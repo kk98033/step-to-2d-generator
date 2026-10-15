@@ -2,6 +2,12 @@
 
 > Git 正式基準：Tolerance Extractor V1（2026-10-11）。版本範圍、正式入口與驗證數據請先閱讀 [V1_RELEASE.md](V1_RELEASE.md)。
 
+## 2D 繪圖實驗唯一目前基準
+
+繪圖實驗 01–11 已整理到 [`DRAWING_CURRENT_FINAL/`](DRAWING_CURRENT_FINAL/)；後續未知模型
+自動化、視角／剖面選擇、尺寸語意與排版實驗，都以該目錄的 manifest、固定入口與 regression
+為主，不再從單一編號實驗複製出另一套引擎。這套繪圖主線仍是實驗版，尚未部署到正式網頁。
+
 ## 正式案例資料庫全量重建與部署
 
 每次 `CURRENT_FINAL` 公差／特徵提取器完成一版後，使用根目錄的
@@ -86,6 +92,17 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\CURRENT_FINAL\run.ps1
 - 同時測試一般 HLR、正負半空間 Boolean cut、兩個徑向中央剖面 `BRepAlgoAPI_Section`。
 - 依 contour、extent、scale gate 自動選擇；目前 `1AL0W5000H-R03` 是中央剖面勝出。
 - 剖面對準只代表 drawing-view evidence 通過，不能取代名目尺寸與 B-Rep feature 驗證。
+
+### 風扇輪轂徑向結構的角度尺寸語意（2026-10-13 註記）
+
+風扇圖面中靠近中心軸、呈一條一條放射狀的肋、槽或邊界，其角度標註代表的是**圖面所指定兩條實際徑向基準之間的夾角**，不是用葉片數推導的平均節距角。
+
+- 禁止以 `360° / 葉片數` 直接產生、恢復或驗證這類角度數值。
+- 必須先找出角度尺寸的兩條延伸線／引線所指向的徑向邊，再以動態求得的輪轂中心建立兩條射線並量測夾角。
+- 同一個零件可同時存在多組不相等的徑向間隔角；葉片數只能作為重複圖樣的輔助證據，不能取代尺寸附著關係。
+- 此語意記為 `hub_radial_feature.included_angle`；只有圖面明確標註等分節距時，才可使用 `repeated_radial_pattern.pitch_angle`。
+- 它也不同於葉片輪廓的彎曲角、攻角、扭轉角，以及 `R2.15` 之類的圓角／曲率半徑。
+- 若無法確認兩條被標註的徑向邊，結果只能保留為 `REVIEW_CANDIDATE`／`UNRESOLVED`，不可退回 `360° / N` 猜測。
 
 本次證據：一般投影 contour `0.5842`、半空間切半 `0.6263`、中央剖面 `0.7938`；中央剖面通過自動視圖門檻。
 
