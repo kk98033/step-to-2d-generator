@@ -4,6 +4,8 @@ import uuid
 import json
 import shutil
 import secrets
+import threading
+import hashlib
 from math import isfinite
 from typing import Dict, Any, List, Optional, Literal
 from datetime import datetime, timezone
@@ -79,8 +81,69 @@ async def add_no_cache_header(request, call_next):
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 app.mount("/api/files", StaticFiles(directory=OUTPUT_DIR), name="files")
 
-jobs = {}
-executor = ThreadPoolExecutor(max_workers=2)
+jobs: Dict[str, Dict[str, Any]] = {}
+jobs_lock = threading.RLock()
+ACTIVE_JOB_STATUSES = {"queued", "processing", "finalizing"}
+try:
+    ANALYSIS_MAX_WORKERS = max(1, min(4, int(os.environ.get("CAD_ANALYSIS_MAX_WORKERS", "1"))))
+except ValueError:
+    ANALYSIS_MAX_WORKERS = 1
+executor = ThreadPoolExecutor(max_workers=ANALYSIS_MAX_WORKERS, thread_name_prefix="cad-analysis")
+try:
+    ANNOTATION_MAX_CONCURRENCY = max(1, min(4, int(os.environ.get("CAD_ANNOTATION_MAX_CONCURRENCY", "1"))))
+except ValueError:
+    ANNOTATION_MAX_CONCURRENCY = 1
+annotation_slots = threading.BoundedSemaphore(ANNOTATION_MAX_CONCURRENCY)
+annotation_state_lock = threading.RLock()
+active_annotation_users: Dict[str, Dict[str, Any]] = {}
+
+
+def _utc_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _active_job_for_user(user_id: str) -> Optional[tuple[str, Dict[str, Any]]]:
+    with jobs_lock:
+        active = [
+            (job_id, job) for job_id, job in jobs.items()
+            if job.get("owner_user_id") == user_id and job.get("status") in ACTIVE_JOB_STATUSES
+        ]
+        return min(active, key=lambda item: item[1].get("created_at", "")) if active else None
+
+
+def _queue_position(job_id: str) -> int:
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if not job or job.get("status") != "queued":
+            return 0
+        queued = sorted(
+            [(item_id, item) for item_id, item in jobs.items() if item.get("status") == "queued"],
+            key=lambda item: item[1].get("created_at", ""),
+        )
+        return next((index for index, (item_id, _) in enumerate(queued, start=1) if item_id == job_id), 0)
+
+
+def _set_job_state(job_id: str, **updates: Any) -> None:
+    with jobs_lock:
+        if job_id in jobs:
+            jobs[job_id].update(updates)
+            jobs[job_id]["updated_at"] = _utc_iso()
+
+
+def _job_status_payload(job_id: str, job: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "job_id": job_id,
+        "status": job["status"],
+        "message": job["message"],
+        "progress": {"current": job.get("current", 0), "total": job.get("total", 0)},
+        "logs": job.get("logs", []),
+        "filename": job.get("filename"),
+        "queue_position": _queue_position(job_id),
+        "created_at": job.get("created_at"),
+        "started_at": job.get("started_at"),
+        "updated_at": job.get("updated_at"),
+        "worker_limit": ANALYSIS_MAX_WORKERS,
+    }
 
 
 def _api_file_url(output_dir_name: str, *parts: str) -> str:
@@ -2209,13 +2272,39 @@ def render_custom_annotation_drawing(
     if not stp_path:
         raise HTTPException(status_code=404, detail=f"STEP file for {part_id} not found")
 
-    try:
-        # 1. 載入實體並執行投影
-        shape = load_step(stp_path)
-        projector = ViewProjector()
-        view_data = projector.project_all_views(shape, view_names=['front', 'top', 'right', 'left'])
+    with annotation_state_lock:
+        active = active_annotation_users.get(current_user.id)
+        if active:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "ANNOTATION_ALREADY_RUNNING",
+                    "message": "此帳號已有標註圖正在產生",
+                    "model_id": active.get("model_id"),
+                    "part_id": active.get("part_id"),
+                    "started_at": active.get("started_at"),
+                },
+            )
+        active_annotation_users[current_user.id] = {
+            "model_id": model_id,
+            "part_id": part_id,
+            "started_at": _utc_iso(),
+        }
+    if not annotation_slots.acquire(blocking=False):
+        with annotation_state_lock:
+            active_annotation_users.pop(current_user.id, None)
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "ANNOTATION_CAPACITY_BUSY",
+                "message": "標註系統正忙碌，請稍後再試",
+                "capacity": ANNOTATION_MAX_CONCURRENCY,
+            },
+            headers={"Retry-After": "3"},
+        )
 
-        # 2. 準備客製輸出目錄
+    try:
+        # 1. 準備使用者隔離的輸出與快取資料
         user_workspace = _user_workspace(output_dir, current_user.id)
         custom_out_dir = os.path.join(user_workspace, "_custom_annotations", part_id)
         os.makedirs(custom_out_dir, exist_ok=True)
@@ -2223,6 +2312,50 @@ def render_custom_annotation_drawing(
         dxf_path = os.path.join(custom_out_dir, f"{part_id}_custom.dxf")
         pdf_path = os.path.join(custom_out_dir, f"{part_id}_custom.pdf")
         png_path = os.path.join(custom_out_dir, f"{part_id}_custom.png")
+        svg_path = os.path.join(custom_out_dir, f"{part_id}_custom.svg")
+        manifest_path = os.path.join(custom_out_dir, ".render_request.json")
+        request_hash = hashlib.sha256(json.dumps(
+            {
+                "model_id": model_id,
+                "part_id": part_id,
+                "feature_records": feature_records,
+                "title_info": title_info,
+                "storage_tag_ids": storage_tag_ids,
+                "part_category": body.get("part_category"),
+                "product_family": body.get("product_family"),
+            },
+            sort_keys=True,
+            ensure_ascii=False,
+            default=str,
+        ).encode("utf-8")).hexdigest()
+
+        relative_parts = ("_users", current_user.id, "_custom_annotations", part_id)
+        output_files = {
+            "dxf_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.dxf"),
+            "pdf_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.pdf"),
+            "svg_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.svg"),
+            "png_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.png"),
+        }
+        if os.path.exists(manifest_path) and all(
+            os.path.exists(path) for path in (dxf_path, pdf_path, png_path, svg_path)
+        ):
+            try:
+                with open(manifest_path, "r", encoding="utf-8") as manifest_file:
+                    cached_manifest = json.load(manifest_file)
+                if cached_manifest.get("request_hash") == request_hash:
+                    return {
+                        "status": "ok",
+                        **output_files,
+                        "timestamp": cached_manifest.get("timestamp") or uuid.uuid4().hex[:8],
+                        "cached": True,
+                    }
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        # 2. 載入實體並執行投影
+        shape = load_step(stp_path)
+        projector = ViewProjector()
+        view_data = projector.project_all_views(shape, view_names=['front', 'top', 'right', 'left'])
 
         # 3. 呼叫智慧標註引擎渲染
         engine = SmartAnnotationEngine()
@@ -2235,13 +2368,6 @@ def render_custom_annotation_drawing(
             title_info=title_info
         )
 
-        relative_parts = ("_users", current_user.id, "_custom_annotations", part_id)
-        output_files = {
-            "dxf_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.dxf"),
-            "pdf_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.pdf"),
-            "svg_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.svg"),
-            "png_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.png"),
-        }
         learning = identity_store.record_artifact_and_cases(
             user=current_user,
             model_id=model_id,
@@ -2254,17 +2380,32 @@ def render_custom_annotation_drawing(
             tag_ids=storage_tag_ids,
         )
 
+        timestamp = uuid.uuid4().hex[:8]
+        manifest_temp_path = f"{manifest_path}.{uuid.uuid4().hex}.tmp"
+        with open(manifest_temp_path, "w", encoding="utf-8") as manifest_file:
+            json.dump({
+                "request_hash": request_hash,
+                "timestamp": timestamp,
+                "rendered_at": _utc_iso(),
+            }, manifest_file, ensure_ascii=False, indent=2)
+        os.replace(manifest_temp_path, manifest_path)
+
         return {
             "status": "ok",
             **output_files,
             **learning,
-            "timestamp": uuid.uuid4().hex[:8]
+            "timestamp": timestamp,
+            "cached": False,
         }
     except Exception as e:
         print(f"Custom annotation render error: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        annotation_slots.release()
+        with annotation_state_lock:
+            active_annotation_users.pop(current_user.id, None)
 
 
 def _candidate_annotation_rules_impl(model_id: str, part_id: str):
@@ -2437,13 +2578,15 @@ def _build_drawing_package(model_id: str, user_id: Optional[str] = None) -> dict
 
 def run_job(job_id: str, file_path: str):
     def progress_callback(total, current, message):
-        jobs[job_id]["total"] = total
-        jobs[job_id]["current"] = current
-        jobs[job_id]["message"] = message
-        if total > 0 and total == current:
-            jobs[job_id]["status"] = "completed"
+        _set_job_state(job_id, total=total, current=current, message=message)
 
     try:
+        _set_job_state(
+            job_id,
+            status="processing",
+            message="已取得工作執行權，準備處理模型...",
+            started_at=_utc_iso(),
+        )
         model_name = os.path.splitext(os.path.basename(file_path))[0]
         output_dir_name = jobs[job_id]["requested_model_id"]
         output_dir = os.path.join(OUTPUT_DIR, output_dir_name)
@@ -2459,6 +2602,7 @@ def run_job(job_id: str, file_path: str):
         }
         
         batch_generate(file_path, output_dir, assembly_info, progress_cb=progress_callback)
+        _set_job_state(job_id, status="finalizing", message="工程圖已產生，正在整理索引與權限...")
         
         # Read assembly tree to return as result
         tree_path = os.path.join(output_dir, "_parts", "assembly_tree.json")
@@ -2472,16 +2616,14 @@ def run_job(job_id: str, file_path: str):
             jobs[job_id]["owner_user_id"],
             jobs[job_id].get("filename"),
         )
-        jobs[job_id]["status"] = "completed"
-        jobs[job_id]["message"] = "處理完成"
+        _set_job_state(job_id, status="completed", message="處理完成", completed_at=_utc_iso())
         
     except Exception as e:
-        jobs[job_id]["status"] = "error"
-        jobs[job_id]["message"] = f"發生錯誤: {str(e)}"
+        _set_job_state(job_id, status="error", message=f"發生錯誤: {str(e)}", completed_at=_utc_iso())
 
 
 @app.post("/api/upload")
-async def upload_file(
+def upload_file(
     file: UploadFile = File(...),
     current_user: CurrentUser = Depends(require_user),
 ):
@@ -2490,29 +2632,49 @@ async def upload_file(
     safe_filename = os.path.basename(file.filename or "")
     if not safe_filename or os.path.splitext(safe_filename)[1].lower() not in {".stp", ".step"}:
         raise HTTPException(status_code=400, detail="Only STEP/STP files are supported")
-    user_model_dir = os.path.join(MODELS_DIR, "_users", current_user.id)
-    os.makedirs(user_model_dir, exist_ok=True)
-    file_path = os.path.join(user_model_dir, safe_filename)
     model_name = os.path.splitext(safe_filename)[0]
     requested_model_id = f"{model_name}_{job_id[:8]}_batch"
+    with jobs_lock:
+        active = _active_job_for_user(current_user.id)
+        if active:
+            active_id, active_job = active
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "ACTIVE_JOB_EXISTS",
+                    "message": "此帳號已有模型工作進行中",
+                    "job": _job_status_payload(active_id, active_job),
+                },
+            )
+        now = _utc_iso()
+        jobs[job_id] = {
+            "status": "queued",
+            "total": 0,
+            "current": 0,
+            "message": "已接收工作，正在等待 CAD 處理資源...",
+            "filename": safe_filename,
+            "owner_user_id": current_user.id,
+            "requested_model_id": requested_model_id,
+            "result": None,
+            "output_dir": None,
+            "created_at": now,
+            "updated_at": now,
+            "started_at": None,
+        }
+
+    user_model_dir = os.path.join(MODELS_DIR, "_users", current_user.id, job_id)
+    os.makedirs(user_model_dir, exist_ok=True)
+    file_path = os.path.join(user_model_dir, safe_filename)
     
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as exc:
+        _set_job_state(job_id, status="error", message=f"上傳檔案儲存失敗: {exc}", completed_at=_utc_iso())
+        raise HTTPException(status_code=500, detail="Failed to store uploaded STEP file") from exc
         
-    jobs[job_id] = {
-        "status": "processing",
-        "total": 0,
-        "current": 0,
-        "message": "已接收檔案，準備開始處理...",
-        "filename": safe_filename,
-        "owner_user_id": current_user.id,
-        "requested_model_id": requested_model_id,
-        "result": None,
-        "output_dir": None
-    }
-    
     executor.submit(run_job, job_id, file_path)
-    return {"job_id": job_id}
+    return {"job_id": job_id, "status": "queued", "queue_position": _queue_position(job_id)}
 
 
 @app.get("/api/status/{job_id}")
@@ -2522,11 +2684,15 @@ async def get_status(job_id: str, current_user: CurrentUser = Depends(require_us
     job = jobs[job_id]
     if not current_user.is_admin and job.get("owner_user_id") != current_user.id:
         raise HTTPException(status_code=404, detail="Job not found")
+    return _job_status_payload(job_id, job)
+
+
+@app.get("/api/jobs/active")
+async def get_active_job(current_user: CurrentUser = Depends(require_user)):
+    active = _active_job_for_user(current_user.id)
     return {
-        "status": job["status"],
-        "message": job["message"],
-        "progress": {"current": job.get("current", 0), "total": job.get("total", 0)},
-        "logs": job.get("logs", [])
+        "status": "ok",
+        "job": _job_status_payload(active[0], active[1]) if active else None,
     }
 
 
@@ -2554,15 +2720,21 @@ async def get_results(job_id: str, current_user: CurrentUser = Depends(require_u
 # === 模型比對 API ===
 def run_compare_job(job_id: str, old_path: str, new_path: str):
     try:
+        _set_job_state(
+            job_id,
+            status="processing",
+            message="已取得工作執行權，準備比對模型...",
+            started_at=_utc_iso(),
+        )
         from auto_2d_drawing.compare_models import compare_step_files
         output_dir_name = f"diff_{job_id[:8]}"
         output_dir = os.path.join(OUTPUT_DIR, output_dir_name)
         
         def progress_cb(msg):
-            jobs[job_id]["message"] = msg
-            if "logs" not in jobs[job_id]:
-                jobs[job_id]["logs"] = []
-            jobs[job_id]["logs"].append(msg)
+            with jobs_lock:
+                logs = list(jobs[job_id].get("logs", []))
+                logs.append(msg)
+            _set_job_state(job_id, message=msg, logs=logs[-200:])
             
         results = compare_step_files(old_path, new_path, output_dir, progress_callback=progress_cb)
         
@@ -2588,48 +2760,68 @@ def run_compare_job(job_id: str, old_path: str, new_path: str):
             jobs[job_id]["owner_user_id"],
             jobs[job_id].get("filename"),
         )
-        jobs[job_id]["status"] = "completed"
-        jobs[job_id]["message"] = "比對完成"
+        _set_job_state(job_id, status="completed", message="比對完成", completed_at=_utc_iso())
         
     except Exception as e:
-        jobs[job_id]["status"] = "error"
-        jobs[job_id]["message"] = f"比對發生錯誤: {str(e)}"
+        _set_job_state(job_id, status="error", message=f"比對發生錯誤: {str(e)}", completed_at=_utc_iso())
         
 @app.post("/api/compare")
-async def compare_files(
+def compare_files(
     file_old: UploadFile = File(...),
     file_new: UploadFile = File(...),
     current_user: CurrentUser = Depends(require_user),
 ):
     job_id = str(uuid.uuid4())
-
-    user_model_dir = os.path.join(MODELS_DIR, "_users", current_user.id)
-    os.makedirs(user_model_dir, exist_ok=True)
     old_name = os.path.basename(file_old.filename or "old.step")
     new_name = os.path.basename(file_new.filename or "new.step")
-    old_path = os.path.join(user_model_dir, f"old_{job_id[:8]}_{old_name}")
-    new_path = os.path.join(user_model_dir, f"new_{job_id[:8]}_{new_name}")
+    if any(os.path.splitext(name)[1].lower() not in {".stp", ".step"} for name in (old_name, new_name)):
+        raise HTTPException(status_code=400, detail="Only STEP/STP files are supported")
+
+    with jobs_lock:
+        active = _active_job_for_user(current_user.id)
+        if active:
+            active_id, active_job = active
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "ACTIVE_JOB_EXISTS",
+                    "message": "此帳號已有模型工作進行中",
+                    "job": _job_status_payload(active_id, active_job),
+                },
+            )
+        now = _utc_iso()
+        jobs[job_id] = {
+            "status": "queued",
+            "total": 0,
+            "current": 0,
+            "message": "已接收比對工作，正在等待 CAD 處理資源...",
+            "filename": f"{old_name} vs {new_name}",
+            "owner_user_id": current_user.id,
+            "result": None,
+            "output_dir": None,
+            "is_diff": True,
+            "logs": [],
+            "created_at": now,
+            "updated_at": now,
+            "started_at": None,
+        }
+
+    user_model_dir = os.path.join(MODELS_DIR, "_users", current_user.id, job_id)
+    os.makedirs(user_model_dir, exist_ok=True)
+    old_path = os.path.join(user_model_dir, f"old_{old_name}")
+    new_path = os.path.join(user_model_dir, f"new_{new_name}")
     
-    with open(old_path, "wb") as buffer:
-        shutil.copyfileobj(file_old.file, buffer)
-    with open(new_path, "wb") as buffer:
-        shutil.copyfileobj(file_new.file, buffer)
-        
-    jobs[job_id] = {
-        "status": "processing",
-        "total": 0,
-        "current": 0,
-        "message": "已接收比對檔案，準備開始分析差異...",
-        "filename": f"{old_name} vs {new_name}",
-        "owner_user_id": current_user.id,
-        "result": None,
-        "output_dir": None,
-        "is_diff": True,
-        "logs": []
-    }
+    try:
+        with open(old_path, "wb") as buffer:
+            shutil.copyfileobj(file_old.file, buffer)
+        with open(new_path, "wb") as buffer:
+            shutil.copyfileobj(file_new.file, buffer)
+    except Exception as exc:
+        _set_job_state(job_id, status="error", message=f"比對檔案儲存失敗: {exc}", completed_at=_utc_iso())
+        raise HTTPException(status_code=500, detail="Failed to store comparison STEP files") from exc
     
     executor.submit(run_compare_job, job_id, old_path, new_path)
-    return {"job_id": job_id}
+    return {"job_id": job_id, "status": "queued", "queue_position": _queue_position(job_id)}
 
 @app.get("/api/models")
 async def list_models(current_user: CurrentUser = Depends(require_user)):

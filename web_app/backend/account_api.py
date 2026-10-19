@@ -16,8 +16,6 @@ from starlette.responses import JSONResponse
 from web_app.backend.identity_store import (
     CurrentUser,
     IdentityStore,
-    canonical_company_email,
-    company_email_domains,
 )
 
 
@@ -150,6 +148,7 @@ class LoginRequest(BaseModel):
 class PasswordChangeRequest(BaseModel):
     current_password: str
     new_password: str = Field(min_length=10, max_length=256)
+    confirm_password: str = Field(min_length=10, max_length=256)
 
 
 class UserCreateRequest(BaseModel):
@@ -172,6 +171,10 @@ class RetentionRequest(BaseModel):
     days: int = Field(ge=1, le=3650)
 
 
+class CompanyEmailDomainRequest(BaseModel):
+    domain: str = Field(min_length=3, max_length=120)
+
+
 class RecommendationTagRequest(BaseModel):
     key: str = Field(min_length=1, max_length=160)
     name: str = Field(min_length=1, max_length=160)
@@ -186,9 +189,10 @@ class TagAssignmentRequest(BaseModel):
 @router.post("/auth/login")
 def login(payload: LoginRequest, request: Request, response: Response):
     identifier = payload.email_local or payload.username or ""
-    selected_domain = payload.email_domain or company_email_domains()[0]
+    domains = store.list_company_email_domains()
+    selected_domain = payload.email_domain or domains[0]
     try:
-        canonical_company_email(identifier, selected_domain)
+        store.canonical_company_email(identifier, selected_domain)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     user = store.authenticate(identifier, payload.password, selected_domain)
@@ -225,7 +229,7 @@ def login(payload: LoginRequest, request: Request, response: Response):
 def auth_config():
     return {
         "status": "ok",
-        "company_email_domains": company_email_domains(),
+        "company_email_domains": store.list_company_email_domains(),
         "domain_cookie": DOMAIN_COOKIE,
     }
 
@@ -249,6 +253,13 @@ def change_password(
     response: Response,
     user: CurrentUser = Depends(require_user),
 ):
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(status_code=400, detail="New password confirmation does not match")
+    if not user.is_admin and not user.must_change_password:
+        raise HTTPException(
+            status_code=403,
+            detail="Password changes for engineers must be performed by an administrator",
+        )
     try:
         store.change_password(user.id, payload.current_password, payload.new_password)
     except ValueError as exc:
@@ -440,6 +451,93 @@ async def admin_import_users(
     except (ValueError, TypeError, UnicodeDecodeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "ok", "created_count": len(created), "users": created}
+
+
+@router.get("/admin/users/import-template")
+def admin_download_user_import_template(
+    format: str = "xlsx",
+    admin: CurrentUser = Depends(require_admin),
+):
+    selected_format = str(format).strip().lower()
+    rows = [
+        ["email", "display_name", "role"],
+        [f"engineer@{store.list_company_email_domains()[0]}", "Example Engineer", "ENGINEER"],
+    ]
+    if selected_format == "csv":
+        output = StringIO()
+        writer = csv.writer(output, lineterminator="\n")
+        writer.writerows(rows)
+        content = "\ufeff" + output.getvalue()
+        return Response(
+            content=content.encode("utf-8"),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="account-import-template.csv"'},
+        )
+    if selected_format == "xlsx":
+        from openpyxl import Workbook
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "accounts"
+        for row in rows:
+            sheet.append(row)
+        sheet.freeze_panes = "A2"
+        sheet.column_dimensions["A"].width = 34
+        sheet.column_dimensions["B"].width = 24
+        sheet.column_dimensions["C"].width = 14
+        output = BytesIO()
+        workbook.save(output)
+        return Response(
+            content=output.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": 'attachment; filename="account-import-template.xlsx"'},
+        )
+    raise HTTPException(status_code=400, detail="Template format must be xlsx or csv")
+
+
+@router.get("/admin/company-email-domains")
+def admin_list_company_email_domains(admin: CurrentUser = Depends(require_admin)):
+    return {"status": "ok", "domains": store.list_company_email_domains()}
+
+
+@router.post("/admin/company-email-domains", status_code=201)
+def admin_create_company_email_domain(
+    payload: CompanyEmailDomainRequest,
+    admin: CurrentUser = Depends(require_admin),
+):
+    try:
+        domain = store.create_company_email_domain(payload.domain, admin.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"status": "ok", "domain": domain}
+
+
+@router.put("/admin/company-email-domains/{domain}")
+def admin_update_company_email_domain(
+    domain: str,
+    payload: CompanyEmailDomainRequest,
+    admin: CurrentUser = Depends(require_admin),
+):
+    try:
+        updated = store.update_company_email_domain(domain, payload.domain, admin.id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"status": "ok", "domain": updated}
+
+
+@router.delete("/admin/company-email-domains/{domain}")
+def admin_delete_company_email_domain(
+    domain: str,
+    admin: CurrentUser = Depends(require_admin),
+):
+    try:
+        store.delete_company_email_domain(domain, admin.id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"status": "ok"}
 
 
 @router.get("/admin/audit-events")

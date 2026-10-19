@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — production integration planning
+
+- Documented that the web Main, web smart-annotation engine, and experimental Main are currently separate pipelines.
+- Defined the target shared analysis, DimensionIntent, view-plan, renderer, cache, and audit contracts.
+- Added a four-phase production integration plan with feature-flag rollout and explicit completion gates.
+- Kept the production and legacy drawing engines unchanged.
+
 ## drawing-experimental-v0.23.0 — 2026-10-19
 
 - Added optional engineer-selection input to the experimental Main.

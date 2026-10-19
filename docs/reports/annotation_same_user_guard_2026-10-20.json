@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "method": "CONCURRENT_ANNOTATION_API_BENCHMARK_V1",
+  "client_count": 3,
+  "rounds": 1,
+  "request_count": 3,
+  "wall_seconds": 0.461193,
+  "successful_requests_per_second": 2.1683,
+  "maximum_overlapping_successful_requests": 1,
+  "outcomes": {
+    "success": 1,
+    "same_user_conflict": 2
+  },
+  "latency_seconds": {
+    "minimum": 0.053469,
+    "mean": 0.19196,
+    "p50": 0.062185,
+    "p95": 0.460226,
+    "maximum": 0.460226
+  },
+  "results": [
+    {
+      "client": "same-admin-session-3",
+      "round": 1,
+      "status_code": 200,
+      "outcome": "success",
+      "started_offset_seconds": 0.000768,
+      "ended_offset_seconds": 0.460995,
+      "latency_seconds": 0.460226,
+      "cached": false,
+      "error": null
+    },
+    {
+      "client": "same-admin-session-2",
+      "round": 1,
+      "status_code": 409,
+      "outcome": "same_user_conflict",
+      "started_offset_seconds": 0.00109,
+      "ended_offset_seconds": 0.054559,
+      "latency_seconds": 0.053469,
+      "cached": false,
+      "error": null
+    },
+    {
+      "client": "same-admin-session-1",
+      "round": 1,
+      "status_code": 409,
+      "outcome": "same_user_conflict",
+      "started_offset_seconds": 0.001331,
+      "ended_offset_seconds": 0.063516,
+      "latency_seconds": 0.062185,
+      "cached": false,
+      "error": null
+    }
+  ]
+}

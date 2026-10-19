@@ -1,10 +1,23 @@
 {
   "schema_version": 1,
   "engine_version": "drawing-experimental-v0.23.0",
-  "updated_at": "2026-10-19",
+  "updated_at": "2026-10-20",
   "deployment_status": "EXPERIMENT_ONLY",
   "production_integrated": false,
   "entrypoint": "DRAWING_CURRENT_FINAL/experimental_main.py",
+  "production_integration": {
+    "status": "PLANNED_NOT_INTEGRATED",
+    "plan": "DRAWING_CURRENT_FINAL/PRODUCTION_INTEGRATION_PLAN.md",
+    "current_web_main": "auto_2d_drawing.batch_generate.batch_generate",
+    "current_web_smart_annotation": "auto_2d_drawing.smart_annotation_engine.SmartAnnotationEngine",
+    "target": "shared_versioned_analysis_intents_view_plan_and_renderer",
+    "phases": [
+      "read_only_analysis_adapter",
+      "shared_smart_annotation_candidates",
+      "unified_renderer_and_audit",
+      "feature_flagged_production_cutover"
+    ]
+  },
   "principles": [
     "geometry_and_semantics_before_part_name",
     "no_hardcoded_3d_coordinates",

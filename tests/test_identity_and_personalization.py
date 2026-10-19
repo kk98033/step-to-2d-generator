@@ -211,6 +211,26 @@ class IdentityAndPersonalizationTests(unittest.TestCase):
         notifications = self.store.pending_credential_notifications()
         self.assertTrue(any(item["user_id"] == user.id for item in notifications))
 
+    def test_company_email_domains_can_be_added_renamed_and_deleted(self):
+        self.assertEqual(self.store.list_company_email_domains(), ["forcecon.com.tw"])
+        self.store.create_company_email_domain("lab.forcecon.com", self.admin.id)
+        created = self.store.create_user({
+            "email": "cad.user@lab.forcecon.com",
+            "display_name": "CAD User",
+            "role": "ENGINEER",
+            "password": "CAD-User-Password-2026!",
+        }, self.admin.id)
+        self.store.update_company_email_domain(
+            "lab.forcecon.com", "cad.forcecon.com", self.admin.id
+        )
+        renamed = next(item for item in self.store.list_users() if item["id"] == created["id"])
+        self.assertEqual(renamed["email"], "cad.user@cad.forcecon.com")
+        with self.assertRaises(ValueError):
+            self.store.delete_company_email_domain("cad.forcecon.com", self.admin.id)
+        self.store.update_user(created["id"], {"email": "cad.user@forcecon.com.tw"}, self.admin.id)
+        self.store.delete_company_email_domain("cad.forcecon.com", self.admin.id)
+        self.assertEqual(self.store.list_company_email_domains(), ["forcecon.com.tw"])
+
     def test_bulk_accounts_reject_non_company_domains(self):
         with self.assertRaises(ValueError):
             self.store.bulk_create_users([{

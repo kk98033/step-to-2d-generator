@@ -652,6 +652,9 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   const [progressMsg, setProgressMsg] = useState("");
   const [logs, setLogs] = useState<string[]>([]);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [queuePosition, setQueuePosition] = useState(0);
+  const [analysisWorkerLimit, setAnalysisWorkerLimit] = useState(1);
+  const [activeJobFilename, setActiveJobFilename] = useState('');
 
   const [results, setResults] = useState<any>(null);
   const [selectedPart, setSelectedPart] = useState<string | null>(null);
@@ -732,6 +735,21 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     svgUrl: string;
     mode: 'pdf' | 'svg';
   } | null>(null);
+
+  useEffect(() => {
+    axios.get(`${API_BASE}/api/jobs/active`).then(response => {
+      const activeJob = response.data?.job;
+      if (!activeJob) return;
+      setJobId(activeJob.job_id);
+      setStatus('processing');
+      setProgressMsg(activeJob.message || '正在恢復處理進度...');
+      setProgress(activeJob.progress || { current: 0, total: 0 });
+      setQueuePosition(activeJob.queue_position || 0);
+      setAnalysisWorkerLimit(activeJob.worker_limit || 1);
+      setActiveJobFilename(activeJob.filename || '');
+      window.localStorage.setItem(`cad-active-job:${user.id}`, activeJob.job_id);
+    }).catch(() => undefined);
+  }, [user.id]);
 
   // --- Tree Diff State ---
   const [diffedTreeOld, setDiffedTreeOld] = useState<any>(null);
@@ -1330,7 +1348,8 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
       }
     } catch (err: any) {
       console.error('Render custom drawing error:', err);
-      alert(`生成工程圖失敗: ${err?.response?.data?.detail || err.message}`);
+      const detail = err?.response?.data?.detail;
+      alert(`生成工程圖失敗: ${typeof detail === 'string' ? detail : (detail?.message || err.message)}`);
     } finally {
       setIsRenderingDrawing(false);
     }
@@ -1478,15 +1497,20 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
             current: nextProgress.current ?? res.data.current ?? 0,
             total: nextProgress.total ?? res.data.total ?? 0,
           });
+          setQueuePosition(res.data.queue_position || 0);
+          setAnalysisWorkerLimit(res.data.worker_limit || 1);
+          setActiveJobFilename(res.data.filename || '');
           if (res.data.logs) {
             setLogs(res.data.logs);
           }
 
           if (res.data.status === 'completed') {
             clearInterval(interval);
+            window.localStorage.removeItem(`cad-active-job:${user.id}`);
             fetchResults(jobId);
           } else if (res.data.status === 'error') {
             clearInterval(interval);
+            window.localStorage.removeItem(`cad-active-job:${user.id}`);
             setStatus('error');
           }
         } catch (err) {
@@ -1536,11 +1560,25 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     try {
       const res = await axios.post(`${API_BASE}/api/upload`, formData);
       setJobId(res.data.job_id);
+      setQueuePosition(res.data.queue_position || 0);
+      setActiveJobFilename(file.name);
+      window.localStorage.setItem(`cad-active-job:${user.id}`, res.data.job_id);
       setStatus('processing');
     } catch (err: any) {
       console.error(err);
+      const activeJob = err?.response?.data?.detail?.job;
+      if (activeJob?.job_id) {
+        setJobId(activeJob.job_id);
+        setProgress(activeJob.progress || { current: 0, total: 0 });
+        setProgressMsg(activeJob.message || '此帳號已有工作進行中');
+        setQueuePosition(activeJob.queue_position || 0);
+        setAnalysisWorkerLimit(activeJob.worker_limit || 1);
+        setActiveJobFilename(activeJob.filename || '');
+        setStatus('processing');
+        return;
+      }
       setStatus('error');
-      setProgressMsg(`上傳失敗: ${err.message || String(err)}`);
+      setProgressMsg(`上傳失敗: ${err?.response?.data?.detail?.message || err?.response?.data?.detail || err.message || String(err)}`);
     }
   };
 
@@ -1553,11 +1591,25 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     try {
       const res = await axios.post(`${API_BASE}/api/compare`, formData);
       setJobId(res.data.job_id);
+      setQueuePosition(res.data.queue_position || 0);
+      setActiveJobFilename(`${fileOld.name} vs ${fileNew.name}`);
+      window.localStorage.setItem(`cad-active-job:${user.id}`, res.data.job_id);
       setStatus('processing');
     } catch (err: any) {
       console.error(err);
+      const activeJob = err?.response?.data?.detail?.job;
+      if (activeJob?.job_id) {
+        setJobId(activeJob.job_id);
+        setProgress(activeJob.progress || { current: 0, total: 0 });
+        setProgressMsg(activeJob.message || '此帳號已有工作進行中');
+        setQueuePosition(activeJob.queue_position || 0);
+        setAnalysisWorkerLimit(activeJob.worker_limit || 1);
+        setActiveJobFilename(activeJob.filename || '');
+        setStatus('processing');
+        return;
+      }
       setStatus('error');
-      setProgressMsg(`比對上傳失敗: ${err.message || String(err)}`);
+      setProgressMsg(`比對上傳失敗: ${err?.response?.data?.detail?.message || err?.response?.data?.detail || err.message || String(err)}`);
     }
   };
 
@@ -1816,6 +1868,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
             }} />
           </div>
           <p style={{ fontSize: 13, color: '#888', minHeight: 20 }}>{progressMsg}{dots}</p>
+          {queuePosition > 0 && <p style={{ fontSize: 12, color: '#60a5fa', margin: '4px 0 0' }}>佇列位置：{queuePosition}（CAD 工作數：{analysisWorkerLimit}）</p>}
           {logs.length > 0 && (
             <div style={{ marginTop: 24, textAlign: 'left', background: '#0a0a0a', border: '1px solid #333', borderRadius: 8, padding: 12, height: 160, overflowY: 'auto', fontSize: 12, color: '#aaa', fontFamily: 'monospace' }}>
               {logs.map((log, idx) => (
@@ -1829,6 +1882,11 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
               )}
             </div>
           )}
+        </div>
+        <div style={{ position: 'fixed', right: 18, bottom: 18, width: 320, maxWidth: 'calc(100vw - 36px)', padding: 13, background: '#171717', border: '1px solid #2563eb', color: '#ddd', boxShadow: '0 12px 28px rgba(0,0,0,.45)', textAlign: 'left' }}>
+          <div style={{ color: '#60a5fa', fontWeight: 700, fontSize: 12, marginBottom: 5 }}>目前模型工作</div>
+          <div style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeJobFilename || '未命名 STEP'}</div>
+          <div style={{ color: '#888', fontSize: 11, marginTop: 5 }}>{queuePosition > 0 ? `等待佇列（第 ${queuePosition} 位）` : `處理進度 ${progress.current}/${progress.total || '-'}`}</div>
         </div>
         <style>{`
           @keyframes spin { to { transform: rotate(360deg); } }

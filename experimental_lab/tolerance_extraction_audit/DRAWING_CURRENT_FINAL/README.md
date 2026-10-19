@@ -5,6 +5,14 @@
 
 它不會修改舊版 `auto_2d_drawing/dimension_engine.py` 或 `extractors/`，也尚未部署到正式網頁。
 
+## 正式系統整合狀態
+
+目前網頁 Main 初始產圖、網頁智慧標註與本實驗 Main 仍是三條不同管線；共用部分底層元件不代表已完成正式整合。
+未來會讓自動模式與人工智慧標註模式共用版本化分析結果、`DimensionIntent`、視圖規劃與 renderer，
+並以 adapter、快取及 feature flag 分階段接入，不會直接覆寫舊版引擎。
+
+詳細現況、分階段合併方式與完成條件請見 [`PRODUCTION_INTEGRATION_PLAN.md`](PRODUCTION_INTEGRATION_PLAN.md)。
+
 ## 未知模型怎麼自動觸發
 
 不是先猜檔名是不是風扇，也不是為每個料號建立一條分支。入口會依序執行：

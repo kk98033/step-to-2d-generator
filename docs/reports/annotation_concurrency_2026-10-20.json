@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "method": "CONCURRENT_ANNOTATION_API_BENCHMARK_V1",
+  "client_count": 3,
+  "rounds": 1,
+  "request_count": 3,
+  "wall_seconds": 1.162453,
+  "successful_requests_per_second": 0.8603,
+  "maximum_overlapping_successful_requests": 1,
+  "outcomes": {
+    "capacity_busy": 2,
+    "success": 1
+  },
+  "latency_seconds": {
+    "minimum": 0.058439,
+    "mean": 0.428951,
+    "p50": 0.06747,
+    "p95": 1.160945,
+    "maximum": 1.160945
+  },
+  "results": [
+    {
+      "client": "loadtest-20261020013742-3",
+      "round": 1,
+      "status_code": 429,
+      "outcome": "capacity_busy",
+      "started_offset_seconds": 0.00079,
+      "ended_offset_seconds": 0.059229,
+      "latency_seconds": 0.058439,
+      "cached": false,
+      "error": null
+    },
+    {
+      "client": "loadtest-20261020013742-1",
+      "round": 1,
+      "status_code": 429,
+      "outcome": "capacity_busy",
+      "started_offset_seconds": 0.001106,
+      "ended_offset_seconds": 0.068576,
+      "latency_seconds": 0.06747,
+      "cached": false,
+      "error": null
+    },
+    {
+      "client": "loadtest-20261020013742-2",
+      "round": 1,
+      "status_code": 200,
+      "outcome": "success",
+      "started_offset_seconds": 0.001356,
+      "ended_offset_seconds": 1.162301,
+      "latency_seconds": 1.160945,
+      "cached": false,
+      "error": null
+    }
+  ]
+}
