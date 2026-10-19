@@ -1,0 +1,246 @@
+{
+  "schema_version": 1,
+  "method": "CAD_WEB_SYSTEM_STRESS_V1",
+  "generated_at": "2026-10-20T02:27:47+0800",
+  "base_url": "http://127.0.0.1:8000",
+  "client_count": 10,
+  "light_api": {
+    "clients": 10,
+    "requests_per_client": 20,
+    "request_count": 200,
+    "success": 200,
+    "errors": 0,
+    "wall_seconds": 0.836441,
+    "requests_per_second": 239.1083,
+    "latency_seconds": {
+      "minimum": 0.008246,
+      "mean": 0.039674,
+      "p50": 0.037357,
+      "p95": 0.057641,
+      "maximum": 0.075521
+    },
+    "status_counts": {
+      "200": 200
+    }
+  },
+  "annotation_burst": {
+    "clients": 10,
+    "wall_seconds": 0.516644,
+    "outcomes": {
+      "capacity_busy": 9,
+      "success": 1
+    },
+    "latency_seconds": {
+      "minimum": 0.084295,
+      "mean": 0.157417,
+      "p50": 0.132297,
+      "p95": 0.51447,
+      "maximum": 0.51447
+    },
+    "results": [
+      {
+        "client": "stress-20261020022742-1",
+        "status": 429,
+        "outcome": "capacity_busy",
+        "elapsed": 0.087795
+      },
+      {
+        "client": "stress-20261020022742-10",
+        "status": 429,
+        "outcome": "capacity_busy",
+        "elapsed": 0.134283
+      },
+      {
+        "client": "stress-20261020022742-2",
+        "status": 200,
+        "outcome": "success",
+        "elapsed": 0.51447
+      },
+      {
+        "client": "stress-20261020022742-3",
+        "status": 429,
+        "outcome": "capacity_busy",
+        "elapsed": 0.136132
+      },
+      {
+        "client": "stress-20261020022742-4",
+        "status": 429,
+        "outcome": "capacity_busy",
+        "elapsed": 0.084295
+      },
+      {
+        "client": "stress-20261020022742-5",
+        "status": 429,
+        "outcome": "capacity_busy",
+        "elapsed": 0.132667
+      },
+      {
+        "client": "stress-20261020022742-6",
+        "status": 429,
+        "outcome": "capacity_busy",
+        "elapsed": 0.135835
+      },
+      {
+        "client": "stress-20261020022742-7",
+        "status": 429,
+        "outcome": "capacity_busy",
+        "elapsed": 0.132297
+      },
+      {
+        "client": "stress-20261020022742-8",
+        "status": 429,
+        "outcome": "capacity_busy",
+        "elapsed": 0.084359
+      },
+      {
+        "client": "stress-20261020022742-9",
+        "status": 429,
+        "outcome": "capacity_busy",
+        "elapsed": 0.13204
+      }
+    ]
+  },
+  "annotation_retry": {
+    "clients": 10,
+    "retry_interval_seconds": 0.5,
+    "wall_seconds": 5.942563,
+    "completed_per_second": 1.6828,
+    "outcomes": {
+      "success": 10
+    },
+    "completion_seconds": {
+      "minimum": 0.506469,
+      "mean": 3.142862,
+      "p50": 2.731545,
+      "p95": 5.939899,
+      "maximum": 5.939899
+    },
+    "total_attempts": 55,
+    "total_busy_responses": 45,
+    "results": [
+      {
+        "client": "stress-20261020022742-1",
+        "outcome": "success",
+        "attempts": 1,
+        "busy_responses": 0,
+        "completion_seconds": 0.506469
+      },
+      {
+        "client": "stress-20261020022742-10",
+        "outcome": "success",
+        "attempts": 7,
+        "busy_responses": 6,
+        "completion_seconds": 4.132863
+      },
+      {
+        "client": "stress-20261020022742-2",
+        "outcome": "success",
+        "attempts": 2,
+        "busy_responses": 1,
+        "completion_seconds": 1.111569
+      },
+      {
+        "client": "stress-20261020022742-3",
+        "outcome": "success",
+        "attempts": 5,
+        "busy_responses": 4,
+        "completion_seconds": 2.731545
+      },
+      {
+        "client": "stress-20261020022742-4",
+        "outcome": "success",
+        "attempts": 10,
+        "busy_responses": 9,
+        "completion_seconds": 5.939899
+      },
+      {
+        "client": "stress-20261020022742-5",
+        "outcome": "success",
+        "attempts": 3,
+        "busy_responses": 2,
+        "completion_seconds": 1.637553
+      },
+      {
+        "client": "stress-20261020022742-6",
+        "outcome": "success",
+        "attempts": 4,
+        "busy_responses": 3,
+        "completion_seconds": 2.146659
+      },
+      {
+        "client": "stress-20261020022742-7",
+        "outcome": "success",
+        "attempts": 6,
+        "busy_responses": 5,
+        "completion_seconds": 3.262467
+      },
+      {
+        "client": "stress-20261020022742-8",
+        "outcome": "success",
+        "attempts": 9,
+        "busy_responses": 8,
+        "completion_seconds": 5.296933
+      },
+      {
+        "client": "stress-20261020022742-9",
+        "outcome": "success",
+        "attempts": 8,
+        "busy_responses": 7,
+        "completion_seconds": 4.662664
+      }
+    ]
+  },
+  "analysis_queue": {
+    "clients": 2,
+    "step_filename": "new_9b88a022_housing_assy_1fnkw6001h_a01_a_3_asm.stp",
+    "step_bytes": 489713,
+    "wall_seconds": 20.172074,
+    "outcomes": {
+      "completed": 2
+    },
+    "results": [
+      {
+        "client": "stress-20261020022742-1",
+        "upload_status": 200,
+        "outcome": "completed",
+        "job_id": "260cc3e4-2388-468f-8388-114936642843",
+        "initial_queue_position": 2,
+        "worker_limit": 1,
+        "state_history": [
+          "processing",
+          "completed"
+        ],
+        "completion_seconds": 10.818004,
+        "final_message": "處理完成"
+      },
+      {
+        "client": "stress-20261020022742-2",
+        "upload_status": 200,
+        "outcome": "completed",
+        "job_id": "5ebc82a9-0d6b-49dd-8e22-f0d81cab5e8c",
+        "initial_queue_position": 1,
+        "worker_limit": 1,
+        "state_history": [
+          "queued",
+          "processing",
+          "completed"
+        ],
+        "completion_seconds": 20.171951,
+        "final_message": "處理完成"
+      }
+    ]
+  },
+  "health_during_heavy_load": {
+    "sample_count": 70,
+    "success": 70,
+    "failures": 0,
+    "availability_percent": 100.0,
+    "latency_seconds": {
+      "minimum": 0.002597,
+      "mean": 0.123358,
+      "p50": 0.049493,
+      "p95": 0.506803,
+      "maximum": 0.67149
+    }
+  }
+}
