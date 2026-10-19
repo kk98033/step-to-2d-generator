@@ -24,6 +24,7 @@ from auto_2d_drawing.step_reader import load_step  # noqa: E402
 from auto_2d_drawing.view_projector import ViewProjector  # noqa: E402
 from annular_composite_features import extract_annular_composites  # noqa: E402
 from dimension_intents import build_dimension_intent_set  # noqa: E402
+from minimal_multiview_drawing import render_minimal_multiview_drawing  # noqa: E402
 from relational_dimension_intents import (  # noqa: E402
     detect_hub_radial_partitions,
     detect_rectangular_hole_pattern,
@@ -32,7 +33,7 @@ from solid_shaft_features import extract_solid_shaft_features  # noqa: E402
 from thin_wall_dimension_pipeline import extract_thin_wall_dimension  # noqa: E402
 
 
-METHOD = "DRAWING_EXPERIMENTAL_MAIN_V0_18"
+METHOD = "DRAWING_EXPERIMENTAL_MAIN_V0_24"
 STANDARD_VIEWS = ("front", "top", "right", "left", "back")
 
 
@@ -123,12 +124,38 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run the current experimental drawing analysis.")
     parser.add_argument("--step", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument(
+        "--selection-config",
+        type=Path,
+        help="Optional engineer-selection JSON for separate front/top/right drawings.",
+    )
     args = parser.parse_args()
     if not args.step.is_file():
         parser.error(f"STEP file does not exist: {args.step}")
 
     args.output.mkdir(parents=True, exist_ok=True)
     report = analyse_step(args.step)
+    if args.selection_config:
+        if not args.selection_config.is_file():
+            parser.error(f"Selection config does not exist: {args.selection_config}")
+        selection_config = json.loads(args.selection_config.read_text(encoding="utf-8"))
+        drawing_report = render_minimal_multiview_drawing(
+            args.step,
+            selection_config.get("selections") or [],
+            args.output / "selected_drawings",
+            part_hint=str(selection_config.get("part_hint") or args.step.stem),
+            include_half_section=bool(selection_config.get("include_half_section")),
+            relational_selections=selection_config.get("relational_selections") or [],
+            pattern_angle_selections=selection_config.get("pattern_angle_selections") or [],
+            annular_selections=selection_config.get("annular_selections") or [],
+            rectangular_hole_selections=selection_config.get("rectangular_hole_selections") or [],
+            shaft_dimension_selections=selection_config.get("shaft_dimension_selections") or [],
+            thickness_selections=selection_config.get("thickness_selections") or [],
+            half_section_selection=selection_config.get("half_section_selection"),
+        )
+        report["mode"] = "ANALYSIS_AND_ENGINEER_SELECTED_DRAWING"
+        report["selected_multiview_drawing"] = drawing_report
+        report["selected_drawing_render_ready"] = drawing_report["success"]
     report_path = args.output / "drawing_engine_report.json"
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({
@@ -136,6 +163,7 @@ def main() -> int:
         "report": str(report_path.resolve()),
         "active_detectors": report["active_detectors"],
         "unified_intent_count": report["dimension_intents"]["unified_intent_count"],
+        "selected_drawing_render_ready": report.get("selected_drawing_render_ready"),
     }, ensure_ascii=False, indent=2))
     return 0
 

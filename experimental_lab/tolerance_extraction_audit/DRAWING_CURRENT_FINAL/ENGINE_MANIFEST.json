@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "engine_version": "drawing-experimental-v0.18.0",
-  "updated_at": "2026-10-15",
+  "engine_version": "drawing-experimental-v0.23.0",
+  "updated_at": "2026-10-19",
   "deployment_status": "EXPERIMENT_ONLY",
   "production_integrated": false,
   "entrypoint": "DRAWING_CURRENT_FINAL/experimental_main.py",
@@ -108,6 +108,22 @@
       "callable": "build_thickness_render_task",
       "status": "EXPERIMENTAL_VERIFIED",
       "note": "Keeps STEP nominal value, drawing display value, tolerance, and tolerance provenance separate."
+    },
+    {
+      "id": "minimal_engineer_selected_multiview_drawing",
+      "source_experiment": "2026-10-19/23_minimal_selected_multiview_drawing_v1",
+      "module": "common/scripts/minimal_multiview_drawing.py",
+      "callable": "render_minimal_multiview_drawing",
+      "status": "ACTIVE_IN_ENTRYPOINT",
+      "note": "Produces separate front, top, and right DXF/PDF/PNG drawings and an optional Bnd_Box-derived half-section."
+    },
+    {
+      "id": "selected_relational_angle_renderer",
+      "source_experiment": "2026-10-17/22_selected_feature_renderer_bridge_v1",
+      "module": "common/scripts/selected_feature_renderer_bridge.py",
+      "callable": "bridge_selected_features",
+      "status": "ACTIVE_IN_ENTRYPOINT",
+      "note": "Engineer-selected measured fan angles are emitted as native editable DXF DIMENSION entities; failed smart selections are rejected before rendering."
     }
   ],
   "known_gaps": [
@@ -118,5 +134,5 @@
     "cross_family_false_positive_benchmark",
     "automatic_historical_tolerance_selection_for_new_thin_walls"
   ],
-  "next_experiment": "19_cross_family_false_positive_and_view_selection_benchmark"
+  "next_experiment": "24_relational_angle_and_hole_tasks_in_formal_multiview_output"
 }
