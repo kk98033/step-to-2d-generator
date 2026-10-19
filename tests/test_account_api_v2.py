@@ -83,8 +83,46 @@ def test_admin_account_creation_password_visibility_and_reset_policy():
     changed = authenticated.put("/api/auth/password", json={
         "current_password": reset.json()["initial_password"],
         "new_password": "Engineer-Changed-Password-2026!",
+        "confirm_password": "Engineer-Changed-Password-2026!",
     })
     assert changed.status_code == 200
+
+    second_login = authenticated.post("/api/auth/login", json={
+        "email_local": "api.engineer",
+        "email_domain": "forcecon-group.com",
+        "password": "Engineer-Changed-Password-2026!",
+    })
+    assert second_login.status_code == 200
+    blocked_change = authenticated.put("/api/auth/password", json={
+        "current_password": "Engineer-Changed-Password-2026!",
+        "new_password": "Engineer-Second-Password-2026!",
+        "confirm_password": "Engineer-Second-Password-2026!",
+    })
+    assert blocked_change.status_code == 403
+
+
+def test_admin_manages_company_domains_and_import_templates():
+    authenticated = admin_client()
+    created = authenticated.post("/api/admin/company-email-domains", json={
+        "domain": "forcecon-lab.com",
+    })
+    assert created.status_code == 201
+    assert "forcecon-lab.com" in authenticated.get("/api/auth/config").json()["company_email_domains"]
+
+    renamed = authenticated.put("/api/admin/company-email-domains/forcecon-lab.com", json={
+        "domain": "forcecon-cad.com",
+    })
+    assert renamed.status_code == 200
+    deleted = authenticated.delete("/api/admin/company-email-domains/forcecon-cad.com")
+    assert deleted.status_code == 200
+
+    csv_template = authenticated.get("/api/admin/users/import-template?format=csv")
+    assert csv_template.status_code == 200
+    assert "text/csv" in csv_template.headers["content-type"]
+    assert b"email,display_name,role" in csv_template.content
+    xlsx_template = authenticated.get("/api/admin/users/import-template?format=xlsx")
+    assert xlsx_template.status_code == 200
+    assert xlsx_template.content.startswith(b"PK")
 
 
 def test_excel_bulk_import_and_email_delivery_contract():
