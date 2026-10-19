@@ -171,6 +171,11 @@ class RetentionRequest(BaseModel):
     days: int = Field(ge=1, le=3650)
 
 
+class CadConcurrencyRequest(BaseModel):
+    analysis_max_concurrency: int = Field(ge=1, le=8)
+    annotation_max_concurrency: int = Field(ge=1, le=8)
+
+
 class CompanyEmailDomainRequest(BaseModel):
     domain: str = Field(min_length=3, max_length=120)
 
@@ -586,6 +591,27 @@ def admin_set_trash_retention(
     admin: CurrentUser = Depends(require_admin),
 ):
     return {"status": "ok", "days": store.set_trash_retention_days(payload.days, admin.id)}
+
+
+@router.get("/admin/settings/cad-concurrency")
+def admin_get_cad_concurrency(admin: CurrentUser = Depends(require_admin)):
+    return {"status": "ok", **store.cad_concurrency_limits()}
+
+
+@router.put("/admin/settings/cad-concurrency")
+def admin_set_cad_concurrency(
+    payload: CadConcurrencyRequest,
+    admin: CurrentUser = Depends(require_admin),
+):
+    try:
+        settings = store.set_cad_concurrency_limits(
+            payload.analysis_max_concurrency,
+            payload.annotation_max_concurrency,
+            admin.id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok", **settings}
 
 
 @router.post("/admin/trash/purge-expired")

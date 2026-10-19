@@ -1335,6 +1335,81 @@ class IdentityStore:
             })
         return normalized
 
+    def cad_concurrency_limits(self) -> Dict[str, int]:
+        """Return persistent heavy-work limits bounded by the deployment hard cap."""
+        try:
+            hard_limit = max(1, min(8, int(os.environ.get("CAD_CONCURRENCY_HARD_LIMIT", "4"))))
+        except ValueError:
+            hard_limit = 4
+        def environment_default(name: str) -> int:
+            try:
+                return max(1, min(hard_limit, int(os.environ.get(name, "1"))))
+            except ValueError:
+                return 1
+
+        defaults = {
+            "analysis_max_concurrency": environment_default("CAD_ANALYSIS_MAX_WORKERS"),
+            "annotation_max_concurrency": environment_default("CAD_ANNOTATION_MAX_CONCURRENCY"),
+        }
+        with self.engine.connect() as conn:
+            raw = conn.execute(select(system_settings.c.value_json).where(
+                system_settings.c.key == "cad_concurrency_limits"
+            )).scalar_one_or_none()
+        saved = _load_json(raw, {})
+        if not isinstance(saved, dict):
+            saved = {}
+
+        def bounded(key: str) -> int:
+            try:
+                return max(1, min(hard_limit, int(saved.get(key, defaults[key]))))
+            except (TypeError, ValueError):
+                return defaults[key]
+
+        return {
+            "analysis_max_concurrency": bounded("analysis_max_concurrency"),
+            "annotation_max_concurrency": bounded("annotation_max_concurrency"),
+            "hard_limit": hard_limit,
+        }
+
+    def set_cad_concurrency_limits(
+        self,
+        analysis_max_concurrency: int,
+        annotation_max_concurrency: int,
+        actor_user_id: str,
+    ) -> Dict[str, int]:
+        current = self.cad_concurrency_limits()
+        hard_limit = current["hard_limit"]
+        analysis_limit = int(analysis_max_concurrency)
+        annotation_limit = int(annotation_max_concurrency)
+        if not 1 <= analysis_limit <= hard_limit:
+            raise ValueError(f"Analysis concurrency must be between 1 and {hard_limit}")
+        if not 1 <= annotation_limit <= hard_limit:
+            raise ValueError(f"Annotation concurrency must be between 1 and {hard_limit}")
+        stored = {
+            "analysis_max_concurrency": analysis_limit,
+            "annotation_max_concurrency": annotation_limit,
+        }
+        now = _utcnow()
+        with self.engine.begin() as conn:
+            existing = conn.execute(select(system_settings.c.key).where(
+                system_settings.c.key == "cad_concurrency_limits"
+            )).first()
+            values = {
+                "value_json": _json(stored),
+                "updated_by_user_id": actor_user_id,
+                "updated_at": now,
+            }
+            if existing:
+                conn.execute(update(system_settings).where(
+                    system_settings.c.key == "cad_concurrency_limits"
+                ).values(**values))
+            else:
+                conn.execute(insert(system_settings).values(
+                    key="cad_concurrency_limits", **values
+                ))
+            self._audit_conn(conn, actor_user_id, "CAD_CONCURRENCY_LIMITS_UPDATED", "SYSTEM", None, stored)
+        return {**stored, "hard_limit": hard_limit}
+
     def _trash_conn(
         self,
         conn: Any,

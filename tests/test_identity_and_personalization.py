@@ -95,6 +95,18 @@ class IdentityAndPersonalizationTests(unittest.TestCase):
         self.assertEqual(reset["personal_case_weight"], 0.35)
         self.assertEqual(reset["dimension_placement"], {})
 
+    def test_admin_can_persist_cad_concurrency_limits(self):
+        defaults = self.store.cad_concurrency_limits()
+        self.assertGreaterEqual(defaults["hard_limit"], 1)
+        analysis_limit = min(2, defaults["hard_limit"])
+        annotation_limit = min(3, defaults["hard_limit"])
+        configured = self.store.set_cad_concurrency_limits(analysis_limit, annotation_limit, self.admin.id)
+        self.assertEqual(configured["analysis_max_concurrency"], analysis_limit)
+        self.assertEqual(configured["annotation_max_concurrency"], annotation_limit)
+        self.assertEqual(self.store.cad_concurrency_limits(), configured)
+        with self.assertRaises(ValueError):
+            self.store.set_cad_concurrency_limits(configured["hard_limit"] + 1, 1, self.admin.id)
+
     def test_deleted_artifact_and_cases_can_be_restored_from_trash(self):
         result = self.store.record_artifact_and_cases(
             user=self.engineer,

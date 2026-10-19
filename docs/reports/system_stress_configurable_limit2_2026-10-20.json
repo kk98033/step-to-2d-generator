@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "method": "CAD_WEB_SYSTEM_STRESS_V1",
+  "generated_at": "2026-10-20T02:33:31+0800",
+  "base_url": "http://127.0.0.1:8000",
+  "client_count": 3,
+  "light_api": {
+    "clients": 3,
+    "requests_per_client": 5,
+    "request_count": 15,
+    "success": 15,
+    "errors": 0,
+    "wall_seconds": 0.112425,
+    "requests_per_second": 133.4225,
+    "latency_seconds": {
+      "minimum": 0.00375,
+      "mean": 0.019182,
+      "p50": 0.012004,
+      "p95": 0.0509,
+      "maximum": 0.0509
+    },
+    "status_counts": {
+      "200": 15
+    }
+  },
+  "annotation_burst": {
+    "clients": 3,
+    "wall_seconds": 0.837461,
+    "outcomes": {
+      "capacity_busy": 1,
+      "success": 2
+    },
+    "latency_seconds": {
+      "minimum": 0.072645,
+      "mean": 0.564097,
+      "p50": 0.782894,
+      "p95": 0.836751,
+      "maximum": 0.836751
+    },
+    "results": [
+      {
+        "client": "capacity-20261020023329-1",
+        "status": 200,
+        "outcome": "success",
+        "elapsed": 0.782894
+      },
+      {
+        "client": "capacity-20261020023329-2",
+        "status": 429,
+        "outcome": "capacity_busy",
+        "elapsed": 0.072645
+      },
+      {
+        "client": "capacity-20261020023329-3",
+        "status": 200,
+        "outcome": "success",
+        "elapsed": 0.836751
+      }
+    ]
+  },
+  "annotation_retry": {
+    "clients": 3,
+    "retry_interval_seconds": 0.5,
+    "wall_seconds": 1.660492,
+    "completed_per_second": 1.8067,
+    "outcomes": {
+      "success": 3
+    },
+    "completion_seconds": {
+      "minimum": 0.739063,
+      "mean": 1.082318,
+      "p50": 0.847981,
+      "p95": 1.65991,
+      "maximum": 1.65991
+    },
+    "total_attempts": 5,
+    "total_busy_responses": 2,
+    "results": [
+      {
+        "client": "capacity-20261020023329-1",
+        "outcome": "success",
+        "attempts": 1,
+        "busy_responses": 0,
+        "completion_seconds": 0.847981
+      },
+      {
+        "client": "capacity-20261020023329-2",
+        "outcome": "success",
+        "attempts": 1,
+        "busy_responses": 0,
+        "completion_seconds": 0.739063
+      },
+      {
+        "client": "capacity-20261020023329-3",
+        "outcome": "success",
+        "attempts": 3,
+        "busy_responses": 2,
+        "completion_seconds": 1.65991
+      }
+    ]
+  },
+  "analysis_queue": {
+    "clients": 3,
+    "step_filename": "new_9b88a022_housing_assy_1fnkw6001h_a01_a_3_asm.stp",
+    "step_bytes": 489713,
+    "wall_seconds": 29.229873,
+    "outcomes": {
+      "completed": 3
+    },
+    "results": [
+      {
+        "client": "capacity-20261020023329-1",
+        "upload_status": 200,
+        "outcome": "completed",
+        "job_id": "12cfb6ce-bbeb-43c4-9e43-4b9a2a8e7161",
+        "initial_queue_position": 1,
+        "worker_limit": 2,
+        "state_history": [
+          "processing",
+          "completed"
+        ],
+        "completion_seconds": 19.931955,
+        "final_message": "處理完成"
+      },
+      {
+        "client": "capacity-20261020023329-2",
+        "upload_status": 200,
+        "outcome": "completed",
+        "job_id": "92dd73af-4681-4fb3-b6b4-4dcf6a05fa79",
+        "initial_queue_position": 1,
+        "worker_limit": 2,
+        "state_history": [
+          "queued",
+          "processing",
+          "completed"
+        ],
+        "completion_seconds": 29.229729,
+        "final_message": "處理完成"
+      },
+      {
+        "client": "capacity-20261020023329-3",
+        "upload_status": 200,
+        "outcome": "completed",
+        "job_id": "613a6b1c-8738-4039-90f7-76322889ad61",
+        "initial_queue_position": 1,
+        "worker_limit": 2,
+        "state_history": [
+          "processing",
+          "finalizing",
+          "completed"
+        ],
+        "completion_seconds": 21.583578,
+        "final_message": "處理完成"
+      }
+    ]
+  },
+  "health_during_heavy_load": {
+    "sample_count": 68,
+    "success": 68,
+    "failures": 0,
+    "availability_percent": 100.0,
+    "latency_seconds": {
+      "minimum": 0.002398,
+      "mean": 0.210028,
+      "p50": 0.096626,
+      "p95": 0.826645,
+      "maximum": 1.256858
+    }
+  }
+}

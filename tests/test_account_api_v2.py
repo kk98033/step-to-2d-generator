@@ -125,6 +125,26 @@ def test_admin_manages_company_domains_and_import_templates():
     assert xlsx_template.content.startswith(b"PK")
 
 
+def test_admin_updates_cad_concurrency_limits():
+    authenticated = admin_client()
+    initial = authenticated.get("/api/admin/settings/cad-concurrency")
+    assert initial.status_code == 200
+    hard_limit = initial.json()["hard_limit"]
+    selected = min(2, hard_limit)
+    updated = authenticated.put("/api/admin/settings/cad-concurrency", json={
+        "analysis_max_concurrency": selected,
+        "annotation_max_concurrency": selected,
+    })
+    assert updated.status_code == 200
+    assert updated.json()["analysis_max_concurrency"] == selected
+    assert updated.json()["annotation_max_concurrency"] == selected
+    rejected = authenticated.put("/api/admin/settings/cad-concurrency", json={
+        "analysis_max_concurrency": hard_limit + 1,
+        "annotation_max_concurrency": 1,
+    })
+    assert rejected.status_code in {400, 422}
+
+
 def test_excel_bulk_import_and_email_delivery_contract():
     authenticated = admin_client()
     workbook = Workbook()
