@@ -64,6 +64,12 @@ class ApiClient:
             except (UnicodeDecodeError, json.JSONDecodeError):
                 body = {"detail": content.decode("utf-8", errors="replace")}
             return HttpResult(exc.code, body, time.perf_counter() - started)
+        except Exception as exc:  # noqa: BLE001 - transport failure is benchmark evidence
+            return HttpResult(
+                0,
+                {"detail": f"{type(exc).__name__}: {exc}"},
+                time.perf_counter() - started,
+            )
 
 
 def percentile(values: list[float], fraction: float) -> float:

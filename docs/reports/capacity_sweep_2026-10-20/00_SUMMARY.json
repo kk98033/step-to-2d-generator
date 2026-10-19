@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "method": "CAD_CAPACITY_SWEEP_V1",
+  "tested_at": "2026-10-20T02:37:05+08:00",
+  "result": "STOPPED_AT_FIRST_PROCESS_CRASH",
+  "maximum_verified_sustained_heavy_concurrency": 1,
+  "first_unstable_concurrency": 2,
+  "level_1": {
+    "result": "PASS",
+    "authenticated_clients": 5,
+    "light_api_success": 25,
+    "light_api_requests": 25,
+    "light_api_requests_per_second": 241.1496,
+    "annotation_burst_success": 1,
+    "annotation_burst_capacity_busy": 4,
+    "annotation_retry_success": 5,
+    "annotation_retry_wall_seconds": 2.881701,
+    "analysis_completed": 2,
+    "analysis_wall_seconds": 20.39622,
+    "health_success": 62,
+    "health_samples": 62
+  },
+  "level_2": {
+    "result": "PROCESS_CRASH",
+    "phase": "annotation_retry_under_sustained_load",
+    "client_error": "ConnectionResetError [WinError 10054]",
+    "python_traceback_in_server": false,
+    "last_observed_server_activity": "concurrent smart-annotation SVG/PDF/PNG conversion",
+    "full_phase_report_available": false
+  },
+  "levels_3_and_4": {
+    "result": "NOT_RUN",
+    "reason": "Stopped after first process-level failure"
+  },
+  "safe_restoration": {
+    "analysis_max_concurrency": 1,
+    "annotation_max_concurrency": 1,
+    "backend_health": 200,
+    "temporary_accounts_disabled": 5
+  },
+  "recommendation": "Use isolated CAD worker processes before enabling heavy concurrency above 1"
+}
