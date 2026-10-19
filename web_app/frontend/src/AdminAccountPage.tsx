@@ -164,7 +164,10 @@ export default function AdminAccountPage() {
   };
   const saveCadConcurrency = async () => {
     const { analysis_max_concurrency, annotation_max_concurrency } = cadConcurrency;
-    if (!window.confirm(`確定將模型分析上限設為 ${analysis_max_concurrency}、智慧標註上限設為 ${annotation_max_concurrency}？進行中的工作不會被中止。`)) return;
+    const unsafeWarning = Math.max(analysis_max_concurrency, annotation_max_concurrency) > 1
+      ? '警告：目前單一程序在持續壓測中曾於容量 2 終止；啟用前應先部署隔離 worker process。\n\n'
+      : '';
+    if (!window.confirm(`${unsafeWarning}確定將模型分析上限設為 ${analysis_max_concurrency}、智慧標註上限設為 ${annotation_max_concurrency}？進行中的工作不會被中止。`)) return;
     try {
       const response = await axios.put(`${API_BASE}/api/admin/settings/cad-concurrency`, {
         analysis_max_concurrency,
@@ -227,7 +230,7 @@ export default function AdminAccountPage() {
           <Title title="系統設定" description="管理多人工作容量、公司 Email 網域與回收桶保留期限。" />
           <div style={panelStyle}>
             <h3>多人 CAD 工作容量</h3>
-            <p style={{ color: '#999', fontSize: 13, lineHeight: 1.6 }}>限制的是同時執行的重型 CAD 工作，不限制登入或一般瀏覽人數。每位使用者仍只能同時提交一件同類工作；調高數值會增加 CPU 與記憶體使用量。</p>
+            <p style={{ color: '#999', fontSize: 13, lineHeight: 1.6 }}>限制的是同時執行的重型 CAD 工作，不限制登入或一般瀏覽人數。每位使用者仍只能同時提交一件同類工作。持續壓測已確認目前單一程序的安全值為 1；設定 2 以上可能讓原生 CAD／轉檔元件終止後端，僅供部署隔離 worker 後測試。</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, maxWidth: 620 }}>
               <label style={{ color: '#aaa', fontSize: 12 }}>模型分析同時上限（1–{cadConcurrency.hard_limit}）<input type="number" min={1} max={cadConcurrency.hard_limit} value={cadConcurrency.analysis_max_concurrency} onChange={event => setCadConcurrency({ ...cadConcurrency, analysis_max_concurrency: Number(event.target.value) })} style={{ ...fieldStyle, marginTop: 7 }} /></label>
               <label style={{ color: '#aaa', fontSize: 12 }}>智慧標註同時上限（1–{cadConcurrency.hard_limit}）<input type="number" min={1} max={cadConcurrency.hard_limit} value={cadConcurrency.annotation_max_concurrency} onChange={event => setCadConcurrency({ ...cadConcurrency, annotation_max_concurrency: Number(event.target.value) })} style={{ ...fieldStyle, marginTop: 7 }} /></label>
