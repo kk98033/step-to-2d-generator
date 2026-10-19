@@ -84,16 +84,51 @@ app.mount("/api/files", StaticFiles(directory=OUTPUT_DIR), name="files")
 jobs: Dict[str, Dict[str, Any]] = {}
 jobs_lock = threading.RLock()
 ACTIVE_JOB_STATUSES = {"queued", "processing", "finalizing"}
-try:
-    ANALYSIS_MAX_WORKERS = max(1, min(4, int(os.environ.get("CAD_ANALYSIS_MAX_WORKERS", "1"))))
-except ValueError:
-    ANALYSIS_MAX_WORKERS = 1
+_initial_concurrency_limits = identity_store.cad_concurrency_limits()
+ANALYSIS_MAX_WORKERS = _initial_concurrency_limits["hard_limit"]
+ANNOTATION_MAX_CONCURRENCY = _initial_concurrency_limits["hard_limit"]
 executor = ThreadPoolExecutor(max_workers=ANALYSIS_MAX_WORKERS, thread_name_prefix="cad-analysis")
-try:
-    ANNOTATION_MAX_CONCURRENCY = max(1, min(4, int(os.environ.get("CAD_ANNOTATION_MAX_CONCURRENCY", "1"))))
-except ValueError:
-    ANNOTATION_MAX_CONCURRENCY = 1
-annotation_slots = threading.BoundedSemaphore(ANNOTATION_MAX_CONCURRENCY)
+
+
+class DynamicCapacityLimiter:
+    """Admission limiter whose configured capacity can change without a restart."""
+
+    def __init__(self):
+        self._condition = threading.Condition(threading.RLock())
+        self._active = 0
+
+    def acquire(self, limit_provider, *, blocking: bool) -> bool:
+        with self._condition:
+            while self._active >= max(1, int(limit_provider())):
+                if not blocking:
+                    return False
+                self._condition.wait(timeout=0.5)
+            self._active += 1
+            return True
+
+    def release(self) -> None:
+        with self._condition:
+            if self._active <= 0:
+                raise RuntimeError("Capacity limiter released without an active lease")
+            self._active -= 1
+            self._condition.notify_all()
+
+    @property
+    def active(self) -> int:
+        with self._condition:
+            return self._active
+
+
+def _analysis_capacity() -> int:
+    return identity_store.cad_concurrency_limits()["analysis_max_concurrency"]
+
+
+def _annotation_capacity() -> int:
+    return identity_store.cad_concurrency_limits()["annotation_max_concurrency"]
+
+
+analysis_slots = DynamicCapacityLimiter()
+annotation_slots = DynamicCapacityLimiter()
 annotation_state_lock = threading.RLock()
 active_annotation_users: Dict[str, Dict[str, Any]] = {}
 
@@ -142,7 +177,8 @@ def _job_status_payload(job_id: str, job: Dict[str, Any]) -> Dict[str, Any]:
         "created_at": job.get("created_at"),
         "started_at": job.get("started_at"),
         "updated_at": job.get("updated_at"),
-        "worker_limit": ANALYSIS_MAX_WORKERS,
+        "worker_limit": _analysis_capacity(),
+        "active_workers": analysis_slots.active,
     }
 
 
@@ -2290,7 +2326,7 @@ def render_custom_annotation_drawing(
             "part_id": part_id,
             "started_at": _utc_iso(),
         }
-    if not annotation_slots.acquire(blocking=False):
+    if not annotation_slots.acquire(_annotation_capacity, blocking=False):
         with annotation_state_lock:
             active_annotation_users.pop(current_user.id, None)
         raise HTTPException(
@@ -2298,7 +2334,7 @@ def render_custom_annotation_drawing(
             detail={
                 "code": "ANNOTATION_CAPACITY_BUSY",
                 "message": "標註系統正忙碌，請稍後再試",
-                "capacity": ANNOTATION_MAX_CONCURRENCY,
+                "capacity": _annotation_capacity(),
             },
             headers={"Retry-After": "3"},
         )
@@ -2580,7 +2616,10 @@ def run_job(job_id: str, file_path: str):
     def progress_callback(total, current, message):
         _set_job_state(job_id, total=total, current=current, message=message)
 
+    acquired = False
     try:
+        analysis_slots.acquire(_analysis_capacity, blocking=True)
+        acquired = True
         _set_job_state(
             job_id,
             status="processing",
@@ -2620,6 +2659,9 @@ def run_job(job_id: str, file_path: str):
         
     except Exception as e:
         _set_job_state(job_id, status="error", message=f"發生錯誤: {str(e)}", completed_at=_utc_iso())
+    finally:
+        if acquired:
+            analysis_slots.release()
 
 
 @app.post("/api/upload")
@@ -2719,7 +2761,10 @@ async def get_results(job_id: str, current_user: CurrentUser = Depends(require_u
 
 # === 模型比對 API ===
 def run_compare_job(job_id: str, old_path: str, new_path: str):
+    acquired = False
     try:
+        analysis_slots.acquire(_analysis_capacity, blocking=True)
+        acquired = True
         _set_job_state(
             job_id,
             status="processing",
@@ -2764,6 +2809,9 @@ def run_compare_job(job_id: str, old_path: str, new_path: str):
         
     except Exception as e:
         _set_job_state(job_id, status="error", message=f"比對發生錯誤: {str(e)}", completed_at=_utc_iso())
+    finally:
+        if acquired:
+            analysis_slots.release()
         
 @app.post("/api/compare")
 def compare_files(

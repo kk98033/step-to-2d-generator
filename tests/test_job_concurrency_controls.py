@@ -47,9 +47,23 @@ class JobConcurrencyControlTests(unittest.TestCase):
 
     def test_default_worker_limits_are_bounded(self):
         self.assertGreaterEqual(server.ANALYSIS_MAX_WORKERS, 1)
-        self.assertLessEqual(server.ANALYSIS_MAX_WORKERS, 4)
+        self.assertLessEqual(server.ANALYSIS_MAX_WORKERS, 8)
         self.assertGreaterEqual(server.ANNOTATION_MAX_CONCURRENCY, 1)
-        self.assertLessEqual(server.ANNOTATION_MAX_CONCURRENCY, 4)
+        self.assertLessEqual(server.ANNOTATION_MAX_CONCURRENCY, 8)
+
+    def test_dynamic_capacity_limiter_applies_new_admissions_immediately(self):
+        limiter = server.DynamicCapacityLimiter()
+        capacity = 2
+        self.assertTrue(limiter.acquire(lambda: capacity, blocking=False))
+        self.assertTrue(limiter.acquire(lambda: capacity, blocking=False))
+        self.assertFalse(limiter.acquire(lambda: capacity, blocking=False))
+        self.assertEqual(limiter.active, 2)
+        capacity = 1
+        limiter.release()
+        self.assertFalse(limiter.acquire(lambda: capacity, blocking=False))
+        limiter.release()
+        self.assertTrue(limiter.acquire(lambda: capacity, blocking=False))
+        limiter.release()
 
 
 if __name__ == "__main__":

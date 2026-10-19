@@ -18,6 +18,7 @@ export default function AdminAccountPage() {
   const [tags, setTags] = useState<any[]>([]);
   const [trash, setTrash] = useState<any[]>([]);
   const [retentionDays, setRetentionDays] = useState(30);
+  const [cadConcurrency, setCadConcurrency] = useState({ analysis_max_concurrency: 1, annotation_max_concurrency: 1, hard_limit: 4 });
   const [domains, setDomains] = useState<string[]>([]);
   const [toast, setToast] = useState<Toast>(null);
   const [createdCredential, setCreatedCredential] = useState<any>(null);
@@ -29,17 +30,23 @@ export default function AdminAccountPage() {
   const [editedDomain, setEditedDomain] = useState('');
 
   const load = async () => {
-    const [userResponse, tagResponse, trashResponse, retentionResponse, domainResponse] = await Promise.all([
+    const [userResponse, tagResponse, trashResponse, retentionResponse, domainResponse, concurrencyResponse] = await Promise.all([
       axios.get(`${API_BASE}/api/admin/users`),
       axios.get(`${API_BASE}/api/admin/recommendation-tags`),
       axios.get(`${API_BASE}/api/admin/trash`),
       axios.get(`${API_BASE}/api/admin/settings/trash-retention`),
       axios.get(`${API_BASE}/api/admin/company-email-domains`),
+      axios.get(`${API_BASE}/api/admin/settings/cad-concurrency`),
     ]);
     setUsers(userResponse.data.users || []);
     setTags(tagResponse.data.tags || []);
     setTrash(trashResponse.data.records || []);
     setRetentionDays(retentionResponse.data.days || 30);
+    setCadConcurrency({
+      analysis_max_concurrency: concurrencyResponse.data.analysis_max_concurrency || 1,
+      annotation_max_concurrency: concurrencyResponse.data.annotation_max_concurrency || 1,
+      hard_limit: concurrencyResponse.data.hard_limit || 4,
+    });
     const options = domainResponse.data.domains || [];
     setDomains(options);
     setAccount(value => ({ ...value, email_domain: options.includes(value.email_domain) ? value.email_domain : (options[0] || '') }));
@@ -155,6 +162,18 @@ export default function AdminAccountPage() {
     try { await axios.put(`${API_BASE}/api/admin/settings/trash-retention`, { days: retentionDays }); report('回收桶保留期限已更新'); }
     catch (reason) { fail(reason, '設定更新失敗'); }
   };
+  const saveCadConcurrency = async () => {
+    const { analysis_max_concurrency, annotation_max_concurrency } = cadConcurrency;
+    if (!window.confirm(`確定將模型分析上限設為 ${analysis_max_concurrency}、智慧標註上限設為 ${annotation_max_concurrency}？進行中的工作不會被中止。`)) return;
+    try {
+      const response = await axios.put(`${API_BASE}/api/admin/settings/cad-concurrency`, {
+        analysis_max_concurrency,
+        annotation_max_concurrency,
+      });
+      setCadConcurrency(response.data);
+      report('多人工作容量已更新，新提交工作立即套用');
+    } catch (reason) { fail(reason, '多人工作容量更新失敗'); }
+  };
 
   const addDomain = async (event: FormEvent) => {
     event.preventDefault();
@@ -204,7 +223,20 @@ export default function AdminAccountPage() {
 
         {tab === 'trash' && <section><Title title="全域回收桶" description={`可查看所有工程師已刪除的資料；目前保留 ${retentionDays} 天。`} /><SearchField value={search.trash || ''} onChange={value => setSearch({ ...search, trash: value })} placeholder="搜尋資料類型、記錄 ID 或擁有者" />{filteredTrash.length === 0 && <div style={panelStyle}>沒有符合的回收桶資料</div>}{filteredTrash.map(item => <div key={item.id} style={rowStyle}><div><strong>{item.record_type}</strong><div style={subStyle}>擁有者 {item.owner_user_id} · 到期 {new Date(item.purge_after).toLocaleString()}</div></div><div style={{ display: 'flex', gap: 8 }}><button onClick={() => restoreTrash(item)} style={buttonStyle}><ArchiveRestore size={15} />復原</button><button onClick={() => purgeTrash(item)} style={{ ...buttonStyle, background: '#3f1d1d', borderColor: '#7f1d1d' }}><Trash2 size={15} />永久刪除</button></div></div>)}</section>}
 
-        {tab === 'settings' && <section><Title title="系統設定" description="管理公司 Email 網域與回收桶保留期限。" /><div style={panelStyle}><h3>公司 Email 網域</h3><form onSubmit={addDomain} style={{ display: 'flex', gap: 9, marginBottom: 16 }}><input required placeholder="company.example" value={newDomain} onChange={event => setNewDomain(event.target.value)} style={fieldStyle} /><button style={buttonStyle}><Plus size={15} />新增網域</button></form>{domains.map(domain => <div key={domain} style={rowStyle}>{editingDomain === domain ? <><input value={editedDomain} onChange={event => setEditedDomain(event.target.value)} style={fieldStyle} /><div style={{ display: 'flex', gap: 8 }}><button onClick={() => saveDomain(domain)} style={buttonStyle}><Save size={15} />儲存</button><button onClick={() => setEditingDomain(null)} style={{ ...buttonStyle, background: '#262626', borderColor: '#555' }}><X size={15} />取消</button></div></> : <><strong>@{domain}</strong><div style={{ display: 'flex', gap: 8 }}><button onClick={() => { setEditingDomain(domain); setEditedDomain(domain); }} style={buttonStyle}><Pencil size={15} />修改</button><button onClick={() => deleteDomain(domain)} style={{ ...buttonStyle, background: '#3f1d1d', borderColor: '#7f1d1d' }}><Trash2 size={15} />刪除</button></div></>}</div>)}</div><div style={{ ...panelStyle, maxWidth: 520 }}><h3>回收桶</h3><label style={{ display: 'block', color: '#aaa', fontSize: 12, marginBottom: 7 }}>保留天數（1–3650）</label><input type="number" min={1} max={3650} value={retentionDays} onChange={event => setRetentionDays(Number(event.target.value))} style={fieldStyle} /><button onClick={saveRetention} style={{ ...buttonStyle, marginTop: 12 }}><Save size={15} />儲存設定</button></div></section>}
+        {tab === 'settings' && <section>
+          <Title title="系統設定" description="管理多人工作容量、公司 Email 網域與回收桶保留期限。" />
+          <div style={panelStyle}>
+            <h3>多人 CAD 工作容量</h3>
+            <p style={{ color: '#999', fontSize: 13, lineHeight: 1.6 }}>限制的是同時執行的重型 CAD 工作，不限制登入或一般瀏覽人數。每位使用者仍只能同時提交一件同類工作；調高數值會增加 CPU 與記憶體使用量。</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, maxWidth: 620 }}>
+              <label style={{ color: '#aaa', fontSize: 12 }}>模型分析同時上限（1–{cadConcurrency.hard_limit}）<input type="number" min={1} max={cadConcurrency.hard_limit} value={cadConcurrency.analysis_max_concurrency} onChange={event => setCadConcurrency({ ...cadConcurrency, analysis_max_concurrency: Number(event.target.value) })} style={{ ...fieldStyle, marginTop: 7 }} /></label>
+              <label style={{ color: '#aaa', fontSize: 12 }}>智慧標註同時上限（1–{cadConcurrency.hard_limit}）<input type="number" min={1} max={cadConcurrency.hard_limit} value={cadConcurrency.annotation_max_concurrency} onChange={event => setCadConcurrency({ ...cadConcurrency, annotation_max_concurrency: Number(event.target.value) })} style={{ ...fieldStyle, marginTop: 7 }} /></label>
+            </div>
+            <button onClick={saveCadConcurrency} style={{ ...buttonStyle, marginTop: 14 }}><Save size={15} />儲存多人容量</button>
+          </div>
+          <div style={panelStyle}><h3>公司 Email 網域</h3><form onSubmit={addDomain} style={{ display: 'flex', gap: 9, marginBottom: 16 }}><input required placeholder="company.example" value={newDomain} onChange={event => setNewDomain(event.target.value)} style={fieldStyle} /><button style={buttonStyle}><Plus size={15} />新增網域</button></form>{domains.map(domain => <div key={domain} style={rowStyle}>{editingDomain === domain ? <><input value={editedDomain} onChange={event => setEditedDomain(event.target.value)} style={fieldStyle} /><div style={{ display: 'flex', gap: 8 }}><button onClick={() => saveDomain(domain)} style={buttonStyle}><Save size={15} />儲存</button><button onClick={() => setEditingDomain(null)} style={{ ...buttonStyle, background: '#262626', borderColor: '#555' }}><X size={15} />取消</button></div></> : <><strong>@{domain}</strong><div style={{ display: 'flex', gap: 8 }}><button onClick={() => { setEditingDomain(domain); setEditedDomain(domain); }} style={buttonStyle}><Pencil size={15} />修改</button><button onClick={() => deleteDomain(domain)} style={{ ...buttonStyle, background: '#3f1d1d', borderColor: '#7f1d1d' }}><Trash2 size={15} />刪除</button></div></>}</div>)}</div>
+          <div style={{ ...panelStyle, maxWidth: 520 }}><h3>回收桶</h3><label style={{ display: 'block', color: '#aaa', fontSize: 12, marginBottom: 7 }}>保留天數（1–3650）</label><input type="number" min={1} max={3650} value={retentionDays} onChange={event => setRetentionDays(Number(event.target.value))} style={fieldStyle} /><button onClick={saveRetention} style={{ ...buttonStyle, marginTop: 12 }}><Save size={15} />儲存設定</button></div>
+        </section>}
       </main>
     </div>
   </div>;
