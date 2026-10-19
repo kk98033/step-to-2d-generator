@@ -10,6 +10,27 @@
 
 ## 正式案例資料庫全量重建與部署
 
+### 重建資料來源與目錄角色
+
+正式案例資料庫重建時，**不是以 `experiments/` 內的模型或產物作為全量輸入資料源**。
+重建腳本會讀取 [`CURRENT_FINAL/database_full_extract_config.json`](CURRENT_FINAL/database_full_extract_config.json)
+所指定的外部公司資料路徑：
+
+- `source_root`：原始產品資料夾，提供 STEP／STP、DWG 與相關來源檔。
+- `dxf_root`：DWG 轉換後的 DXF 快取，提供原生 `DIMENSION` 與公差證據。
+- `families`：本次允許掃描與重建的產品家族清單。
+
+各目錄的用途如下：
+
+- `CURRENT_FINAL/`：目前核准用於重建的演算法入口與設定，不是模型資料庫。
+- `experiments/YYYY-MM-DD/`：每次執行產生的報告、staging、checkpoint、圖片與稽核證據，不應反過來當成下一次全量重建的原始模型來源。
+- `benchmarks/`：固定測試集與回歸基準，只用於驗證演算法是否退步。
+- `auto_2d_drawing/tolerance/data/feature_case_base.json`：驗證與部署成功後，正式 Web 後端載入的案例資料庫。
+
+因此，新增或更新公司模型時，應先放入設定檔指向的受控來源目錄，必要時更新
+`source_root`、`dxf_root` 或 `families`，再執行重建。不得只把模型複製到
+`experiments/` 後就視為已納入正式資料庫。
+
 每次 `CURRENT_FINAL` 公差／特徵提取器完成一版後，使用根目錄的
 `rebuild_production_case_base.ps1` 重新掃描設定檔中的所有工程圖、執行 3D 特徵連結，
 再轉換成正式網頁直接使用的 `ToleranceCase[]` 格式。

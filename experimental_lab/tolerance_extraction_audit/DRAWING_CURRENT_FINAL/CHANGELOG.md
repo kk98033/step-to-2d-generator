@@ -1,5 +1,15 @@
 # Changelog
 
+## drawing-experimental-v0.23.0 — 2026-10-19
+
+- Added optional engineer-selection input to the experimental Main.
+- Added separate front, top, and right DXF/PDF/PNG engineering drawings.
+- Added an optional fan half-section selected from dynamic Bnd_Box-derived candidates.
+- Added Experiment 22 engineer-selected fan angles as native DXF angular dimensions.
+- Blocked feature selections whose projection validation status is `FAIL`.
+- Kept the existing analysis-only mode unchanged when no selection config is supplied.
+- Production and legacy drawing engines remain unchanged.
+
 ## drawing-experimental-v0.18.0 — 2026-10-15
 
 - Added geometry-only paired-surface thickness detection to the experimental
