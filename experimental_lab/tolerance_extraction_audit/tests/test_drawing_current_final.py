@@ -19,10 +19,13 @@ class DrawingCurrentFinalTests(unittest.TestCase):
                 capability["id"],
             )
 
-    def test_manifest_forbids_filename_trigger_for_half_section(self):
+    def test_manifest_requires_engineer_request_for_half_section(self):
         manifest = json.loads((FINAL_ROOT / "ENGINE_MANIFEST.json").read_text(encoding="utf-8"))
-        section = next(item for item in manifest["capabilities"] if item["id"] == "geometry_triggered_half_section")
-        self.assertEqual(section["trigger_policy"], "geometry_evidence_only_not_filename")
+        section = next(item for item in manifest["capabilities"] if item["id"] == "engineer_requested_half_section")
+        self.assertEqual(
+            section["trigger_policy"],
+            "explicit_engineer_request_then_geometry_selected_section",
+        )
 
 
 if __name__ == "__main__":

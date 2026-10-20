@@ -19,7 +19,13 @@ try:
     from .angular_dimension_renderer import build_angular_render_tasks
     from .annular_composite_features import extract_annular_composites
     from .dimension_intents import build_dimension_intent_set
+    from .engineering_dimension_renderer import (
+        diameter_arrow_audit,
+        diameter_label_sector,
+        render_annular_dimensions,
+    )
     from .rectangular_hole_renderer import build_rectangular_hole_render_tasks
+    from .radial_band_pattern_features import detect_radial_pattern_bands, build_radial_band_render_tasks
     from .run_view_plan_experiment import build_view_candidates
     from .run_selected_feature_render_experiment import validate_selection
     from .selected_feature_renderer_bridge import (
@@ -39,7 +45,9 @@ except ImportError:
     from angular_dimension_renderer import build_angular_render_tasks
     from annular_composite_features import extract_annular_composites
     from dimension_intents import build_dimension_intent_set
+    from engineering_dimension_renderer import diameter_arrow_audit, diameter_label_sector, render_annular_dimensions
     from rectangular_hole_renderer import build_rectangular_hole_render_tasks
+    from radial_band_pattern_features import detect_radial_pattern_bands, build_radial_band_render_tasks
     from run_view_plan_experiment import build_view_candidates
     from run_selected_feature_render_experiment import validate_selection
     from selected_feature_renderer_bridge import bridge_selected_features, build_relational_feature_candidates
@@ -169,12 +177,23 @@ def _normalise_view(view: Mapping[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _audit_dxf(path: Path) -> dict[str, int]:
+def _audit_dxf(path: Path) -> dict[str, Any]:
     document = ezdxf.readfile(path)
     auditor = document.audit()
+    full_span_diameters = []
+    for dimension in document.modelspace().query("DIMENSION"):
+        if int(dimension.dxf.dimtype) & 7 != 3:
+            continue
+        result = diameter_arrow_audit(dimension)
+        if result["two_arrowheads"]:
+            full_span_diameters.append(result)
     return {
         "dimension_count": len(document.modelspace().query("DIMENSION")),
         "audit_error_count": len(auditor.errors),
+        "full_span_diameter_count": len(full_span_diameters),
+        "full_span_diameter_arrows_inward": all(
+            item["arrowheads_point_inward"] for item in full_span_diameters
+        ),
     }
 
 
@@ -250,10 +269,14 @@ def _inject_angular_dimensions(document, tasks: Sequence[Mapping[str, Any]], vie
         end_angle = math.radians(float(task["end_angle"]))
         p1 = (center[0] + radius * math.cos(start_angle), center[1] + radius * math.sin(start_angle))
         p2 = (center[0] + radius * math.cos(end_angle), center[1] + radius * math.sin(end_angle))
+        if task.get("extend_to_center"):
+            modelspace.add_line(center, p1, dxfattribs={"layer": "DIM"})
+            modelspace.add_line(center, p2, dxfattribs={"layer": "DIM"})
         mid_angle = start_angle + math.radians(float(task["angle"])) / 2.0
+        base_radius = radius * float(task.get("base_radius_factor", 0.72))
         base = (
-            center[0] + radius * 0.72 * math.cos(mid_angle),
-            center[1] + radius * 0.72 * math.sin(mid_angle),
+            center[0] + base_radius * math.cos(mid_angle),
+            center[1] + base_radius * math.sin(mid_angle),
         )
         dimension = modelspace.add_angular_dim_3p(
             base=base,
@@ -270,41 +293,13 @@ def _inject_annular_dimensions(document, tasks: Sequence[Mapping[str, Any]], vie
     if not tasks:
         return
     modelspace = document.modelspace()
-    map_point, scale, drawing_bbox = _coordinate_mapper(modelspace, view)
-
-    span = max(drawing_bbox[2] - drawing_bbox[0], drawing_bbox[3] - drawing_bbox[1])
-    for lane, task in enumerate(tasks):
-        anchors = [map_point(point) for point in task["anchors"]]
-        value = float(task["nominal_value"])
-        if str(task["dim_type"]).upper() == "DIAMETER":
-            center = ((anchors[0][0] + anchors[1][0]) / 2.0, (anchors[0][1] + anchors[1][1]) / 2.0)
-            radius = math.dist(anchors[0], anchors[1]) / 2.0
-            angle = 145.0 + lane * 18.0
-            location_radius = radius + span * (0.04 + lane * 0.018)
-            location = (
-                center[0] + location_radius * math.cos(math.radians(angle)),
-                center[1] + location_radius * math.sin(math.radians(angle)),
-            )
-            dimension = modelspace.add_diameter_dim(
-                center=center,
-                radius=radius,
-                angle=angle,
-                location=location,
-                text=str(task.get("label") or f"%%c{value:.2f}"),
-                dimstyle="EZ_RADIUS",
-                dxfattribs={"layer": "DIM"},
-            )
-        else:
-            offset = span * (0.035 + lane * 0.02)
-            dimension = modelspace.add_aligned_dim(
-                p1=anchors[0],
-                p2=anchors[1],
-                distance=offset,
-                text=str(task.get("label") or f"{value:.2f}"),
-                dimstyle="EZDXF",
-                dxfattribs={"layer": "DIM"},
-            )
-        dimension.render()
+    map_point, _scale, drawing_bbox = _coordinate_mapper(modelspace, view)
+    render_annular_dimensions(
+        document,
+        tasks,
+        map_point=map_point,
+        drawing_bbox=drawing_bbox,
+    )
 
 
 def _side_vector(side: str) -> tuple[float, float]:
@@ -441,6 +436,14 @@ def _render_one(
         view,
     )
     audit = _audit_dxf(paths["dxf"])
+    expected_full_span_diameters = sum(
+        str(task.get("dim_type") or "").upper() == "DIAMETER" for task in annular_tasks
+    )
+    audit["expected_full_span_diameter_count"] = expected_full_span_diameters
+    audit["full_span_diameter_contract_passed"] = (
+        audit["full_span_diameter_count"] == expected_full_span_diameters
+        and audit["full_span_diameter_arrows_inward"]
+    )
     return {
         "view": view_name,
         "selected_feature_ids": [str(rule.get("rule_id") or rule.get("id")) for rule in rules],
@@ -462,6 +465,7 @@ def render_minimal_multiview_drawing(
     include_half_section: bool = False,
     relational_selections: Sequence[Mapping[str, Any]] = (),
     pattern_angle_selections: Sequence[Mapping[str, Any]] = (),
+    radial_band_angle_selections: Sequence[Mapping[str, Any]] = (),
     annular_selections: Sequence[Mapping[str, Any]] = (),
     rectangular_hole_selections: Sequence[Mapping[str, Any]] = (),
     shaft_dimension_selections: Sequence[Mapping[str, Any]] = (),
@@ -571,6 +575,44 @@ def render_minimal_multiview_drawing(
                 task["center"] = list(best_radial["center"])
                 task["view"] = str(best_radial["view"])
             angular_tasks.extend(pattern_tasks)
+
+    radial_band_rejections = []
+    radial_band_placement_trace: list[dict[str, Any]] = []
+    if radial_band_angle_selections:
+        band_results = []
+        for view_name, view in standard_views.items():
+            result = detect_radial_pattern_bands(view)
+            result["view"] = view_name
+            band_results.append(result)
+        best_bands = max(
+            band_results,
+            key=lambda item: (int(bool(item.get("resolved"))), int(item.get("pattern_count") or 0)),
+        )
+        if not best_bands.get("resolved"):
+            radial_band_rejections = [
+                {"feature_id": str(item.get("feature_id") or item.get("id") or ""), "reason": "RADIAL_BANDS_UNRESOLVED"}
+                for item in radial_band_angle_selections
+            ]
+        else:
+            radial_view = standard_views[str(best_bands["view"])]
+            bbox = radial_view["bbox"]
+            span = min(float(bbox[2]) - float(bbox[0]), float(bbox[3]) - float(bbox[1]))
+            diameter_count = sum(
+                1
+                for item in annular_selections
+                if "diameter" in str(item.get("feature_id") or item.get("id") or "").lower()
+                and str(item.get("view") or best_bands["view"]) == str(best_bands["view"])
+            )
+            reserved_sector = diameter_label_sector(diameter_count)
+            band_tasks, radial_band_rejections = build_radial_band_render_tasks(
+                best_bands,
+                [dict(item) for item in radial_band_angle_selections],
+                view_name=str(best_bands["view"]),
+                view_span=span,
+                reserved_sectors=[reserved_sector] if reserved_sector else [],
+                placement_trace=radial_band_placement_trace,
+            )
+            angular_tasks.extend(band_tasks)
 
     annular_tasks = []
     annular_rejections = []
@@ -697,29 +739,65 @@ def render_minimal_multiview_drawing(
         half_section["selection_source"] = selected_section.get("selection_source", "GEOMETRY_QUALITY")
 
     all_drawings = drawings + ([half_section] if half_section else [])
+    placement_groups: dict[str, float] = {}
+    for placement in radial_band_placement_trace:
+        placement_groups.setdefault(
+            str(placement["placement_group"]),
+            float(placement["mid_angle"]),
+        )
+    placement_midpoints = list(placement_groups.values())
+    placement_separations = [
+        min(
+            abs(first - second) % 360.0,
+            360.0 - abs(first - second) % 360.0,
+        )
+        for index, first in enumerate(placement_midpoints)
+        for second in placement_midpoints[index + 1:]
+    ]
+    radial_band_collision_avoidance_passed = (
+        not radial_band_angle_selections
+        or len(placement_midpoints) <= 1
+        or min(placement_separations) >= 45.0
+    )
     report = {
         "schema_version": 1,
         "method": METHOD,
         "source_step": str(step_path.resolve()),
         "selection_authority": "EXPLICIT_ENGINEER_SELECTION",
-        "requested_selection_count": len(selections) + len(relational_selections) + len(pattern_angle_selections) + len(annular_selections) + len(rectangular_hole_selections) + len(shaft_dimension_selections) + len(thickness_selections),
+        "requested_selection_count": len(selections) + len(relational_selections) + len(pattern_angle_selections) + len(radial_band_angle_selections) + len(annular_selections) + len(rectangular_hole_selections) + len(shaft_dimension_selections) + len(thickness_selections),
         "configured_selection_count": len(accepted_rules) + len(angular_tasks) + len(annular_tasks) + len(specialized_tasks),
         "rejected_feature_selections": rejected_rules,
         "rejected_relational_selections": relational_rejections,
         "rejected_pattern_angle_selections": pattern_rejections,
+        "rejected_radial_band_angle_selections": radial_band_rejections,
         "rejected_annular_selections": annular_rejections,
         "rejected_specialized_selections": specialized_rejections,
+        "radial_band_angle_placement": {
+            "strategy": "GROUP_RELATED_ANGLES_THEN_MAXIMIZE_POLAR_CLEARANCE",
+            "placements": radial_band_placement_trace,
+            "group_separations_deg": placement_separations,
+            "minimum_group_separation_deg": min(placement_separations) if placement_separations else None,
+            "collision_avoidance_passed": radial_band_collision_avoidance_passed,
+        },
+        "diameter_renderer_contract": {
+            "full_span": True,
+            "arrowheads_at_both_ends": True,
+            "arrowheads_face_inward": True,
+        },
         "orthographic_drawings": drawings,
         "half_section_drawing": half_section,
         "success": (
             not rejected_rules
             and not relational_rejections
             and not pattern_rejections
+            and not radial_band_rejections
             and not annular_rejections
             and not specialized_rejections
+            and radial_band_collision_avoidance_passed
             and len(accepted_rules) + len(angular_tasks) + len(annular_tasks) + len(specialized_tasks)
-            == len(selections) + len(relational_selections) + len(pattern_angle_selections) + len(annular_selections) + len(rectangular_hole_selections) + len(shaft_dimension_selections) + len(thickness_selections)
+            == len(selections) + len(relational_selections) + len(pattern_angle_selections) + len(radial_band_angle_selections) + len(annular_selections) + len(rectangular_hole_selections) + len(shaft_dimension_selections) + len(thickness_selections)
             and all(item["audit_error_count"] == 0 for item in all_drawings)
+            and all(item["full_span_diameter_contract_passed"] for item in all_drawings)
         ),
         "production_integrated": False,
     }

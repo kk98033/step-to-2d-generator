@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "engine_version": "drawing-experimental-v0.23.0",
+  "engine_version": "drawing-experimental-v0.26.0",
   "updated_at": "2026-10-20",
   "deployment_status": "EXPERIMENT_ONLY",
   "production_integrated": false,
@@ -32,11 +32,11 @@
       "status": "EXPERIMENTAL_VERIFIED"
     },
     {
-      "id": "geometry_triggered_half_section",
+      "id": "engineer_requested_half_section",
       "source_experiment": "2026-10-13/02_fan_section_render_v1",
       "module": "common/scripts/run_fan_section_render_experiment.py",
       "status": "EXPERIMENTAL_VERIFIED",
-      "trigger_policy": "geometry_evidence_only_not_filename"
+      "trigger_policy": "explicit_engineer_request_then_geometry_selected_section"
     },
     {
       "id": "classification_tree",
@@ -137,11 +137,27 @@
       "callable": "bridge_selected_features",
       "status": "ACTIVE_IN_ENTRYPOINT",
       "note": "Engineer-selected measured fan angles are emitted as native editable DXF DIMENSION entities; failed smart selections are rejected before rendering."
+    },
+    {
+      "id": "collision_aware_radial_band_angles",
+      "source_experiment": "2026-10-20/30_engineering_dimension_extension_v1",
+      "module": "common/scripts/radial_band_pattern_features.py",
+      "callable": "build_radial_band_render_tasks",
+      "status": "ACTIVE_IN_ENTRYPOINT",
+      "note": "Groups related half/full angles on one groove and places independent repeated angles by maximum polar clearance."
+    },
+    {
+      "id": "full_span_inward_diameter_renderer",
+      "source_experiment": "2026-10-20/30_engineering_dimension_extension_v1",
+      "module": "common/scripts/engineering_dimension_renderer.py",
+      "callable": "render_annular_dimensions",
+      "status": "ACTIVE_IN_ENTRYPOINT",
+      "note": "Renders native full-span DXF diameter entities with two arrowheads facing inward and enforces a geometry-direction audit."
     }
   ],
   "known_gaps": [
     "automatic_selection_of_which_relations_should_be_dimensioned",
-    "automatic_section_plan_for_unknown_models",
+    "production_ui_for_engineer_requested_section_generation",
     "persistent_hlr_edge_to_brep_topology_identity",
     "unified_full_dxf_render_orchestration",
     "cross_family_false_positive_benchmark",

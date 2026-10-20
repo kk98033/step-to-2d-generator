@@ -1,5 +1,16 @@
 # Changelog
 
+## drawing-experimental-v0.26.0 -- 2026-10-20
+
+- Integrated collision-aware radial-band angle placement from Experiment 30.
+- Kept related `10 deg`/`20 deg` dimensions on the same detected outer groove
+  while distributing independent repeated angles to clearer grooves.
+- Integrated native full-span diameter dimensions with two inward-facing
+  endpoint arrows and a mandatory DXF direction audit.
+- Kept fan section generation explicitly engineer-requested; no automatic
+  decision that a fan requires a half-section was added.
+- Kept production and legacy drawing engines unchanged.
+
 ## Unreleased — production integration planning
 
 - Documented that the web Main, web smart-annotation engine, and experimental Main are currently separate pipelines.
