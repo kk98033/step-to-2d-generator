@@ -6,6 +6,7 @@ import shutil
 import secrets
 import threading
 import hashlib
+import subprocess
 from math import isfinite
 from typing import Dict, Any, List, Optional, Literal
 from datetime import datetime, timezone
@@ -88,6 +89,10 @@ _initial_concurrency_limits = identity_store.cad_concurrency_limits()
 ANALYSIS_MAX_WORKERS = _initial_concurrency_limits["hard_limit"]
 ANNOTATION_MAX_CONCURRENCY = _initial_concurrency_limits["hard_limit"]
 executor = ThreadPoolExecutor(max_workers=ANALYSIS_MAX_WORKERS, thread_name_prefix="cad-analysis")
+annotation_executor = ThreadPoolExecutor(
+    max_workers=ANNOTATION_MAX_CONCURRENCY,
+    thread_name_prefix="cad-annotation-dispatch",
+)
 
 
 class DynamicCapacityLimiter:
@@ -130,11 +135,122 @@ def _annotation_capacity() -> int:
 analysis_slots = DynamicCapacityLimiter()
 annotation_slots = DynamicCapacityLimiter()
 annotation_state_lock = threading.RLock()
-active_annotation_users: Dict[str, Dict[str, Any]] = {}
+annotation_jobs: Dict[str, Dict[str, Any]] = {}
+ANNOTATION_ACTIVE_STATUSES = {"queued", "processing", "finalizing"}
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+CAD_ANNOTATION_WORKER = os.path.join(REPO_ROOT, "tools", "cad_annotation_worker.py")
+CAD_ANNOTATION_TIMEOUT_SECONDS = max(30, int(os.environ.get("CAD_ANNOTATION_TIMEOUT_SECONDS", "900")))
 
 
 def _utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _set_annotation_job_state(job_id: str, **updates: Any) -> None:
+    with annotation_state_lock:
+        if job_id in annotation_jobs:
+            annotation_jobs[job_id].update(updates)
+            annotation_jobs[job_id]["updated_at"] = _utc_iso()
+
+
+def _annotation_queue_position(job_id: str) -> int:
+    with annotation_state_lock:
+        job = annotation_jobs.get(job_id)
+        if not job or job.get("status") != "queued":
+            return 0
+        queued = sorted(
+            (
+                (item_id, item)
+                for item_id, item in annotation_jobs.items()
+                if item.get("status") == "queued"
+            ),
+            key=lambda item: item[1].get("created_at", ""),
+        )
+        return next(
+            (index for index, (item_id, _) in enumerate(queued, start=1) if item_id == job_id),
+            0,
+        )
+
+
+def _active_annotation_job_for_user(user_id: str) -> Optional[tuple[str, Dict[str, Any]]]:
+    with annotation_state_lock:
+        active = [
+            (job_id, job)
+            for job_id, job in annotation_jobs.items()
+            if job.get("owner_user_id") == user_id
+            and job.get("status") in ANNOTATION_ACTIVE_STATUSES
+        ]
+        return min(active, key=lambda item: item[1].get("created_at", "")) if active else None
+
+
+def _annotation_job_status_payload(job_id: str, job: Dict[str, Any]) -> Dict[str, Any]:
+    payload = {
+        "job_id": job_id,
+        "status": job["status"],
+        "message": job.get("message", ""),
+        "progress": {
+            "current": job.get("current", 0),
+            "total": job.get("total", 3),
+        },
+        "queue_position": _annotation_queue_position(job_id),
+        "worker_limit": _annotation_capacity(),
+        "active_workers": annotation_slots.active,
+        "model_id": job.get("model_id"),
+        "part_id": job.get("part_id"),
+        "created_at": job.get("created_at"),
+        "started_at": job.get("started_at"),
+        "updated_at": job.get("updated_at"),
+        "completed_at": job.get("completed_at"),
+    }
+    if job.get("status") == "completed":
+        payload["result"] = job.get("result")
+    if job.get("status") == "error":
+        payload["error"] = job.get("error") or job.get("message")
+    return payload
+
+
+def _run_cad_annotation_worker(
+    payload: Dict[str, Any],
+    work_dir: str,
+    *,
+    timeout_seconds: int = CAD_ANNOTATION_TIMEOUT_SECONDS,
+) -> Dict[str, Any]:
+    """Invoke the CAD stack outside the API process and return its JSON result."""
+    os.makedirs(work_dir, exist_ok=True)
+    request_path = os.path.join(work_dir, "worker_request.json")
+    result_path = os.path.join(work_dir, "worker_result.json")
+    log_path = os.path.join(work_dir, "worker.log")
+    request_temp = f"{request_path}.{uuid.uuid4().hex}.tmp"
+    with open(request_temp, "w", encoding="utf-8") as request_file:
+        json.dump(payload, request_file, ensure_ascii=False, indent=2, default=str)
+    os.replace(request_temp, request_path)
+
+    with open(log_path, "w", encoding="utf-8") as log_file:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                CAD_ANNOTATION_WORKER,
+                "--job",
+                request_path,
+                "--result",
+                result_path,
+            ],
+            cwd=REPO_ROOT,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    if not os.path.exists(result_path):
+        raise RuntimeError(
+            f"CAD worker exited with code {completed.returncode} without a result; log: {log_path}"
+        )
+    with open(result_path, "r", encoding="utf-8") as result_file:
+        result = json.load(result_file)
+    if completed.returncode != 0 or result.get("status") != "ok":
+        detail = result.get("error") or f"CAD worker exited with code {completed.returncode}"
+        raise RuntimeError(f"{detail}; log: {log_path}")
+    return result
 
 
 def _active_job_for_user(user_id: str) -> Optional[tuple[str, Dict[str, Any]]]:
@@ -2261,96 +2377,142 @@ def apply_annotation_template(
     return {"status": "ok", "records": updated_records, "applied_template": template.get("name")}
 
 
+def _run_annotation_job(job_id: str) -> None:
+    acquired = False
+    try:
+        annotation_slots.acquire(_annotation_capacity, blocking=True)
+        acquired = True
+        with annotation_state_lock:
+            job = annotation_jobs[job_id]
+        _set_annotation_job_state(
+            job_id,
+            status="processing",
+            current=1,
+            message="正在由隔離 CAD Worker 產生工程圖",
+            started_at=_utc_iso(),
+        )
+        worker_result = _run_cad_annotation_worker(
+            {
+                "action": "render",
+                "step_path": job["step_path"],
+                "part_id": job["part_id"],
+                "output_dir": job["custom_out_dir"],
+                "output_stem": f"{job['part_id']}_custom",
+                "feature_records": job["feature_records"],
+                "title_info": job["title_info"],
+            },
+            job["worker_dir"],
+        )
+        _set_annotation_job_state(
+            job_id,
+            status="finalizing",
+            current=2,
+            message="工程圖完成，正在儲存標註紀錄",
+            worker_pid=worker_result.get("pid"),
+            worker_elapsed_seconds=worker_result.get("elapsed_seconds"),
+        )
+        learning = identity_store.record_artifact_and_cases(
+            user=job["user"],
+            model_id=job["model_id"],
+            part_id=job["part_id"],
+            feature_records=job["feature_records"],
+            output_files=job["output_files"],
+            title=(job["title_info"] or {}).get("drawing_title")
+            or f"{job['part_id']} annotation",
+            part_type=job.get("part_category"),
+            product_family=job.get("product_family")
+            or FeatureCaseBase.infer_product_family(job["part_id"]),
+            tag_ids=job["storage_tag_ids"],
+        )
+        timestamp = uuid.uuid4().hex[:8]
+        manifest_temp_path = f"{job['manifest_path']}.{uuid.uuid4().hex}.tmp"
+        with open(manifest_temp_path, "w", encoding="utf-8") as manifest_file:
+            json.dump(
+                {
+                    "request_hash": job["request_hash"],
+                    "timestamp": timestamp,
+                    "rendered_at": _utc_iso(),
+                },
+                manifest_file,
+                ensure_ascii=False,
+                indent=2,
+            )
+        os.replace(manifest_temp_path, job["manifest_path"])
+        result = {
+            "status": "ok",
+            **job["output_files"],
+            **learning,
+            "timestamp": timestamp,
+            "cached": False,
+        }
+        _set_annotation_job_state(
+            job_id,
+            status="completed",
+            current=3,
+            message="標註工程圖已完成",
+            result=result,
+            completed_at=_utc_iso(),
+        )
+    except subprocess.TimeoutExpired:
+        _set_annotation_job_state(
+            job_id,
+            status="error",
+            message="CAD Worker 執行逾時",
+            error=f"CAD Worker exceeded {CAD_ANNOTATION_TIMEOUT_SECONDS} seconds",
+            completed_at=_utc_iso(),
+        )
+    except BaseException as exc:
+        _set_annotation_job_state(
+            job_id,
+            status="error",
+            message="標註工程圖產生失敗",
+            error=str(exc),
+            completed_at=_utc_iso(),
+        )
+    finally:
+        if acquired:
+            annotation_slots.release()
+
+
 @app.post("/api/annotation/render")
-def render_custom_annotation_drawing(
+def submit_custom_annotation_drawing(
     body: Dict[str, Any] = Body(...),
     current_user: CurrentUser = Depends(require_user),
 ):
-    """
-    依據使用者選定之特徵與自訂公差組態，即時產出客製化工程圖 (DXF, PDF, PNG)
-    Body: {
-      "model_id": "...",
-      "part_id": "...",
-      "feature_records": [...],
-      "title_info": {...}
-    }
-    """
     model_id = body.get("model_id")
     part_id = body.get("part_id")
-    feature_records = body.get("feature_records", [])
-    title_info = body.get("title_info", {})
+    feature_records = body.get("feature_records") or []
+    title_info = body.get("title_info") or {}
+    if not model_id or not part_id:
+        raise HTTPException(status_code=400, detail="model_id and part_id are required")
+
     storage_tag_ids = body.get("storage_tag_ids") or []
     try:
         storage_tag_ids = identity_store.validate_recommendation_tag_ids(storage_tag_ids)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if not model_id or not part_id:
-        raise HTTPException(status_code=400, detail="model_id and part_id are required")
-
     assert_model_access(current_user, model_id)
     output_dir = _safe_output_dir(model_id)
     _safe_part_id(part_id)
-
-    # 尋找對應的實體 STEP 檔
     stp_candidates = [
         os.path.join(output_dir, "_parts", f"{part_id}.stp"),
+        os.path.join(output_dir, "_parts", f"{part_id}.step"),
         os.path.join(output_dir, f"{part_id}.stp"),
+        os.path.join(output_dir, f"{part_id}.step"),
         os.path.join(MODELS_DIR, f"{model_id}.stp"),
         os.path.join(MODELS_DIR, f"{model_id.replace('_batch', '')}.stp"),
     ]
-    stp_path = None
-    for p in stp_candidates:
-        if os.path.exists(p):
-            stp_path = p
-            break
-
+    stp_path = next((path for path in stp_candidates if os.path.exists(path)), None)
     if not stp_path:
         raise HTTPException(status_code=404, detail=f"STEP file for {part_id} not found")
 
-    with annotation_state_lock:
-        active = active_annotation_users.get(current_user.id)
-        if active:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "ANNOTATION_ALREADY_RUNNING",
-                    "message": "此帳號已有標註圖正在產生",
-                    "model_id": active.get("model_id"),
-                    "part_id": active.get("part_id"),
-                    "started_at": active.get("started_at"),
-                },
-            )
-        active_annotation_users[current_user.id] = {
-            "model_id": model_id,
-            "part_id": part_id,
-            "started_at": _utc_iso(),
-        }
-    if not annotation_slots.acquire(_annotation_capacity, blocking=False):
-        with annotation_state_lock:
-            active_annotation_users.pop(current_user.id, None)
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "code": "ANNOTATION_CAPACITY_BUSY",
-                "message": "標註系統正忙碌，請稍後再試",
-                "capacity": _annotation_capacity(),
-            },
-            headers={"Retry-After": "3"},
-        )
-
-    try:
-        # 1. 準備使用者隔離的輸出與快取資料
-        user_workspace = _user_workspace(output_dir, current_user.id)
-        custom_out_dir = os.path.join(user_workspace, "_custom_annotations", part_id)
-        os.makedirs(custom_out_dir, exist_ok=True)
-
-        dxf_path = os.path.join(custom_out_dir, f"{part_id}_custom.dxf")
-        pdf_path = os.path.join(custom_out_dir, f"{part_id}_custom.pdf")
-        png_path = os.path.join(custom_out_dir, f"{part_id}_custom.png")
-        svg_path = os.path.join(custom_out_dir, f"{part_id}_custom.svg")
-        manifest_path = os.path.join(custom_out_dir, ".render_request.json")
-        request_hash = hashlib.sha256(json.dumps(
+    user_workspace = _user_workspace(output_dir, current_user.id)
+    custom_out_dir = os.path.join(user_workspace, "_custom_annotations", part_id)
+    os.makedirs(custom_out_dir, exist_ok=True)
+    manifest_path = os.path.join(custom_out_dir, ".render_request.json")
+    request_hash = hashlib.sha256(
+        json.dumps(
             {
                 "model_id": model_id,
                 "part_id": part_id,
@@ -2363,85 +2525,93 @@ def render_custom_annotation_drawing(
             sort_keys=True,
             ensure_ascii=False,
             default=str,
-        ).encode("utf-8")).hexdigest()
+        ).encode("utf-8")
+    ).hexdigest()
+    relative_parts = ("_users", current_user.id, "_custom_annotations", part_id)
+    output_files = {
+        "dxf_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.dxf"),
+        "pdf_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.pdf"),
+        "svg_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.svg"),
+        "png_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.png"),
+    }
+    output_paths = [
+        os.path.join(custom_out_dir, f"{part_id}_custom.{extension}")
+        for extension in ("dxf", "pdf", "svg", "png")
+    ]
+    if os.path.exists(manifest_path) and all(os.path.exists(path) for path in output_paths):
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as manifest_file:
+                cached_manifest = json.load(manifest_file)
+            if cached_manifest.get("request_hash") == request_hash:
+                return {
+                    "status": "ok",
+                    **output_files,
+                    "timestamp": cached_manifest.get("timestamp") or uuid.uuid4().hex[:8],
+                    "cached": True,
+                }
+        except (OSError, json.JSONDecodeError):
+            pass
 
-        relative_parts = ("_users", current_user.id, "_custom_annotations", part_id)
-        output_files = {
-            "dxf_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.dxf"),
-            "pdf_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.pdf"),
-            "svg_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.svg"),
-            "png_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.png"),
-        }
-        if os.path.exists(manifest_path) and all(
-            os.path.exists(path) for path in (dxf_path, pdf_path, png_path, svg_path)
-        ):
-            try:
-                with open(manifest_path, "r", encoding="utf-8") as manifest_file:
-                    cached_manifest = json.load(manifest_file)
-                if cached_manifest.get("request_hash") == request_hash:
-                    return {
-                        "status": "ok",
-                        **output_files,
-                        "timestamp": cached_manifest.get("timestamp") or uuid.uuid4().hex[:8],
-                        "cached": True,
-                    }
-            except (OSError, json.JSONDecodeError):
-                pass
-
-        # 2. 載入實體並執行投影
-        shape = load_step(stp_path)
-        projector = ViewProjector()
-        view_data = projector.project_all_views(shape, view_names=['front', 'top', 'right', 'left'])
-
-        # 3. 呼叫智慧標註引擎渲染
-        engine = SmartAnnotationEngine()
-        engine.render_custom_drawing(
-            dxf_path=dxf_path,
-            pdf_path=pdf_path,
-            png_path=png_path,
-            feature_records=feature_records,
-            view_data=view_data,
-            title_info=title_info
+    active = _active_annotation_job_for_user(current_user.id)
+    if active:
+        active_id, active_job = active
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "ANNOTATION_ALREADY_RUNNING",
+                "message": "此帳號已有標註工作進行中",
+                "job": _annotation_job_status_payload(active_id, active_job),
+            },
         )
 
-        learning = identity_store.record_artifact_and_cases(
-            user=current_user,
-            model_id=model_id,
-            part_id=part_id,
-            feature_records=feature_records,
-            output_files=output_files,
-            title=(title_info or {}).get("drawing_title") or f"{part_id} annotation",
-            part_type=body.get("part_category"),
-            product_family=body.get("product_family") or FeatureCaseBase.infer_product_family(part_id),
-            tag_ids=storage_tag_ids,
-        )
-
-        timestamp = uuid.uuid4().hex[:8]
-        manifest_temp_path = f"{manifest_path}.{uuid.uuid4().hex}.tmp"
-        with open(manifest_temp_path, "w", encoding="utf-8") as manifest_file:
-            json.dump({
-                "request_hash": request_hash,
-                "timestamp": timestamp,
-                "rendered_at": _utc_iso(),
-            }, manifest_file, ensure_ascii=False, indent=2)
-        os.replace(manifest_temp_path, manifest_path)
-
-        return {
-            "status": "ok",
-            **output_files,
-            **learning,
-            "timestamp": timestamp,
-            "cached": False,
+    job_id = str(uuid.uuid4())
+    now = _utc_iso()
+    worker_dir = os.path.join(user_workspace, "_annotation_jobs", job_id)
+    with annotation_state_lock:
+        annotation_jobs[job_id] = {
+            "status": "queued",
+            "message": "標註工作已加入佇列",
+            "current": 0,
+            "total": 3,
+            "owner_user_id": current_user.id,
+            "user": current_user,
+            "model_id": model_id,
+            "part_id": part_id,
+            "step_path": stp_path,
+            "feature_records": feature_records,
+            "title_info": title_info,
+            "storage_tag_ids": storage_tag_ids,
+            "part_category": body.get("part_category"),
+            "product_family": body.get("product_family"),
+            "custom_out_dir": custom_out_dir,
+            "worker_dir": worker_dir,
+            "manifest_path": manifest_path,
+            "request_hash": request_hash,
+            "output_files": output_files,
+            "created_at": now,
+            "updated_at": now,
+            "started_at": None,
         }
-    except Exception as e:
-        print(f"Custom annotation render error: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        annotation_slots.release()
-        with annotation_state_lock:
-            active_annotation_users.pop(current_user.id, None)
+    annotation_executor.submit(_run_annotation_job, job_id)
+    return _annotation_job_status_payload(job_id, annotation_jobs[job_id])
+
+
+@app.get("/api/annotation/jobs/active")
+def get_active_annotation_job(current_user: CurrentUser = Depends(require_user)):
+    active = _active_annotation_job_for_user(current_user.id)
+    return {
+        "status": "ok",
+        "job": _annotation_job_status_payload(active[0], active[1]) if active else None,
+    }
+
+
+@app.get("/api/annotation/jobs/{job_id}")
+def get_annotation_job(job_id: str, current_user: CurrentUser = Depends(require_user)):
+    with annotation_state_lock:
+        job = annotation_jobs.get(job_id)
+    if not job or (not current_user.is_admin and job.get("owner_user_id") != current_user.id):
+        raise HTTPException(status_code=404, detail="Annotation job not found")
+    return _annotation_job_status_payload(job_id, job)
 
 
 def _candidate_annotation_rules_impl(model_id: str, part_id: str):
@@ -2466,23 +2636,33 @@ def _candidate_annotation_rules_impl(model_id: str, part_id: str):
     if not stp_path:
         raise HTTPException(status_code=404, detail=f"STEP file for {part_id} not found")
 
+    acquired = False
     try:
-        shape = load_step(stp_path)
-        projector = ViewProjector()
-        view_data = projector.project_all_views(shape, view_names=['front', 'top', 'right', 'left'])
-        engine = SmartAnnotationEngine()
-        rules = engine.get_candidate_rules(shape, view_data, part_hint=part_id)
+        annotation_slots.acquire(_annotation_capacity, blocking=True)
+        acquired = True
+        worker_result = _run_cad_annotation_worker(
+            {
+                "action": "candidates",
+                "step_path": stp_path,
+                "part_id": part_id,
+            },
+            os.path.join(output_dir, "_worker_jobs", f"candidates_{uuid.uuid4().hex}"),
+        )
         return {
             "status": "ok",
             "model_id": model_id,
             "part_id": part_id,
-            "rules": rules
+            "rules": worker_result.get("rules", []),
+            "worker_pid": worker_result.get("pid"),
         }
     except Exception as e:
         print(f"Candidate rules extraction error: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if acquired:
+            annotation_slots.release()
 
 
 @app.get("/api/annotation/candidate-rules/{model_id}/{part_id}")

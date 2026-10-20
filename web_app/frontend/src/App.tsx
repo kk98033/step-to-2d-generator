@@ -708,6 +708,10 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     timestamp?: string;
   } | null>(null);
   const [isRenderingDrawing, setIsRenderingDrawing] = useState(false);
+  const [annotationJobId, setAnnotationJobId] = useState<string | null>(null);
+  const [annotationJobMessage, setAnnotationJobMessage] = useState('');
+  const [annotationQueuePosition, setAnnotationQueuePosition] = useState(0);
+  const [annotationWorkerLimit, setAnnotationWorkerLimit] = useState(1);
   const [saveTemplateModalOpen, setSaveTemplateModalOpen] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
   const [newTemplateDesc, setNewTemplateDesc] = useState('');
@@ -716,6 +720,63 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   const [isPanningDrawing, setIsPanningDrawing] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isLoadingFeatures, setIsLoadingFeatures] = useState<boolean>(false);
+
+  useEffect(() => {
+    axios.get(`${API_BASE}/api/annotation/jobs/active`).then(response => {
+      const activeJob = response.data?.job;
+      if (!activeJob) return;
+      setAnnotationJobId(activeJob.job_id);
+      setAnnotationJobMessage(activeJob.message || '正在恢復標註工作');
+      setAnnotationQueuePosition(activeJob.queue_position || 0);
+      setAnnotationWorkerLimit(activeJob.worker_limit || 1);
+      setIsRenderingDrawing(true);
+      window.localStorage.setItem(`cad-annotation-job:${user.id}`, activeJob.job_id);
+    }).catch(() => undefined);
+  }, [user.id]);
+
+  useEffect(() => {
+    if (!annotationJobId) return;
+    let stopped = false;
+    const poll = async () => {
+      try {
+        const response = await axios.get(`${API_BASE}/api/annotation/jobs/${annotationJobId}`);
+        if (stopped) return;
+        const job = response.data;
+        setAnnotationJobMessage(job.message || '正在處理標註工作');
+        setAnnotationQueuePosition(job.queue_position || 0);
+        setAnnotationWorkerLimit(job.worker_limit || 1);
+        if (job.status === 'completed' && job.result) {
+          setCustomDrawingResult({
+            dxf_url: job.result.dxf_url,
+            pdf_url: job.result.pdf_url,
+            svg_url: job.result.svg_url,
+            png_url: job.result.png_url,
+            timestamp: job.result.timestamp,
+          });
+          setAnnotationJobId(null);
+          setIsRenderingDrawing(false);
+          window.localStorage.removeItem(`cad-annotation-job:${user.id}`);
+        } else if (job.status === 'error') {
+          setAnnotationJobId(null);
+          setIsRenderingDrawing(false);
+          window.localStorage.removeItem(`cad-annotation-job:${user.id}`);
+          alert(`標註工程圖產生失敗：${job.error || job.message || '未知錯誤'}`);
+        }
+      } catch (error: any) {
+        if (error?.response?.status === 404 && !stopped) {
+          setAnnotationJobId(null);
+          setIsRenderingDrawing(false);
+          window.localStorage.removeItem(`cad-annotation-job:${user.id}`);
+        }
+      }
+    };
+    poll();
+    const timer = window.setInterval(poll, 1000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [annotationJobId, user.id]);
 
   // --- AI CAD-RAG Tolerance Decision State ---
   const [aiRecommendations, setAiRecommendations] = useState<Record<string, any>>({});
@@ -1298,6 +1359,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
       return;
     }
 
+    let queuedJob = false;
     setIsRenderingDrawing(true);
     try {
       const payloadRules = candidateRules.map(r => {
@@ -1345,13 +1407,29 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
           png_url: res.data.png_url,
           timestamp: res.data.timestamp
         });
+      } else if (res.data?.job_id && ['queued', 'processing', 'finalizing'].includes(res.data.status)) {
+        queuedJob = true;
+        setAnnotationJobId(res.data.job_id);
+        setAnnotationJobMessage(res.data.message || '標註工作已加入佇列');
+        setAnnotationQueuePosition(res.data.queue_position || 0);
+        setAnnotationWorkerLimit(res.data.worker_limit || 1);
+        window.localStorage.setItem(`cad-annotation-job:${user.id}`, res.data.job_id);
       }
     } catch (err: any) {
       console.error('Render custom drawing error:', err);
       const detail = err?.response?.data?.detail;
-      alert(`生成工程圖失敗: ${typeof detail === 'string' ? detail : (detail?.message || err.message)}`);
+      if (detail?.job?.job_id) {
+        queuedJob = true;
+        setAnnotationJobId(detail.job.job_id);
+        setAnnotationJobMessage(detail.job.message || detail.message || '此帳號已有標註工作進行中');
+        setAnnotationQueuePosition(detail.job.queue_position || 0);
+        setAnnotationWorkerLimit(detail.job.worker_limit || 1);
+        window.localStorage.setItem(`cad-annotation-job:${user.id}`, detail.job.job_id);
+      } else {
+        alert(`標註工程圖產生失敗：${typeof detail === 'string' ? detail : (detail?.message || err.message)}`);
+      }
     } finally {
-      setIsRenderingDrawing(false);
+      if (!queuedJob) setIsRenderingDrawing(false);
     }
   };
 
@@ -3835,6 +3913,19 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
         </div>
 
       </div>
+
+      {annotationJobId && (
+        <div style={{ position: 'fixed', right: 18, bottom: 18, zIndex: 1100, width: 330, maxWidth: 'calc(100vw - 36px)', padding: 14, background: '#171717', border: '1px solid #404040', borderRadius: 6, boxShadow: '0 14px 34px rgba(0,0,0,.55)', color: '#e5e5e5' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <Loader2 size={17} className="animate-spin" color="#60a5fa" />
+            <strong style={{ fontSize: 13 }}>智慧標註工作</strong>
+          </div>
+          <div style={{ color: '#a3a3a3', fontSize: 12, marginTop: 9, lineHeight: 1.5 }}>{annotationJobMessage || '正在處理'}</div>
+          <div style={{ color: '#737373', fontSize: 11, marginTop: 7 }}>
+            {annotationQueuePosition > 0 ? `等待順位：第 ${annotationQueuePosition} 位` : `執行中 · Worker 上限 ${annotationWorkerLimit}`}
+          </div>
+        </div>
+      )}
 
       {evidenceViewer && (
         <div
