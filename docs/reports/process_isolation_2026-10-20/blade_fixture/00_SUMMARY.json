@@ -1,0 +1,683 @@
+{
+  "generated_at": "2026-10-20T08:46:25.443256+00:00",
+  "passed": true,
+  "highest_passing_level": 4,
+  "levels_requested": [
+    2,
+    3,
+    4
+  ],
+  "rounds_requested": 2,
+  "python": "D:\\School\\力致\\app\\step-to-2d-generator\\pyoccenv\\python.exe",
+  "step_path": "D:\\School\\力致\\app\\step-to-2d-generator\\auto_2d_drawing\\output\\BLADE_ASSY-1AC085000H-R01_37f6697b_batch\\_parts\\BLADE-AC08_1.stp",
+  "part_id": "BLADE-AC08_1",
+  "rule_count": 147,
+  "initial_backend_health": {
+    "ok": true,
+    "status": 200,
+    "latency_seconds": 0.005181399988941848
+  },
+  "results": [
+    {
+      "level": 2,
+      "round": 1,
+      "wall_seconds": 5.524222899926826,
+      "successes": 2,
+      "failures": 0,
+      "throughput_jobs_per_second": 0.36204187199370463,
+      "backend_health": {
+        "samples": 27,
+        "successes": 27,
+        "failures": 0,
+        "availability_percent": 100.0,
+        "max_latency_seconds": 0.018438900006003678
+      },
+      "workers": [
+        {
+          "worker": 1,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 25708,
+          "elapsed_seconds": 4.577769400086254,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_2\\round_1\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.dxf",
+              "exists": true,
+              "bytes": 1126546
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_2\\round_1\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_2\\round_1\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_2\\round_1\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 2,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 35612,
+          "elapsed_seconds": 4.581489700009115,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_2\\round_1\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.dxf",
+              "exists": true,
+              "bytes": 1126546
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_2\\round_1\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_2\\round_1\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_2\\round_1\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "round": 2,
+      "wall_seconds": 5.373401899938472,
+      "successes": 2,
+      "failures": 0,
+      "throughput_jobs_per_second": 0.37220368720659086,
+      "backend_health": {
+        "samples": 26,
+        "successes": 26,
+        "failures": 0,
+        "availability_percent": 100.0,
+        "max_latency_seconds": 0.026297800010070205
+      },
+      "workers": [
+        {
+          "worker": 1,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 18352,
+          "elapsed_seconds": 4.576222399948165,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_2\\round_2\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.dxf",
+              "exists": true,
+              "bytes": 1126547
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_2\\round_2\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_2\\round_2\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_2\\round_2\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 2,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 20064,
+          "elapsed_seconds": 4.573810299974866,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_2\\round_2\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.dxf",
+              "exists": true,
+              "bytes": 1126548
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_2\\round_2\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_2\\round_2\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_2\\round_2\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "level": 3,
+      "round": 1,
+      "wall_seconds": 5.4314797999104485,
+      "successes": 3,
+      "failures": 0,
+      "throughput_jobs_per_second": 0.5523356636711532,
+      "backend_health": {
+        "samples": 26,
+        "successes": 26,
+        "failures": 0,
+        "availability_percent": 100.0,
+        "max_latency_seconds": 0.020167300011962652
+      },
+      "workers": [
+        {
+          "worker": 1,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 8816,
+          "elapsed_seconds": 4.56362040003296,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_1\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.dxf",
+              "exists": true,
+              "bytes": 1126548
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_1\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_1\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_1\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 2,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 10020,
+          "elapsed_seconds": 4.565540999989025,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_1\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.dxf",
+              "exists": true,
+              "bytes": 1126548
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_1\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_1\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_1\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 3,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 9424,
+          "elapsed_seconds": 4.565995900076814,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_1\\worker_3\\outputs\\BLADE-AC08_1_isolated_3.dxf",
+              "exists": true,
+              "bytes": 1126548
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_1\\worker_3\\outputs\\BLADE-AC08_1_isolated_3.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_1\\worker_3\\outputs\\BLADE-AC08_1_isolated_3.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_1\\worker_3\\outputs\\BLADE-AC08_1_isolated_3.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "level": 3,
+      "round": 2,
+      "wall_seconds": 5.457312100101262,
+      "successes": 3,
+      "failures": 0,
+      "throughput_jobs_per_second": 0.5497211713334728,
+      "backend_health": {
+        "samples": 26,
+        "successes": 26,
+        "failures": 0,
+        "availability_percent": 100.0,
+        "max_latency_seconds": 0.029101000051014125
+      },
+      "workers": [
+        {
+          "worker": 1,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 34016,
+          "elapsed_seconds": 4.559403100050986,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_2\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.dxf",
+              "exists": true,
+              "bytes": 1126546
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_2\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_2\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_2\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 2,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 13076,
+          "elapsed_seconds": 4.603652200079523,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_2\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.dxf",
+              "exists": true,
+              "bytes": 1126546
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_2\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_2\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_2\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 3,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 34320,
+          "elapsed_seconds": 4.594054299988784,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_2\\worker_3\\outputs\\BLADE-AC08_1_isolated_3.dxf",
+              "exists": true,
+              "bytes": 1126546
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_2\\worker_3\\outputs\\BLADE-AC08_1_isolated_3.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_2\\worker_3\\outputs\\BLADE-AC08_1_isolated_3.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_3\\round_2\\worker_3\\outputs\\BLADE-AC08_1_isolated_3.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "level": 4,
+      "round": 1,
+      "wall_seconds": 5.532755699940026,
+      "successes": 4,
+      "failures": 0,
+      "throughput_jobs_per_second": 0.7229670379343442,
+      "backend_health": {
+        "samples": 26,
+        "successes": 26,
+        "failures": 0,
+        "availability_percent": 100.0,
+        "max_latency_seconds": 0.01965530007146299
+      },
+      "workers": [
+        {
+          "worker": 1,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 14400,
+          "elapsed_seconds": 4.598916199989617,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_1\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.dxf",
+              "exists": true,
+              "bytes": 1126548
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_1\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_1\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_1\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 2,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 35696,
+          "elapsed_seconds": 4.664261500001885,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_1\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.dxf",
+              "exists": true,
+              "bytes": 1126548
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_1\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_1\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_1\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 3,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 15324,
+          "elapsed_seconds": 4.64522790000774,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_1\\worker_3\\outputs\\BLADE-AC08_1_isolated_3.dxf",
+              "exists": true,
+              "bytes": 1126548
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_1\\worker_3\\outputs\\BLADE-AC08_1_isolated_3.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_1\\worker_3\\outputs\\BLADE-AC08_1_isolated_3.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_1\\worker_3\\outputs\\BLADE-AC08_1_isolated_3.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 4,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 2344,
+          "elapsed_seconds": 4.6282568000024185,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_1\\worker_4\\outputs\\BLADE-AC08_1_isolated_4.dxf",
+              "exists": true,
+              "bytes": 1126548
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_1\\worker_4\\outputs\\BLADE-AC08_1_isolated_4.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_1\\worker_4\\outputs\\BLADE-AC08_1_isolated_4.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_1\\worker_4\\outputs\\BLADE-AC08_1_isolated_4.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "level": 4,
+      "round": 2,
+      "wall_seconds": 5.632919399999082,
+      "successes": 4,
+      "failures": 0,
+      "throughput_jobs_per_second": 0.7101113500755313,
+      "backend_health": {
+        "samples": 27,
+        "successes": 27,
+        "failures": 0,
+        "availability_percent": 100.0,
+        "max_latency_seconds": 0.01899130002129823
+      },
+      "workers": [
+        {
+          "worker": 1,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 22312,
+          "elapsed_seconds": 4.65567030000966,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_2\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.dxf",
+              "exists": true,
+              "bytes": 1126548
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_2\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_2\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_2\\worker_1\\outputs\\BLADE-AC08_1_isolated_1.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 2,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 2876,
+          "elapsed_seconds": 4.634794000070542,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_2\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.dxf",
+              "exists": true,
+              "bytes": 1126548
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_2\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_2\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_2\\worker_2\\outputs\\BLADE-AC08_1_isolated_2.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 3,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 1948,
+          "elapsed_seconds": 4.676203300012276,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_2\\worker_3\\outputs\\BLADE-AC08_1_isolated_3.dxf",
+              "exists": true,
+              "bytes": 1126548
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_2\\worker_3\\outputs\\BLADE-AC08_1_isolated_3.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_2\\worker_3\\outputs\\BLADE-AC08_1_isolated_3.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_2\\worker_3\\outputs\\BLADE-AC08_1_isolated_3.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 4,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 24000,
+          "elapsed_seconds": 4.716372099937871,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_2\\worker_4\\outputs\\BLADE-AC08_1_isolated_4.dxf",
+              "exists": true,
+              "bytes": 1126547
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_2\\worker_4\\outputs\\BLADE-AC08_1_isolated_4.pdf",
+              "exists": true,
+              "bytes": 238506
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_2\\worker_4\\outputs\\BLADE-AC08_1_isolated_4.png",
+              "exists": true,
+              "bytes": 430022
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549\\level_4\\round_2\\worker_4\\outputs\\BLADE-AC08_1_isolated_4.svg",
+              "exists": true,
+              "bytes": 415070
+            }
+          },
+          "error_type": null,
+          "error": null
+        }
+      ]
+    }
+  ],
+  "raw_run_directory": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164549"
+}

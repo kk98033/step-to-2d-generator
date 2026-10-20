@@ -1,0 +1,1013 @@
+{
+  "generated_at": "2026-10-20T08:45:30.584137+00:00",
+  "passed": true,
+  "highest_passing_level": 4,
+  "levels_requested": [
+    2,
+    3,
+    4
+  ],
+  "rounds_requested": 3,
+  "python": "D:\\School\\力致\\app\\step-to-2d-generator\\pyoccenv\\python.exe",
+  "step_path": "D:\\School\\力致\\app\\step-to-2d-generator\\auto_2d_drawing\\output\\BLADE_ASSY-1AC085000H-R01_37f6697b_batch\\_parts\\SHAFT-2AC085010H_1.stp",
+  "part_id": "SHAFT-2AC085010H_1",
+  "rule_count": 14,
+  "initial_backend_health": {
+    "ok": true,
+    "status": 200,
+    "latency_seconds": 0.006334299920126796
+  },
+  "results": [
+    {
+      "level": 2,
+      "round": 1,
+      "wall_seconds": 1.8471408999757841,
+      "successes": 2,
+      "failures": 0,
+      "throughput_jobs_per_second": 1.0827544341778257,
+      "backend_health": {
+        "samples": 9,
+        "successes": 9,
+        "failures": 0,
+        "availability_percent": 100.0,
+        "max_latency_seconds": 0.10953139991033822
+      },
+      "workers": [
+        {
+          "worker": 1,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 11420,
+          "elapsed_seconds": 0.9891296999994665,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_1\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.dxf",
+              "exists": true,
+              "bytes": 112306
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_1\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_1\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_1\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 2,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 34024,
+          "elapsed_seconds": 0.9874707000562921,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_1\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.dxf",
+              "exists": true,
+              "bytes": 112306
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_1\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_1\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_1\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "round": 2,
+      "wall_seconds": 1.7782826999900863,
+      "successes": 2,
+      "failures": 0,
+      "throughput_jobs_per_second": 1.1246805696367344,
+      "backend_health": {
+        "samples": 9,
+        "successes": 9,
+        "failures": 0,
+        "availability_percent": 100.0,
+        "max_latency_seconds": 0.06554510002024472
+      },
+      "workers": [
+        {
+          "worker": 1,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 27212,
+          "elapsed_seconds": 0.9744602999417111,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_2\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.dxf",
+              "exists": true,
+              "bytes": 112306
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_2\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_2\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_2\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 2,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 34016,
+          "elapsed_seconds": 0.9685368000064045,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_2\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.dxf",
+              "exists": true,
+              "bytes": 112306
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_2\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_2\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_2\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "round": 3,
+      "wall_seconds": 1.7352747999830171,
+      "successes": 2,
+      "failures": 0,
+      "throughput_jobs_per_second": 1.1525552033715776,
+      "backend_health": {
+        "samples": 9,
+        "successes": 9,
+        "failures": 0,
+        "availability_percent": 100.0,
+        "max_latency_seconds": 0.018030100036412477
+      },
+      "workers": [
+        {
+          "worker": 1,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 22508,
+          "elapsed_seconds": 1.002298100036569,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_3\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.dxf",
+              "exists": true,
+              "bytes": 112304
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_3\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_3\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_3\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 2,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 6636,
+          "elapsed_seconds": 1.0022765001049265,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_3\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.dxf",
+              "exists": true,
+              "bytes": 112304
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_3\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_3\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_2\\round_3\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "level": 3,
+      "round": 1,
+      "wall_seconds": 1.9826757999835536,
+      "successes": 3,
+      "failures": 0,
+      "throughput_jobs_per_second": 1.5131066813973748,
+      "backend_health": {
+        "samples": 10,
+        "successes": 10,
+        "failures": 0,
+        "availability_percent": 100.0,
+        "max_latency_seconds": 0.01896000001579523
+      },
+      "workers": [
+        {
+          "worker": 1,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 18784,
+          "elapsed_seconds": 1.0227753999643028,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_1\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.dxf",
+              "exists": true,
+              "bytes": 112304
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_1\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_1\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_1\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 2,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 34340,
+          "elapsed_seconds": 1.010453199967742,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_1\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.dxf",
+              "exists": true,
+              "bytes": 112304
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_1\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_1\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_1\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 3,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 32232,
+          "elapsed_seconds": 1.0167959000682458,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_1\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.dxf",
+              "exists": true,
+              "bytes": 112304
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_1\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_1\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_1\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "level": 3,
+      "round": 2,
+      "wall_seconds": 1.9404221000149846,
+      "successes": 3,
+      "failures": 0,
+      "throughput_jobs_per_second": 1.5460553659829133,
+      "backend_health": {
+        "samples": 10,
+        "successes": 10,
+        "failures": 0,
+        "availability_percent": 100.0,
+        "max_latency_seconds": 0.02663790003862232
+      },
+      "workers": [
+        {
+          "worker": 1,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 33248,
+          "elapsed_seconds": 1.0153552000410855,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_2\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.dxf",
+              "exists": true,
+              "bytes": 112304
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_2\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_2\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_2\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 2,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 14496,
+          "elapsed_seconds": 1.0059005999937654,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_2\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.dxf",
+              "exists": true,
+              "bytes": 112304
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_2\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_2\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_2\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 3,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 31212,
+          "elapsed_seconds": 1.0051147999474779,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_2\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.dxf",
+              "exists": true,
+              "bytes": 112304
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_2\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_2\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_2\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "level": 3,
+      "round": 3,
+      "wall_seconds": 1.9718166999518871,
+      "successes": 3,
+      "failures": 0,
+      "throughput_jobs_per_second": 1.5214395942955554,
+      "backend_health": {
+        "samples": 10,
+        "successes": 10,
+        "failures": 0,
+        "availability_percent": 100.0,
+        "max_latency_seconds": 0.019323000102303922
+      },
+      "workers": [
+        {
+          "worker": 1,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 30524,
+          "elapsed_seconds": 1.0121982999844477,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_3\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.dxf",
+              "exists": true,
+              "bytes": 112302
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_3\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_3\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_3\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 2,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 35524,
+          "elapsed_seconds": 1.0170305999927223,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_3\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.dxf",
+              "exists": true,
+              "bytes": 112302
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_3\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_3\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_3\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 3,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 30996,
+          "elapsed_seconds": 1.0041590000037104,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_3\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.dxf",
+              "exists": true,
+              "bytes": 112302
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_3\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_3\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_3\\round_3\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "level": 4,
+      "round": 1,
+      "wall_seconds": 1.9734479000326246,
+      "successes": 4,
+      "failures": 0,
+      "throughput_jobs_per_second": 2.0269093498408917,
+      "backend_health": {
+        "samples": 10,
+        "successes": 10,
+        "failures": 0,
+        "availability_percent": 100.0,
+        "max_latency_seconds": 0.019551599980331957
+      },
+      "workers": [
+        {
+          "worker": 1,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 9872,
+          "elapsed_seconds": 1.0564348000334576,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_1\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.dxf",
+              "exists": true,
+              "bytes": 112306
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_1\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_1\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_1\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 2,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 29588,
+          "elapsed_seconds": 1.068161999923177,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_1\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.dxf",
+              "exists": true,
+              "bytes": 112306
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_1\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_1\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_1\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 3,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 3324,
+          "elapsed_seconds": 1.055148300016299,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_1\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.dxf",
+              "exists": true,
+              "bytes": 112306
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_1\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_1\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_1\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 4,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 8336,
+          "elapsed_seconds": 1.0511822999687865,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_1\\worker_4\\outputs\\SHAFT-2AC085010H_1_isolated_4.dxf",
+              "exists": true,
+              "bytes": 112306
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_1\\worker_4\\outputs\\SHAFT-2AC085010H_1_isolated_4.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_1\\worker_4\\outputs\\SHAFT-2AC085010H_1_isolated_4.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_1\\worker_4\\outputs\\SHAFT-2AC085010H_1_isolated_4.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "level": 4,
+      "round": 2,
+      "wall_seconds": 1.97696050000377,
+      "successes": 4,
+      "failures": 0,
+      "throughput_jobs_per_second": 2.0233080023563303,
+      "backend_health": {
+        "samples": 10,
+        "successes": 10,
+        "failures": 0,
+        "availability_percent": 100.0,
+        "max_latency_seconds": 0.02062089997343719
+      },
+      "workers": [
+        {
+          "worker": 1,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 25320,
+          "elapsed_seconds": 1.0834295999957249,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_2\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.dxf",
+              "exists": true,
+              "bytes": 112306
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_2\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_2\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_2\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 2,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 8328,
+          "elapsed_seconds": 1.086302399984561,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_2\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.dxf",
+              "exists": true,
+              "bytes": 112306
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_2\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_2\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_2\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 3,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 19056,
+          "elapsed_seconds": 1.0665207999991253,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_2\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.dxf",
+              "exists": true,
+              "bytes": 112306
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_2\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_2\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_2\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 4,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 8248,
+          "elapsed_seconds": 1.0700496999779716,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_2\\worker_4\\outputs\\SHAFT-2AC085010H_1_isolated_4.dxf",
+              "exists": true,
+              "bytes": 112306
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_2\\worker_4\\outputs\\SHAFT-2AC085010H_1_isolated_4.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_2\\worker_4\\outputs\\SHAFT-2AC085010H_1_isolated_4.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_2\\worker_4\\outputs\\SHAFT-2AC085010H_1_isolated_4.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        }
+      ]
+    },
+    {
+      "level": 4,
+      "round": 3,
+      "wall_seconds": 1.9302926999516785,
+      "successes": 4,
+      "failures": 0,
+      "throughput_jobs_per_second": 2.0722245906541183,
+      "backend_health": {
+        "samples": 10,
+        "successes": 10,
+        "failures": 0,
+        "availability_percent": 100.0,
+        "max_latency_seconds": 0.018319199909456074
+      },
+      "workers": [
+        {
+          "worker": 1,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 11176,
+          "elapsed_seconds": 1.0404947999631986,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_3\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.dxf",
+              "exists": true,
+              "bytes": 112306
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_3\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_3\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_3\\worker_1\\outputs\\SHAFT-2AC085010H_1_isolated_1.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 2,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 27496,
+          "elapsed_seconds": 1.0203324001049623,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_3\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.dxf",
+              "exists": true,
+              "bytes": 112306
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_3\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_3\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_3\\worker_2\\outputs\\SHAFT-2AC085010H_1_isolated_2.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 3,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 25988,
+          "elapsed_seconds": 1.026586199994199,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_3\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.dxf",
+              "exists": true,
+              "bytes": 112306
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_3\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_3\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_3\\worker_3\\outputs\\SHAFT-2AC085010H_1_isolated_3.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        },
+        {
+          "worker": 4,
+          "exit_code": 0,
+          "status": "ok",
+          "pid": 19680,
+          "elapsed_seconds": 1.038640599930659,
+          "files": {
+            "dxf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_3\\worker_4\\outputs\\SHAFT-2AC085010H_1_isolated_4.dxf",
+              "exists": true,
+              "bytes": 112306
+            },
+            "pdf": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_3\\worker_4\\outputs\\SHAFT-2AC085010H_1_isolated_4.pdf",
+              "exists": true,
+              "bytes": 106318
+            },
+            "png": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_3\\worker_4\\outputs\\SHAFT-2AC085010H_1_isolated_4.png",
+              "exists": true,
+              "bytes": 119265
+            },
+            "svg": {
+              "path": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512\\level_4\\round_3\\worker_4\\outputs\\SHAFT-2AC085010H_1_isolated_4.svg",
+              "exists": true,
+              "bytes": 125674
+            }
+          },
+          "error_type": null,
+          "error": null
+        }
+      ]
+    }
+  ],
+  "raw_run_directory": "D:\\School\\力致\\app\\step-to-2d-generator\\scratch\\process_isolation_benchmark\\20261020_164512"
+}
