@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from itertools import product
 import math
 from statistics import median
 from typing import Any, Mapping, Sequence
@@ -310,6 +311,7 @@ def build_radial_band_render_tasks(
 
     full_id = "outer_annular_slots.full_angle"
     half_id = "outer_annular_slots.half_angle"
+    group_specs: list[dict[str, Any]] = []
     if full_id in selected or half_id in selected:
         controlling_id = full_id if full_id in selected else half_id
         rule = rules.get(controlling_id)
@@ -317,38 +319,17 @@ def build_radial_band_render_tasks(
             rejected.append({"feature_id": controlling_id, "reason": "UNKNOWN_RADIAL_BAND_ANGLE_RULE"})
         else:
             pattern = patterns[str(rule["pattern_id"])]
-            gap_relations = pattern.get("gap_relations") or []
-            if not gap_relations:
+            relations = pattern.get("gap_relations") or []
+            if not relations:
                 rejected.append({"feature_id": controlling_id, "reason": "NO_MEASURED_RELATION"})
             else:
-                full_relation = choose_relation(gap_relations)
-                group_id = f"outer_gap_at_{relation_mid_angle(full_relation):.3f}"
-                if full_id in selected and full_id in rules:
-                    append_task(
-                        full_id,
-                        full_relation,
-                        placement_group=group_id,
-                        paired_with=half_id if half_id in selected else None,
-                    )
-                if half_id in selected and half_id in rules:
-                    half_angle = float(full_relation["angle"]) / 2.0
-                    half_relation = {
-                        **dict(full_relation),
-                        "end_angle": (float(full_relation["start_angle"]) + half_angle) % 360.0,
-                        "angle": half_angle,
-                        "semantic": "circumferential_slot_pattern.half_gap_angle",
-                        "derived_from_full_gap": True,
-                    }
-                    append_task(
-                        half_id,
-                        half_relation,
-                        placement_group=group_id,
-                        paired_with=full_id if full_id in selected else None,
-                    )
-                occupied.append({
-                    "mid_angle": relation_mid_angle(full_relation),
-                    "span": float(full_relation["angle"]),
-                    "kind": group_id,
+                group_specs.append({
+                    "kind": "outer_pair",
+                    "rule_ids": [
+                        rule_id for rule_id in (full_id, half_id)
+                        if rule_id in selected and rule_id in rules
+                    ],
+                    "relations": [dict(item) for item in relations],
                 })
 
     remaining = [rule_id for rule_id in selected if rule_id not in {full_id, half_id}]
@@ -366,9 +347,89 @@ def build_radial_band_render_tasks(
         if not relations:
             rejected.append({"feature_id": rule_id, "reason": "NO_MEASURED_RELATION"})
             continue
-        relation = choose_relation(relations)
-        group_id = f"independent_{rule_id}"
-        append_task(rule_id, relation, placement_group=group_id)
+        group_specs.append({
+            "kind": "independent",
+            "rule_ids": [rule_id],
+            "relations": [dict(item) for item in relations],
+        })
+
+    def combination_score(relations: Sequence[Mapping[str, Any]]) -> tuple[float, ...]:
+        midpoint_separations = [
+            angular_distance(relation_mid_angle(first), relation_mid_angle(second))
+            for index, first in enumerate(relations)
+            for second in relations[index + 1:]
+        ]
+        edge_separations = [
+            angular_distance(relation_mid_angle(first), relation_mid_angle(second))
+            - float(first["angle"]) / 2.0
+            - float(second["angle"]) / 2.0
+            for index, first in enumerate(relations)
+            for second in relations[index + 1:]
+        ]
+        reserved_clearances = [
+            min(
+                (
+                    angular_distance(relation_mid_angle(relation), float(item["mid_angle"]))
+                    - float(relation["angle"]) / 2.0
+                    - float(item["span"]) / 2.0
+                    - 12.0
+                    for item in reserved_sectors
+                ),
+                default=180.0,
+            )
+            for relation in relations
+        ]
+        return (
+            min(midpoint_separations, default=180.0),
+            min(edge_separations, default=180.0),
+            min(reserved_clearances, default=180.0),
+            -sum(
+                angular_distance(relation_mid_angle(relation), 270.0)
+                for relation in relations
+            ),
+        )
+
+    chosen_relations = (
+        [
+            dict(item)
+            for item in max(
+                product(*(spec["relations"] for spec in group_specs)),
+                key=combination_score,
+            )
+        ]
+        if group_specs
+        else []
+    )
+
+    for spec, relation in zip(group_specs, chosen_relations):
+        if spec["kind"] == "outer_pair":
+            group_id = f"outer_gap_at_{relation_mid_angle(relation):.3f}"
+            if full_id in spec["rule_ids"]:
+                append_task(
+                    full_id,
+                    relation,
+                    placement_group=group_id,
+                    paired_with=half_id if half_id in spec["rule_ids"] else None,
+                )
+            if half_id in spec["rule_ids"]:
+                half_angle = float(relation["angle"]) / 2.0
+                half_relation = {
+                    **dict(relation),
+                    "end_angle": (float(relation["start_angle"]) + half_angle) % 360.0,
+                    "angle": half_angle,
+                    "semantic": "circumferential_slot_pattern.half_gap_angle",
+                    "derived_from_full_gap": True,
+                }
+                append_task(
+                    half_id,
+                    half_relation,
+                    placement_group=group_id,
+                    paired_with=full_id if full_id in spec["rule_ids"] else None,
+                )
+        else:
+            rule_id = str(spec["rule_ids"][0])
+            group_id = f"independent_{rule_id}"
+            append_task(rule_id, relation, placement_group=group_id)
         occupied.append({
             "mid_angle": relation_mid_angle(relation),
             "span": float(relation["angle"]),

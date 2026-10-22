@@ -176,3 +176,44 @@ def test_excel_bulk_import_and_email_delivery_contract():
         json={"status": "SENT", "provider_message_id": "mail-001"},
     )
     assert acknowledged.status_code == 200
+
+
+def test_bulk_import_skips_unknown_domains_then_admin_resolves_each_domain():
+    authenticated = admin_client()
+    csv_content = "\n".join([
+        "email,display_name,role",
+        "partial.valid@forcecon.com.tw,Partial Valid,ENGINEER",
+        "partial.typo@forcecon.con.tw,Partial Typo,ENGINEER",
+        "partial.partner@partner-forcecon.com,Partial Partner,ENGINEER",
+        "missing.name@forcecon.com.tw,,ENGINEER",
+    ])
+    imported = authenticated.post(
+        "/api/admin/users/import",
+        files={"file": ("accounts.csv", csv_content.encode("utf-8"), "text/csv")},
+    )
+    assert imported.status_code == 201
+    result = imported.json()
+    assert result["status"] == "review_required"
+    assert result["created_count"] == 1
+    assert len(result["unresolved_domain_rows"]) == 2
+    assert len(result["rejected_rows"]) == 1
+
+    resolved = authenticated.post(
+        "/api/admin/users/import/resolve-domains",
+        json={
+            "rows": result["unresolved_domain_rows"],
+            "resolutions": {
+                "forcecon.con.tw": "forcecon.com.tw",
+                "partner-forcecon.com": "__add__",
+            },
+        },
+    )
+    assert resolved.status_code == 201
+    resolved_result = resolved.json()
+    assert resolved_result["created_count"] == 2
+    assert resolved_result["rejected_rows"] == []
+    assert resolved_result["domains_added"] == ["partner-forcecon.com"]
+    assert {item["email"] for item in resolved_result["users"]} == {
+        "partial.typo@forcecon.com.tw",
+        "partial.partner@partner-forcecon.com",
+    }
