@@ -50,6 +50,8 @@ class JobConcurrencyControlTests(unittest.TestCase):
         self.assertLessEqual(server.ANALYSIS_MAX_WORKERS, 8)
         self.assertGreaterEqual(server.ANNOTATION_MAX_CONCURRENCY, 1)
         self.assertLessEqual(server.ANNOTATION_MAX_CONCURRENCY, 8)
+        self.assertGreaterEqual(server.EXPERIMENTAL_SHADOW_MAX_WORKERS, 1)
+        self.assertLessEqual(server.EXPERIMENTAL_SHADOW_MAX_WORKERS, 2)
 
     def test_dynamic_capacity_limiter_applies_new_admissions_immediately(self):
         limiter = server.DynamicCapacityLimiter()
@@ -64,6 +66,22 @@ class JobConcurrencyControlTests(unittest.TestCase):
         limiter.release()
         self.assertTrue(limiter.acquire(lambda: capacity, blocking=False))
         limiter.release()
+
+    def test_job_status_exposes_shadow_state_without_changing_primary_status(self):
+        with server.jobs_lock:
+            server.jobs["job-shadow"] = {
+                "status": "completed",
+                "owner_user_id": "user-a",
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "message": "done",
+                "experimental_shadow_analysis": {
+                    "status": "error",
+                    "message": "shadow failed",
+                },
+            }
+        payload = server._job_status_payload("job-shadow", server.jobs["job-shadow"])
+        self.assertEqual(payload["status"], "completed")
+        self.assertEqual(payload["experimental_shadow_analysis"]["status"], "error")
 
 
 if __name__ == "__main__":

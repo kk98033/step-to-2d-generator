@@ -109,7 +109,12 @@ def render_annular_dimensions(
             override = modelspace.add_diameter_dim(
                 center=center,
                 radius=radius,
-                angle=DIAMETER_BASE_ANGLE_DEG + lane * DIAMETER_LANE_SPACING_DEG,
+                angle=float(
+                    task.get(
+                        "angle",
+                        DIAMETER_BASE_ANGLE_DEG + lane * DIAMETER_LANE_SPACING_DEG,
+                    )
+                ),
                 text=str(task.get("label") or f"%%c{value:.2f}"),
                 dimstyle="EZ_RADIUS",
                 override={"dimtofl": 1},

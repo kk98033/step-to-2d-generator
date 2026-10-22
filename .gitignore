@@ -36,6 +36,7 @@ scratch/
 
 # === Logs ===
 *.log
+.codex_runtime/
 .env
 web_app/backend/data/
 

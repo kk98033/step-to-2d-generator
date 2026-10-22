@@ -34,6 +34,10 @@ class IdentityAndPersonalizationTests(unittest.TestCase):
         self.store.claim_model("model-a_batch", self.engineer.id, "model-a.step")
         self.assertTrue(self.store.can_access_model(self.engineer, "model-a_batch"))
         self.assertTrue(self.store.can_access_model(self.admin, "model-a_batch"))
+        registration = self.store.model_registration("model-a_batch")
+        self.assertEqual(registration["owner_user_id"], self.engineer.id)
+        self.assertEqual(registration["source_filename"], "model-a.step")
+        self.assertIsNone(self.store.model_registration("missing-model"))
 
         other = self.store.create_user({
             "username": "engineer-b",

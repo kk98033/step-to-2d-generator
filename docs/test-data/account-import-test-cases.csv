@@ -1,0 +1,8 @@
+email,display_name,role
+import.valid.20261021@forcecon.com.tw,林怡君,ENGINEER
+import.testdomain.20261021@test.com,測試外部網域,ENGINEER
+import.name.typo.20261021@forcecon.com.tw,陳大眀,ENGINEER
+import.same-name-a.20261021@forcecon.com.tw,王小明,ENGINEER
+import.same-name-b.20261021@forcecon.com.tw,王小明,ENGINEER
+import.duplicate.20261021@forcecon.com.tw,重複帳號甲,ENGINEER
+import.duplicate.20261021@forcecon.com.tw,重複帳號乙,ENGINEER

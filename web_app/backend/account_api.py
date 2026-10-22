@@ -16,7 +16,9 @@ from starlette.responses import JSONResponse
 from web_app.backend.identity_store import (
     CurrentUser,
     IdentityStore,
+    canonical_company_email,
 )
+from web_app.backend.admin_log_service import get_operation_log, list_operation_logs
 
 
 SESSION_COOKIE = "cad_session"
@@ -157,6 +159,10 @@ class UserCreateRequest(BaseModel):
     role: str = "ENGINEER"
 
 
+class UserBulkDeleteRequest(BaseModel):
+    user_ids: list[str] = Field(min_length=1, max_length=200)
+
+
 class PasswordResetRequest(BaseModel):
     new_password: Optional[str] = Field(default=None, min_length=10, max_length=256)
 
@@ -178,6 +184,11 @@ class CadConcurrencyRequest(BaseModel):
 
 class CompanyEmailDomainRequest(BaseModel):
     domain: str = Field(min_length=3, max_length=120)
+
+
+class ImportDomainResolutionRequest(BaseModel):
+    rows: list[Dict[str, Any]] = Field(default_factory=list)
+    resolutions: Dict[str, str] = Field(default_factory=dict)
 
 
 class RecommendationTagRequest(BaseModel):
@@ -383,6 +394,31 @@ def admin_create_user(
     return {"status": "ok", "user": user}
 
 
+@router.delete("/admin/users/{user_id}")
+def admin_delete_user(user_id: str, admin: CurrentUser = Depends(require_admin)):
+    try:
+        deleted = store.delete_users([user_id], admin.id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok", "deleted_count": 1, "users": deleted}
+
+
+@router.post("/admin/users/bulk-delete")
+def admin_bulk_delete_users(
+    payload: UserBulkDeleteRequest,
+    admin: CurrentUser = Depends(require_admin),
+):
+    try:
+        deleted = store.delete_users(payload.user_ids, admin.id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok", "deleted_count": len(deleted), "users": deleted}
+
+
 @router.patch("/admin/users/{user_id}")
 def admin_update_user(
     user_id: str,
@@ -416,6 +452,71 @@ def admin_reset_password(
         "must_change_password": bool(target and target["must_change_password"]),
         "initial_password": initial_password,
     }
+
+
+def _import_rows_with_domain_review(
+    rows: list[Dict[str, Any]], actor_user_id: str
+) -> tuple[list[Dict[str, Any]], list[Dict[str, Any]], list[Dict[str, Any]]]:
+    """Create valid rows while retaining unknown-domain rows for an admin decision."""
+    allowed_domains = store.list_company_email_domains()
+    created: list[Dict[str, Any]] = []
+    unresolved: list[Dict[str, Any]] = []
+    rejected: list[Dict[str, Any]] = []
+
+    for offset, row in enumerate(rows, start=2):
+        row_number = row.get("row_number") or offset
+        raw_email = str(row.get("email") or row.get("account") or "").strip().lower()
+        display_name = str(row.get("display_name") or row.get("name") or "").strip()
+        role = str(row.get("role") or "ENGINEER").strip().upper()
+        try:
+            if not display_name:
+                raise ValueError("Display name is required")
+            if role not in {"ADMIN", "ENGINEER"}:
+                raise ValueError(f"Invalid role: {role}")
+
+            if "@" in raw_email:
+                local_part, source_domain = raw_email.rsplit("@", 1)
+                source_domain = store._normalize_domain(source_domain)
+            else:
+                local_part = raw_email
+                source_domain = allowed_domains[0]
+
+            if source_domain not in allowed_domains:
+                # Validate the local part and total identifier length without accepting
+                # the domain into company policy yet.
+                canonical_company_email(
+                    f"{local_part}@{source_domain}",
+                    allowed_domains=[*allowed_domains, source_domain],
+                )
+                unresolved.append({
+                    "row_number": row_number,
+                    "email": f"{local_part}@{source_domain}",
+                    "local_part": local_part,
+                    "source_domain": source_domain,
+                    "display_name": display_name,
+                    "role": role,
+                })
+                continue
+
+            normalized_email = canonical_company_email(
+                f"{local_part}@{source_domain}", allowed_domains=allowed_domains
+            )
+            created.append(store.create_user({
+                "email": normalized_email,
+                "display_name": display_name,
+                "role": role,
+            }, actor_user_id))
+        except (ValueError, TypeError) as exc:
+            rejected.append({
+                "row_number": row_number,
+                "email": raw_email,
+                "display_name": display_name,
+                "reason": str(exc),
+            })
+
+    if not created and not unresolved and not rejected:
+        raise ValueError("The import file contains no account rows")
+    return created, unresolved, rejected
 
 
 @router.post("/admin/users/import", status_code=201)
@@ -452,10 +553,80 @@ async def admin_import_users(
                 canonical_key = aliases.get(str(key).strip().lower(), str(key).strip().lower())
                 normalized[canonical_key] = value
             normalized_rows.append(normalized)
-        created = store.bulk_create_users(normalized_rows, admin.id)
+        created, unresolved, rejected = _import_rows_with_domain_review(
+            normalized_rows, admin.id
+        )
     except (ValueError, TypeError, UnicodeDecodeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"status": "ok", "created_count": len(created), "users": created}
+    return {
+        "status": "review_required" if unresolved else ("partial" if rejected else "ok"),
+        "created_count": len(created),
+        "users": created,
+        "unresolved_domain_rows": unresolved,
+        "rejected_rows": rejected,
+    }
+
+
+@router.post("/admin/users/import/resolve-domains", status_code=201)
+def admin_resolve_import_domains(
+    payload: ImportDomainResolutionRequest,
+    admin: CurrentUser = Depends(require_admin),
+):
+    current_domains = store.list_company_email_domains()
+    normalized_resolutions: Dict[str, str] = {}
+    domains_to_add: list[str] = []
+    try:
+        if not payload.rows:
+            raise ValueError("No pending import rows were provided")
+        for source, selection in payload.resolutions.items():
+            source_domain = store._normalize_domain(source)
+            selected = str(selection or "").strip().lower().lstrip("@")
+            if selected == "__add__":
+                normalized_resolutions[source_domain] = source_domain
+                if source_domain not in current_domains and source_domain not in domains_to_add:
+                    domains_to_add.append(source_domain)
+            elif selected in current_domains:
+                normalized_resolutions[source_domain] = selected
+            else:
+                raise ValueError(f"A resolution is required for @{source_domain}")
+
+        pending_sources = {
+            str(row.get("source_domain") or "").strip().lower().lstrip("@")
+            for row in payload.rows
+        }
+        missing = sorted(source for source in pending_sources if source not in normalized_resolutions)
+        if missing:
+            raise ValueError(f"Missing domain resolutions: {', '.join('@' + item for item in missing)}")
+
+        for domain in domains_to_add:
+            store.create_company_email_domain(domain, admin.id)
+
+        resolved_rows = []
+        for row in payload.rows:
+            source_domain = str(row.get("source_domain") or "").strip().lower().lstrip("@")
+            target_domain = normalized_resolutions[source_domain]
+            resolved_rows.append({
+                "row_number": row.get("row_number"),
+                "email": f"{str(row.get('local_part') or '').strip().lower()}@{target_domain}",
+                "display_name": row.get("display_name"),
+                "role": row.get("role"),
+            })
+        created, unresolved, rejected = _import_rows_with_domain_review(
+            resolved_rows, admin.id
+        )
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if unresolved:
+        raise HTTPException(status_code=409, detail="Domain resolution did not resolve every row")
+    return {
+        "status": "ok",
+        "created_count": len(created),
+        "users": created,
+        "rejected_rows": rejected,
+        "domains_added": domains_to_add,
+        "company_email_domains": store.list_company_email_domains(),
+    }
 
 
 @router.get("/admin/users/import-template")
@@ -548,6 +719,30 @@ def admin_delete_company_email_domain(
 @router.get("/admin/audit-events")
 def admin_audit_events(limit: int = 200, admin: CurrentUser = Depends(require_admin)):
     return {"status": "ok", "events": store.list_audit_events(limit)}
+
+
+@router.get("/admin/operation-logs")
+def admin_operation_logs(
+    limit: int = 200,
+    status: Optional[str] = None,
+    q: Optional[str] = None,
+    admin: CurrentUser = Depends(require_admin),
+):
+    return {
+        "status": "ok",
+        "logs": list_operation_logs(limit=limit, status=status, query=q),
+    }
+
+
+@router.get("/admin/operation-logs/{operation_id}")
+def admin_operation_log_detail(
+    operation_id: str,
+    admin: CurrentUser = Depends(require_admin),
+):
+    log = get_operation_log(operation_id)
+    if not log:
+        raise HTTPException(status_code=404, detail="Operation log not found")
+    return {"status": "ok", "log": log}
 
 
 @router.get("/admin/trash")

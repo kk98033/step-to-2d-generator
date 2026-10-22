@@ -95,6 +95,31 @@ annotation_executor = ThreadPoolExecutor(
 )
 
 
+def _environment_flag(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+EXPERIMENTAL_SHADOW_ANALYSIS_ENABLED = _environment_flag(
+    "EXPERIMENTAL_SHADOW_ANALYSIS_ENABLED",
+    False,
+)
+EXPERIMENTAL_SHADOW_MAX_WORKERS = min(
+    2,
+    max(1, int(os.environ.get("EXPERIMENTAL_SHADOW_MAX_WORKERS", "1"))),
+)
+EXPERIMENTAL_SHADOW_TIMEOUT_SECONDS = max(
+    30,
+    int(os.environ.get("EXPERIMENTAL_SHADOW_TIMEOUT_SECONDS", "900")),
+)
+shadow_analysis_executor = ThreadPoolExecutor(
+    max_workers=EXPERIMENTAL_SHADOW_MAX_WORKERS,
+    thread_name_prefix="cad-experimental-shadow",
+)
+
+
 class DynamicCapacityLimiter:
     """Admission limiter whose configured capacity can change without a restart."""
 
@@ -134,6 +159,7 @@ def _annotation_capacity() -> int:
 
 analysis_slots = DynamicCapacityLimiter()
 annotation_slots = DynamicCapacityLimiter()
+shadow_analysis_slots = DynamicCapacityLimiter()
 annotation_state_lock = threading.RLock()
 annotation_jobs: Dict[str, Dict[str, Any]] = {}
 ANNOTATION_ACTIVE_STATUSES = {"queued", "processing", "finalizing"}
@@ -146,11 +172,146 @@ def _utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _atomic_json_write(path: str, payload: Dict[str, Any]) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    temporary = f"{path}.{uuid.uuid4().hex}.tmp"
+    with open(temporary, "w", encoding="utf-8") as output_file:
+        json.dump(payload, output_file, ensure_ascii=False, indent=2, default=str)
+    os.replace(temporary, path)
+
+
+def _compact_annotation_record_for_audit(record: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        key: record.get(key)
+        for key in (
+            "rule_id", "id", "category", "feature_type", "type", "enabled",
+            "preferred_view", "views", "target_views", "side", "sides",
+            "tolerance", "tolerance_config", "baseline", "offset",
+        )
+        if record.get(key) is not None
+    }
+
+
+def _annotation_audit_payload(job_id: str, job: Dict[str, Any]) -> Dict[str, Any]:
+    user = job.get("user")
+    engineer = {
+        "id": job.get("owner_user_id"),
+        "username": getattr(user, "username", None),
+        "display_name": getattr(user, "display_name", None),
+        "email": getattr(user, "email", None),
+        "role": getattr(user, "role", None),
+    }
+    worker_dir = job.get("worker_dir")
+    diagnostic_files = {
+        "operation_audit": job.get("audit_path"),
+        "worker_request": os.path.join(worker_dir, "worker_request.json") if worker_dir else None,
+        "worker_result": os.path.join(worker_dir, "worker_result.json") if worker_dir else None,
+        "worker_log": os.path.join(worker_dir, "worker.log") if worker_dir else None,
+        "renderer_failure_audit": os.path.join(
+            worker_dir or "",
+            "experimental_renderer_failure_audit.json",
+        ) if worker_dir else None,
+        "drawing_report": os.path.join(
+            job.get("custom_out_dir") or "",
+            "minimal_multiview_report.json",
+        ) if job.get("custom_out_dir") else None,
+    }
+    feature_records = job.get("feature_records") or []
+    compact_records = [
+        _compact_annotation_record_for_audit(record)
+        for record in feature_records[:500]
+        if isinstance(record, dict)
+    ]
+    return {
+        "schema_version": 1,
+        "record_type": "CAD_ANNOTATION_OPERATION_AUDIT",
+        "operation_id": job_id,
+        "status": job.get("status"),
+        "message": job.get("message"),
+        "created_at": job.get("created_at"),
+        "started_at": job.get("started_at"),
+        "updated_at": job.get("updated_at"),
+        "completed_at": job.get("completed_at"),
+        "events": job.get("events") or [],
+        "engineer": engineer,
+        "request": {
+            "model_id": job.get("model_id"),
+            "part_id": job.get("part_id"),
+            "candidate_engine": job.get("candidate_engine") or "legacy_smart",
+            "include_half_section": bool(job.get("include_half_section")),
+            "part_category": job.get("part_category"),
+            "product_family": job.get("product_family"),
+            "title_info": job.get("title_info") or {},
+            "storage_tag_ids": job.get("storage_tag_ids") or [],
+            "feature_record_count": len(feature_records),
+            "feature_records": compact_records,
+            "feature_records_truncated": len(feature_records) > len(compact_records),
+            "request_hash": job.get("request_hash"),
+            "cache_hit": bool(job.get("cache_hit")),
+        },
+        "execution": {
+            "worker_pid": job.get("worker_pid"),
+            "worker_elapsed_seconds": job.get("worker_elapsed_seconds"),
+            "primary_view": job.get("primary_view"),
+            "output_files": job.get("output_files") or {},
+            "diagnostic_files": diagnostic_files,
+        },
+        "result": job.get("result"),
+        "failure": (
+            {
+                "public_error": job.get("error"),
+                "full_error": job.get("error_detail") or job.get("error"),
+                "error_type": job.get("error_type"),
+                "traceback": job.get("error_traceback"),
+            }
+            if job.get("status") == "error"
+            else None
+        ),
+    }
+
+
+def _persist_annotation_audit(job_id: str, job: Dict[str, Any]) -> None:
+    audit_path = job.get("audit_path")
+    if audit_path:
+        _atomic_json_write(audit_path, _annotation_audit_payload(job_id, job))
+
+
+def _new_annotation_audit_location(
+    user_workspace: str,
+    model_id: str,
+    user_id: str,
+    operation_id: str,
+) -> tuple[str, str]:
+    now = datetime.now(timezone.utc)
+    day = now.strftime("%Y-%m-%d")
+    filename = f"{now.strftime('%Y%m%dT%H%M%S_%fZ')}_{operation_id}.json"
+    path = os.path.join(user_workspace, "_annotation_audit", day, filename)
+    url = _api_file_url(model_id, "_users", user_id, "_annotation_audit", day, filename)
+    return path, url
+
+
+def _require_experimental_engine_admin(current_user: CurrentUser) -> None:
+    if not getattr(current_user, "is_admin", False):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "EXPERIMENTAL_ENGINE_ADMIN_ONLY",
+                "message": "新版繪圖引擎目前僅限管理員使用",
+            },
+        )
+
+
 def _set_annotation_job_state(job_id: str, **updates: Any) -> None:
     with annotation_state_lock:
         if job_id in annotation_jobs:
             annotation_jobs[job_id].update(updates)
             annotation_jobs[job_id]["updated_at"] = _utc_iso()
+            annotation_jobs[job_id].setdefault("events", []).append({
+                "at": annotation_jobs[job_id]["updated_at"],
+                "status": annotation_jobs[job_id].get("status"),
+                "message": annotation_jobs[job_id].get("message"),
+            })
+            _persist_annotation_audit(job_id, annotation_jobs[job_id])
 
 
 def _annotation_queue_position(job_id: str) -> int:
@@ -206,6 +367,8 @@ def _annotation_job_status_payload(job_id: str, job: Dict[str, Any]) -> Dict[str
         payload["result"] = job.get("result")
     if job.get("status") == "error":
         payload["error"] = job.get("error") or job.get("message")
+    if job.get("audit_url"):
+        payload["audit_url"] = job["audit_url"]
     return payload
 
 
@@ -282,7 +445,7 @@ def _set_job_state(job_id: str, **updates: Any) -> None:
 
 
 def _job_status_payload(job_id: str, job: Dict[str, Any]) -> Dict[str, Any]:
-    return {
+    payload = {
         "job_id": job_id,
         "status": job["status"],
         "message": job["message"],
@@ -296,6 +459,129 @@ def _job_status_payload(job_id: str, job: Dict[str, Any]) -> Dict[str, Any]:
         "worker_limit": _analysis_capacity(),
         "active_workers": analysis_slots.active,
     }
+    if "experimental_shadow_analysis" in job:
+        payload["experimental_shadow_analysis"] = dict(job["experimental_shadow_analysis"])
+    return payload
+
+
+def _write_experimental_shadow_status(output_dir: str, payload: Dict[str, Any]) -> None:
+    shadow_dir = os.path.join(output_dir, "_experimental_shadow")
+    os.makedirs(shadow_dir, exist_ok=True)
+    status_path = os.path.join(shadow_dir, "shadow_status.json")
+    temporary = f"{status_path}.{uuid.uuid4().hex}.tmp"
+    with open(temporary, "w", encoding="utf-8") as status_file:
+        json.dump(payload, status_file, ensure_ascii=False, indent=2, default=str)
+    os.replace(temporary, status_path)
+
+
+def _set_experimental_shadow_state(
+    job_id: str,
+    output_dir: str,
+    **updates: Any,
+) -> Dict[str, Any]:
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if job is None:
+            state = dict(updates)
+        else:
+            state = dict(job.get("experimental_shadow_analysis") or {})
+            state.update(updates)
+            state["updated_at"] = _utc_iso()
+            job["experimental_shadow_analysis"] = state
+    _write_experimental_shadow_status(output_dir, state)
+    return state
+
+
+def _run_experimental_shadow_job(
+    job_id: str,
+    step_path: str,
+    output_dir: str,
+    output_dir_name: str,
+) -> None:
+    acquired = False
+    try:
+        shadow_analysis_slots.acquire(
+            lambda: EXPERIMENTAL_SHADOW_MAX_WORKERS,
+            blocking=True,
+        )
+        acquired = True
+        _set_experimental_shadow_state(
+            job_id,
+            output_dir,
+            status="processing",
+            started_at=_utc_iso(),
+            message="Experimental Main shadow analysis is running in an isolated worker",
+        )
+        report_dir = os.path.join(output_dir, "_experimental_shadow")
+        worker_result = _run_cad_annotation_worker(
+            {
+                "action": "experimental_shadow_analysis",
+                "step_path": step_path,
+                "output_dir": report_dir,
+            },
+            os.path.join(report_dir, "_worker"),
+            timeout_seconds=EXPERIMENTAL_SHADOW_TIMEOUT_SECONDS,
+        )
+        _set_experimental_shadow_state(
+            job_id,
+            output_dir,
+            status="completed",
+            message="Experimental Main shadow analysis completed",
+            completed_at=_utc_iso(),
+            method=worker_result.get("method"),
+            schema_version=worker_result.get("schema_version"),
+            active_detectors=worker_result.get("active_detectors") or [],
+            unified_intent_count=worker_result.get("unified_intent_count", 0),
+            full_drawing_render_ready=worker_result.get("full_drawing_render_ready", False),
+            report_url=_api_file_url(
+                output_dir_name,
+                "_experimental_shadow",
+                "drawing_engine_report.json",
+            ),
+        )
+    except BaseException as exc:
+        _set_experimental_shadow_state(
+            job_id,
+            output_dir,
+            status="error",
+            message="Experimental Main shadow analysis failed without affecting the production drawing",
+            error=str(exc),
+            completed_at=_utc_iso(),
+        )
+    finally:
+        if acquired:
+            shadow_analysis_slots.release()
+
+
+def _schedule_experimental_shadow_analysis(
+    job_id: str,
+    step_path: str,
+    output_dir: str,
+    output_dir_name: str,
+) -> bool:
+    if not EXPERIMENTAL_SHADOW_ANALYSIS_ENABLED:
+        _set_experimental_shadow_state(
+            job_id,
+            output_dir,
+            status="disabled",
+            message="Set EXPERIMENTAL_SHADOW_ANALYSIS_ENABLED=1 to enable read-only analysis",
+        )
+        return False
+    _set_experimental_shadow_state(
+        job_id,
+        output_dir,
+        status="queued",
+        message="Experimental Main shadow analysis queued",
+        engine="DRAWING_CURRENT_FINAL",
+    )
+    shadow_analysis_executor.submit(
+        _run_experimental_shadow_job,
+        job_id,
+        step_path,
+        output_dir,
+        output_dir_name,
+    )
+    return True
 
 
 def _api_file_url(output_dir_name: str, *parts: str) -> str:
@@ -364,6 +650,28 @@ def build_parts_map(output_dir: str, output_dir_name: str) -> dict:
                     output_dir_name, output_dir, base, f"{part_prefix}.stl"
                 )
                 break
+
+    # Older analysis runs may contain valid STEP/STL parts without generating
+    # one root-level drawing file per part.  Keep those parts selectable in the
+    # current UI instead of requiring a historical drawing basename.
+    for part_prefix in part_prefixes:
+        if part_prefix not in parts_map:
+            parts_map[part_prefix] = _build_output_entry(
+                output_dir_name,
+                output_dir,
+                part_prefix,
+                f"{part_prefix}.stl",
+            )
+
+    if "_full_assembly" not in parts_map and os.path.exists(
+        os.path.join(parts_dir, "_full_assembly.stl")
+    ):
+        parts_map["_full_assembly"] = _build_output_entry(
+            output_dir_name,
+            output_dir,
+            "_full_assembly",
+            "_full_assembly.stl",
+        )
 
     return parts_map
 
@@ -2011,8 +2319,8 @@ def save_external_tolerance_predictions(
     rule_ids = [item.rule_id for item in prediction_set.predictions]
     if len(rule_ids) != len(set(rule_ids)):
         raise HTTPException(status_code=400, detail="Duplicate rule_id in predictions")
-    current_rules = get_candidate_annotation_rules(
-        model_id, part_id, current_user=None
+    current_rules = _candidate_annotation_rules_impl(
+        model_id, part_id, "legacy_smart"
     ).get("rules") or []
     valid_rule_ids = {
         str(rule.get("rule_id") or rule.get("id"))
@@ -2162,6 +2470,16 @@ def recommend_tolerances(
         if not candidate_rules:
             engine = SmartAnnotationEngine()
             candidate_rules = engine.get_candidate_rules(shape, view_data)
+
+        bridge_part_types = {
+            str((rule.get("feature_bridge") or {}).get("part_type") or "")
+            for rule in candidate_rules
+            if (rule.get("feature_bridge") or {}).get("part_type")
+        }
+        if not part_category and len(bridge_part_types) == 1:
+            # Keep canonical IDs stable by rebuilding the FRG with the same
+            # classification used by the Experimental-to-3D bridge.
+            part_category = next(iter(bridge_part_types))
 
         # 執行公差決策推薦
         rec_result = tolerance_service.recommend_for_rules(
@@ -2391,15 +2709,24 @@ def _run_annotation_job(job_id: str) -> None:
             message="正在由隔離 CAD Worker 產生工程圖",
             started_at=_utc_iso(),
         )
+        candidate_engine = job.get("candidate_engine") or "legacy_smart"
+        worker_action = (
+            "experimental_render"
+            if candidate_engine == "experimental_v026"
+            else "render"
+        )
         worker_result = _run_cad_annotation_worker(
             {
-                "action": "render",
+                "action": worker_action,
                 "step_path": job["step_path"],
                 "part_id": job["part_id"],
                 "output_dir": job["custom_out_dir"],
                 "output_stem": f"{job['part_id']}_custom",
                 "feature_records": job["feature_records"],
                 "title_info": job["title_info"],
+                "include_half_section": bool(job.get("include_half_section")),
+                "operation_id": job_id,
+                "diagnostic_dir": job["worker_dir"],
             },
             job["worker_dir"],
         )
@@ -2444,7 +2771,48 @@ def _run_annotation_job(job_id: str) -> None:
             **learning,
             "timestamp": timestamp,
             "cached": False,
+            "candidate_engine": candidate_engine,
+            "operation_id": job_id,
+            "audit_url": job.get("audit_url"),
         }
+        if candidate_engine == "experimental_v026":
+            relative_root = (
+                "_users",
+                job["owner_user_id"],
+                "_experimental_annotations",
+                job["part_id"],
+            )
+            result.update({
+                "primary_view": worker_result.get("primary_view"),
+                "report_url": _api_file_url(
+                    job["model_id"], *relative_root, "minimal_multiview_report.json"
+                ),
+                "multiview_files": {
+                    str(item.get("view")): {
+                        f"{extension}_url": _api_file_url(
+                            job["model_id"],
+                            *relative_root,
+                            str(item.get("view")),
+                            f"{item.get('view')}.{extension}",
+                        )
+                        for extension in ("dxf", "pdf", "png")
+                    }
+                    for item in worker_result.get("multiview_drawings") or []
+                },
+                "half_section_file": (
+                    {
+                        f"{extension}_url": _api_file_url(
+                            job["model_id"],
+                            *relative_root,
+                            "half_section",
+                            f"half_section.{extension}",
+                        )
+                        for extension in ("dxf", "pdf", "png")
+                    }
+                    if worker_result.get("half_section_drawing")
+                    else None
+                ),
+            })
         _set_annotation_job_state(
             job_id,
             status="completed",
@@ -2453,20 +2821,40 @@ def _run_annotation_job(job_id: str) -> None:
             result=result,
             completed_at=_utc_iso(),
         )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
         _set_annotation_job_state(
             job_id,
             status="error",
             message="CAD Worker 執行逾時",
-            error=f"CAD Worker exceeded {CAD_ANNOTATION_TIMEOUT_SECONDS} seconds",
+            error="標註工程圖產生逾時，完整診斷已保存",
+            error_detail=str(exc),
+            error_type=type(exc).__name__,
             completed_at=_utc_iso(),
         )
     except BaseException as exc:
+        worker_error = {}
+        try:
+            worker_result_path = os.path.join(job["worker_dir"], "worker_result.json")
+            if os.path.exists(worker_result_path):
+                with open(worker_result_path, "r", encoding="utf-8") as worker_result_file:
+                    worker_error = json.load(worker_result_file)
+        except (OSError, json.JSONDecodeError):
+            worker_error = {}
+        full_error = str(worker_error.get("error") or exc)
+        if "Experimental renderer audit failed" in full_error:
+            public_error = "新版繪圖引擎稽核未通過，完整診斷已保存"
+        elif "Experimental selection validation failed" in full_error:
+            public_error = "所選特徵未通過新版繪圖引擎驗證，完整診斷已保存"
+        else:
+            public_error = "標註工程圖產生失敗，完整診斷已保存"
         _set_annotation_job_state(
             job_id,
             status="error",
             message="標註工程圖產生失敗",
-            error=str(exc),
+            error=public_error,
+            error_detail=full_error,
+            error_type=worker_error.get("error_type") or type(exc).__name__,
+            error_traceback=worker_error.get("traceback"),
             completed_at=_utc_iso(),
         )
     finally:
@@ -2483,8 +2871,28 @@ def submit_custom_annotation_drawing(
     part_id = body.get("part_id")
     feature_records = body.get("feature_records") or []
     title_info = body.get("title_info") or {}
+    candidate_engine = body.get("candidate_engine") or "legacy_smart"
     if not model_id or not part_id:
         raise HTTPException(status_code=400, detail="model_id and part_id are required")
+    if candidate_engine not in {"legacy_smart", "experimental_v026"}:
+        raise HTTPException(
+            status_code=400,
+            detail="candidate_engine must be legacy_smart or experimental_v026",
+        )
+    if candidate_engine == "experimental_v026":
+        _require_experimental_engine_admin(current_user)
+    mismatched_rules = [
+        str(record.get("rule_id") or record.get("id") or "")
+        for record in feature_records
+        if record.get("enabled")
+        and candidate_engine == "experimental_v026"
+        and record.get("source_engine") != "experimental_v026"
+    ]
+    if mismatched_rules:
+        raise HTTPException(status_code=400, detail={
+            "code": "CANDIDATE_ENGINE_MISMATCH",
+            "rule_ids": mismatched_rules,
+        })
 
     storage_tag_ids = body.get("storage_tag_ids") or []
     try:
@@ -2508,7 +2916,12 @@ def submit_custom_annotation_drawing(
         raise HTTPException(status_code=404, detail=f"STEP file for {part_id} not found")
 
     user_workspace = _user_workspace(output_dir, current_user.id)
-    custom_out_dir = os.path.join(user_workspace, "_custom_annotations", part_id)
+    annotation_folder = (
+        "_experimental_annotations"
+        if candidate_engine == "experimental_v026"
+        else "_custom_annotations"
+    )
+    custom_out_dir = os.path.join(user_workspace, annotation_folder, part_id)
     os.makedirs(custom_out_dir, exist_ok=True)
     manifest_path = os.path.join(custom_out_dir, ".render_request.json")
     request_hash = hashlib.sha256(
@@ -2521,33 +2934,109 @@ def submit_custom_annotation_drawing(
                 "storage_tag_ids": storage_tag_ids,
                 "part_category": body.get("part_category"),
                 "product_family": body.get("product_family"),
+                "candidate_engine": candidate_engine,
+                "include_half_section": bool(body.get("include_half_section")),
             },
             sort_keys=True,
             ensure_ascii=False,
             default=str,
         ).encode("utf-8")
     ).hexdigest()
-    relative_parts = ("_users", current_user.id, "_custom_annotations", part_id)
-    output_files = {
-        "dxf_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.dxf"),
-        "pdf_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.pdf"),
-        "svg_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.svg"),
-        "png_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.png"),
-    }
-    output_paths = [
-        os.path.join(custom_out_dir, f"{part_id}_custom.{extension}")
-        for extension in ("dxf", "pdf", "svg", "png")
-    ]
+    relative_parts = ("_users", current_user.id, annotation_folder, part_id)
+    enabled_records = [record for record in feature_records if record.get("enabled")]
+    primary_view = str(
+        next(
+            (
+                record.get("preferred_view")
+                or (record.get("target_views") or [None])[0]
+                for record in enabled_records
+            ),
+            "front",
+        )
+        or "front"
+    ).lower()
+    if primary_view not in {"front", "top", "right", "left", "back"}:
+        primary_view = "front"
+    if candidate_engine == "experimental_v026":
+        output_files = {
+            f"{extension}_url": _api_file_url(
+                model_id, *relative_parts, primary_view, f"{primary_view}.{extension}"
+            )
+            for extension in ("dxf", "pdf", "png")
+        }
+        output_paths = [
+            os.path.join(custom_out_dir, primary_view, f"{primary_view}.{extension}")
+            for extension in ("dxf", "pdf", "png")
+        ]
+    else:
+        output_files = {
+            "dxf_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.dxf"),
+            "pdf_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.pdf"),
+            "svg_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.svg"),
+            "png_url": _api_file_url(model_id, *relative_parts, f"{part_id}_custom.png"),
+        }
+        output_paths = [
+            os.path.join(custom_out_dir, f"{part_id}_custom.{extension}")
+            for extension in ("dxf", "pdf", "svg", "png")
+        ]
     if os.path.exists(manifest_path) and all(os.path.exists(path) for path in output_paths):
         try:
             with open(manifest_path, "r", encoding="utf-8") as manifest_file:
                 cached_manifest = json.load(manifest_file)
             if cached_manifest.get("request_hash") == request_hash:
-                return {
+                operation_id = str(uuid.uuid4())
+                cached_at = _utc_iso()
+                audit_path, audit_url = _new_annotation_audit_location(
+                    user_workspace,
+                    model_id,
+                    current_user.id,
+                    operation_id,
+                )
+                cached_job = {
+                    "status": "completed",
+                    "message": "使用相同設定的既有標註工程圖",
+                    "owner_user_id": current_user.id,
+                    "user": current_user,
+                    "model_id": model_id,
+                    "part_id": part_id,
+                    "feature_records": feature_records,
+                    "title_info": title_info,
+                    "storage_tag_ids": storage_tag_ids,
+                    "part_category": body.get("part_category"),
+                    "product_family": body.get("product_family"),
+                    "candidate_engine": candidate_engine,
+                    "include_half_section": bool(body.get("include_half_section")),
+                    "primary_view": primary_view,
+                    "custom_out_dir": custom_out_dir,
+                    "worker_dir": None,
+                    "request_hash": request_hash,
+                    "output_files": output_files,
+                    "cache_hit": True,
+                    "events": [{
+                        "at": cached_at,
+                        "status": "completed",
+                        "message": "使用相同設定的既有標註工程圖",
+                    }],
+                    "audit_path": audit_path,
+                    "audit_url": audit_url,
+                    "created_at": cached_at,
+                    "updated_at": cached_at,
+                    "completed_at": cached_at,
+                }
+                cached_result = {
                     "status": "ok",
                     **output_files,
                     "timestamp": cached_manifest.get("timestamp") or uuid.uuid4().hex[:8],
                     "cached": True,
+                    "candidate_engine": candidate_engine,
+                    "primary_view": primary_view if candidate_engine == "experimental_v026" else None,
+                    "operation_id": operation_id,
+                    "audit_url": audit_url,
+                }
+                cached_job["result"] = cached_result
+                _persist_annotation_audit(operation_id, cached_job)
+                return {
+                    **cached_result,
                 }
         except (OSError, json.JSONDecodeError):
             pass
@@ -2567,6 +3056,12 @@ def submit_custom_annotation_drawing(
     job_id = str(uuid.uuid4())
     now = _utc_iso()
     worker_dir = os.path.join(user_workspace, "_annotation_jobs", job_id)
+    audit_path, audit_url = _new_annotation_audit_location(
+        user_workspace,
+        model_id,
+        current_user.id,
+        job_id,
+    )
     with annotation_state_lock:
         annotation_jobs[job_id] = {
             "status": "queued",
@@ -2583,15 +3078,26 @@ def submit_custom_annotation_drawing(
             "storage_tag_ids": storage_tag_ids,
             "part_category": body.get("part_category"),
             "product_family": body.get("product_family"),
+            "candidate_engine": candidate_engine,
+            "include_half_section": bool(body.get("include_half_section")),
+            "primary_view": primary_view,
             "custom_out_dir": custom_out_dir,
             "worker_dir": worker_dir,
+            "audit_path": audit_path,
+            "audit_url": audit_url,
             "manifest_path": manifest_path,
             "request_hash": request_hash,
             "output_files": output_files,
             "created_at": now,
             "updated_at": now,
             "started_at": None,
+            "events": [{
+                "at": now,
+                "status": "queued",
+                "message": "標註工程圖工作已排入佇列",
+            }],
         }
+        _persist_annotation_audit(job_id, annotation_jobs[job_id])
     annotation_executor.submit(_run_annotation_job, job_id)
     return _annotation_job_status_payload(job_id, annotation_jobs[job_id])
 
@@ -2614,7 +3120,58 @@ def get_annotation_job(job_id: str, current_user: CurrentUser = Depends(require_
     return _annotation_job_status_payload(job_id, job)
 
 
-def _candidate_annotation_rules_impl(model_id: str, part_id: str):
+def _experimental_candidate_cache_signature(stp_path: str) -> Dict[str, Any]:
+    stat = os.stat(stp_path)
+    return {
+        "candidate_engine": "experimental_v026",
+        "candidate_schema_version": 3,
+        "step_size": stat.st_size,
+        "step_mtime_ns": stat.st_mtime_ns,
+    }
+
+
+def _read_experimental_candidate_cache(
+    cache_path: str,
+    signature: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    if not os.path.exists(cache_path):
+        return None
+    try:
+        with open(cache_path, "r", encoding="utf-8") as cache_file:
+            cached = json.load(cache_file)
+        if cached.get("signature") != signature:
+            return None
+        response = dict(cached.get("response") or {})
+        response["cached"] = True
+        return response
+    except (OSError, json.JSONDecodeError, TypeError):
+        return None
+
+
+def _write_experimental_candidate_cache(
+    cache_path: str,
+    signature: Dict[str, Any],
+    response: Dict[str, Any],
+) -> None:
+    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+    temporary = f"{cache_path}.{uuid.uuid4().hex}.tmp"
+    with open(temporary, "w", encoding="utf-8") as cache_file:
+        json.dump(
+            {"signature": signature, "response": response},
+            cache_file,
+            ensure_ascii=False,
+            indent=2,
+            default=str,
+        )
+    os.replace(temporary, cache_path)
+
+
+def _candidate_annotation_rules_impl(
+    model_id: str,
+    part_id: str,
+    candidate_engine: Literal["legacy_smart", "experimental_v026"] = "legacy_smart",
+    force_refresh: bool = False,
+):
     """
     為指定零件動態掃描並產出所有候選標註規則 (Candidate Dimension Rules)
     """
@@ -2636,25 +3193,55 @@ def _candidate_annotation_rules_impl(model_id: str, part_id: str):
     if not stp_path:
         raise HTTPException(status_code=404, detail=f"STEP file for {part_id} not found")
 
+    if candidate_engine == "experimental_v026":
+        signature = _experimental_candidate_cache_signature(stp_path)
+        cache_path = os.path.join(
+            output_dir,
+            "_experimental_candidates",
+            part_id,
+            "candidate_rules.json",
+        )
+        cached = None if force_refresh else _read_experimental_candidate_cache(cache_path, signature)
+        if cached is not None:
+            return cached
+
     acquired = False
     try:
-        annotation_slots.acquire(_annotation_capacity, blocking=True)
+        if candidate_engine == "experimental_v026":
+            limiter = shadow_analysis_slots
+            limit_provider = lambda: EXPERIMENTAL_SHADOW_MAX_WORKERS
+            worker_action = "experimental_candidates"
+        else:
+            limiter = annotation_slots
+            limit_provider = _annotation_capacity
+            worker_action = "candidates"
+        limiter.acquire(limit_provider, blocking=True)
         acquired = True
         worker_result = _run_cad_annotation_worker(
             {
-                "action": "candidates",
+                "action": worker_action,
                 "step_path": stp_path,
                 "part_id": part_id,
             },
             os.path.join(output_dir, "_worker_jobs", f"candidates_{uuid.uuid4().hex}"),
         )
-        return {
+        response = {
             "status": "ok",
             "model_id": model_id,
             "part_id": part_id,
             "rules": worker_result.get("rules", []),
             "worker_pid": worker_result.get("pid"),
+            "candidate_engine": worker_result.get("candidate_engine") or "legacy_smart",
+            "candidate_schema_version": worker_result.get("candidate_schema_version") or 1,
+            "analysis_method": worker_result.get("analysis_method"),
+            "summary": worker_result.get("summary") or {
+                "total": len(worker_result.get("rules", [])),
+            },
+            "cached": False,
         }
+        if candidate_engine == "experimental_v026":
+            _write_experimental_candidate_cache(cache_path, signature, response)
+        return response
     except Exception as e:
         print(f"Candidate rules extraction error: {e}")
         import traceback
@@ -2662,24 +3249,35 @@ def _candidate_annotation_rules_impl(model_id: str, part_id: str):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if acquired:
-            annotation_slots.release()
+            limiter.release()
 
 
 @app.get("/api/annotation/candidate-rules/{model_id}/{part_id}")
 def get_candidate_annotation_rules(
     model_id: str,
     part_id: str,
-    current_user: Optional[CurrentUser] = Depends(require_user),
+    engine: Literal["legacy_smart", "experimental_v026"] = "legacy_smart",
+    refresh: bool = False,
+    current_user: CurrentUser = Depends(require_user),
 ):
-    if current_user is not None:
-        assert_model_access(current_user, model_id)
-    return _candidate_annotation_rules_impl(model_id, part_id)
+    if engine == "experimental_v026":
+        _require_experimental_engine_admin(current_user)
+    elif refresh and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Administrator access required for re-analysis")
+    assert_model_access(current_user, model_id)
+    return _candidate_annotation_rules_impl(
+        model_id,
+        part_id,
+        engine,
+        force_refresh=refresh,
+    )
 
 
 @app.get("/api/features/{model_id}/{part_id}")
 def get_part_features(
     model_id: str,
     part_id: str,
+    refresh: bool = False,
     current_user: CurrentUser = Depends(require_user),
 ):
     """
@@ -2687,6 +3285,8 @@ def get_part_features(
     若無快取或為舊版 2D 格式，會自動載入實體 STEP 進行即時提取並更新快取
     """
     assert_model_access(current_user, model_id)
+    if refresh and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Administrator access required for re-analysis")
     output_dir = _safe_output_dir(model_id)
     _safe_part_id(part_id)
 
@@ -2694,6 +3294,12 @@ def get_part_features(
     part_entry = parts_map.get(part_id, {})
 
     feature_json_rel = part_entry.get("features_json")
+    part_stl_path = os.path.join(output_dir, "_parts", f"{part_id}.stl")
+    part_stl_url = (
+        _api_file_url(model_id, "_parts", f"{part_id}.stl")
+        if os.path.exists(part_stl_path)
+        else None
+    )
     json_path = None
     if feature_json_rel:
         json_path = os.path.join(output_dir, os.path.basename(feature_json_rel))
@@ -2701,7 +3307,7 @@ def get_part_features(
         json_path = os.path.join(output_dir, f"{part_id}_feature_records.json")
 
     # 1. 檢查快取是否有有效 3D 特徵 (center 必須為 3D 座標)
-    if json_path and os.path.exists(json_path):
+    if not refresh and json_path and os.path.exists(json_path):
         try:
             with open(json_path, "r", encoding="utf-8") as f:
                 records = normalize_canonical_feature_records(json.load(f))
@@ -2713,7 +3319,12 @@ def get_part_features(
                     for r in records
                 )
                 if has_3d:
-                    return {"status": "ok", "records": records, "source": "cache"}
+                    return {
+                        "status": "ok",
+                        "records": records,
+                        "source": "cache",
+                        "stl_url": part_stl_url,
+                    }
         except Exception:
             pass
 
@@ -2734,7 +3345,26 @@ def get_part_features(
                     save_path = json_path or os.path.join(output_dir, f"{part_id}_feature_records.json")
                     with open(save_path, "w", encoding="utf-8") as f:
                         json.dump(records, f, indent=2, ensure_ascii=False)
-                    return {"status": "ok", "records": records, "source": "dynamic_extracted"}
+                    if refresh and not os.path.exists(part_stl_path):
+                        try:
+                            from OCC.Core.StlAPI import StlAPI_Writer
+
+                            temporary_stl = f"{part_stl_path}.{uuid.uuid4().hex}.tmp.stl"
+                            if StlAPI_Writer().Write(shape, temporary_stl):
+                                os.replace(temporary_stl, part_stl_path)
+                                part_stl_url = _api_file_url(
+                                    model_id, "_parts", f"{part_id}.stl"
+                                )
+                            elif os.path.exists(temporary_stl):
+                                os.remove(temporary_stl)
+                        except Exception as stl_error:
+                            print(f"Dynamic STL regeneration failed for {stp_path}: {stl_error}")
+                    return {
+                        "status": "ok",
+                        "records": records,
+                        "source": "dynamic_extracted",
+                        "stl_url": part_stl_url,
+                    }
             except Exception as e:
                 print(f"Dynamic feature extraction failed for {stp_path}: {e}")
 
@@ -2742,11 +3372,16 @@ def get_part_features(
     if json_path and os.path.exists(json_path):
         try:
             with open(json_path, "r", encoding="utf-8") as f:
-                return {"status": "ok", "records": json.load(f), "source": "2d_fallback"}
+                return {
+                    "status": "ok",
+                    "records": json.load(f),
+                    "source": "2d_fallback",
+                    "stl_url": part_stl_url,
+                }
         except Exception:
             pass
 
-    return {"status": "ok", "records": [], "source": "none"}
+    return {"status": "ok", "records": [], "source": "none", "stl_url": part_stl_url}
 
 
 def _build_drawing_package(model_id: str, user_id: Optional[str] = None) -> dict:
@@ -2792,6 +3427,155 @@ def _build_drawing_package(model_id: str, user_id: Optional[str] = None) -> dict
     }
 
 
+def _resolve_model_reanalysis_source(model_id: str) -> tuple[str, Optional[Dict[str, Any]]]:
+    """Locate the retained full-model STEP used by the original analysis."""
+    output_dir = _safe_output_dir(model_id)
+    registration = identity_store.model_registration(model_id)
+    candidates: List[str] = []
+
+    if registration:
+        owner_id = str(registration.get("owner_user_id") or "")
+        source_filename = os.path.basename(str(registration.get("source_filename") or ""))
+        owner_root = os.path.join(MODELS_DIR, "_users", owner_id)
+        if owner_id and source_filename and os.path.isdir(owner_root):
+            candidates.append(os.path.join(owner_root, source_filename))
+            model_stem = model_id[:-6] if model_id.endswith("_batch") else model_id
+            job_hint = model_stem.rsplit("_", 1)[-1].lower()
+            for child in os.listdir(owner_root):
+                child_path = os.path.join(owner_root, child)
+                if os.path.isdir(child_path) and child.lower().startswith(job_hint):
+                    candidates.append(os.path.join(child_path, source_filename))
+            for root, _dirs, files in os.walk(owner_root):
+                if source_filename in files:
+                    candidates.append(os.path.join(root, source_filename))
+
+    candidates.extend([
+        os.path.join(output_dir, "_parts", "_full_assembly.stp"),
+        os.path.join(output_dir, "_parts", "_full_assembly.step"),
+    ])
+    seen = set()
+    for candidate in candidates:
+        normalized = os.path.normcase(os.path.abspath(candidate))
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if os.path.isfile(candidate) and os.path.splitext(candidate)[1].lower() in {".stp", ".step"}:
+            return candidate, registration
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "code": "SOURCE_STEP_UNAVAILABLE",
+            "message": "找不到此模型保留的原始 STEP，無法執行完整重新解析。",
+        },
+    )
+
+
+def _active_reanalysis_for_model(model_id: str) -> Optional[tuple[str, Dict[str, Any]]]:
+    with jobs_lock:
+        active = [
+            (job_id, job)
+            for job_id, job in jobs.items()
+            if job.get("job_type") == "model_reanalysis"
+            and job.get("requested_model_id") == model_id
+            and job.get("status") in ACTIVE_JOB_STATUSES
+        ]
+    return min(active, key=lambda item: item[1].get("created_at", "")) if active else None
+
+
+def run_model_reanalysis_job(job_id: str, file_path: str):
+    """Replay the full import pipeline in staging, preserving user-authored artifacts."""
+    def progress_callback(total, current, message):
+        _set_job_state(job_id, total=total, current=current, message=message)
+
+    acquired = False
+    staging_dir = os.path.join(OUTPUT_DIR, f"._reanalyze_{job_id}")
+    backup_dir = os.path.join(OUTPUT_DIR, f"._reanalyze_backup_{job_id}")
+    output_dir = ""
+    swapped = False
+    try:
+        analysis_slots.acquire(_analysis_capacity, blocking=True)
+        acquired = True
+        model_id = str(jobs[job_id]["requested_model_id"])
+        output_dir = _safe_output_dir(model_id)
+        _set_job_state(
+            job_id,
+            status="processing",
+            message="正在重新解析完整模型…",
+            started_at=_utc_iso(),
+        )
+        assembly_info = {
+            "_assembly": {
+                "name": "組立件",
+                "drawing_no": os.path.splitext(os.path.basename(file_path))[0],
+                "revision": "R00",
+                "material": "---",
+                "model_code": "---",
+            }
+        }
+        batch_generate(file_path, staging_dir, assembly_info, progress_cb=progress_callback)
+        _set_job_state(job_id, status="finalizing", message="正在安全切換重新解析結果…")
+
+        preserved_users = os.path.join(output_dir, "_users")
+        if os.path.isdir(preserved_users):
+            shutil.copytree(
+                preserved_users,
+                os.path.join(staging_dir, "_users"),
+                dirs_exist_ok=True,
+            )
+
+        os.replace(output_dir, backup_dir)
+        try:
+            os.replace(staging_dir, output_dir)
+            swapped = True
+        except BaseException:
+            os.replace(backup_dir, output_dir)
+            raise
+
+        tree_path = os.path.join(output_dir, "_parts", "assembly_tree.json")
+        tree_data = None
+        if os.path.exists(tree_path):
+            with open(tree_path, "r", encoding="utf-8") as handle:
+                tree_data = json.load(handle)
+        parts_map = build_parts_map(output_dir, model_id)
+        if not tree_data or not parts_map:
+            raise RuntimeError("重新解析結果缺少組立樹或零件資料")
+
+        with jobs_lock:
+            jobs[job_id]["result"] = tree_data
+            jobs[job_id]["parts_map"] = parts_map
+            jobs[job_id]["output_dir"] = model_id
+        _schedule_experimental_shadow_analysis(job_id, file_path, output_dir, model_id)
+        shutil.rmtree(backup_dir)
+        _set_job_state(
+            job_id,
+            status="completed",
+            message="完整模型重新解析完成",
+            completed_at=_utc_iso(),
+        )
+    except Exception as exc:
+        if swapped and backup_dir and os.path.isdir(backup_dir):
+            failed_dir = f"{staging_dir}_failed"
+            try:
+                if output_dir and os.path.isdir(output_dir):
+                    os.replace(output_dir, failed_dir)
+                os.replace(backup_dir, output_dir)
+                if os.path.isdir(failed_dir):
+                    shutil.rmtree(failed_dir)
+            except Exception as rollback_error:
+                print(f"Model reanalysis rollback failed: {rollback_error}")
+        if os.path.isdir(staging_dir):
+            shutil.rmtree(staging_dir)
+        _set_job_state(
+            job_id,
+            status="error",
+            message=f"完整模型重新解析失敗：{exc}",
+            completed_at=_utc_iso(),
+        )
+    finally:
+        if acquired:
+            analysis_slots.release()
+
+
 def run_job(job_id: str, file_path: str):
     def progress_callback(total, current, message):
         _set_job_state(job_id, total=total, current=current, message=message)
@@ -2834,6 +3618,12 @@ def run_job(job_id: str, file_path: str):
             output_dir_name,
             jobs[job_id]["owner_user_id"],
             jobs[job_id].get("filename"),
+        )
+        _schedule_experimental_shadow_analysis(
+            job_id,
+            file_path,
+            output_dir,
+            output_dir_name,
         )
         _set_job_state(job_id, status="completed", message="處理完成", completed_at=_utc_iso())
         
@@ -2897,6 +3687,60 @@ def upload_file(
         
     executor.submit(run_job, job_id, file_path)
     return {"job_id": job_id, "status": "queued", "queue_position": _queue_position(job_id)}
+
+
+@app.post("/api/models/{model_id}/reanalyze")
+def reanalyze_model(
+    model_id: str,
+    current_user: CurrentUser = Depends(require_user),
+):
+    """Queue a full replay of the original model import for an authorized user."""
+    assert_model_access(current_user, model_id)
+    source_path, _registration = _resolve_model_reanalysis_source(model_id)
+    job_id = str(uuid.uuid4())
+
+    with jobs_lock:
+        active = _active_job_for_user(current_user.id)
+        if active:
+            active_id, active_job = active
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "ACTIVE_JOB_EXISTS",
+                    "message": "此帳號已有模型工作進行中。",
+                    "job": _job_status_payload(active_id, active_job),
+                },
+            )
+        model_active = _active_reanalysis_for_model(model_id)
+        if model_active:
+            active_id, active_job = model_active
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "MODEL_REANALYSIS_ACTIVE",
+                    "message": "此模型已在重新解析佇列中。",
+                    "job": _job_status_payload(active_id, active_job),
+                },
+            )
+        now = _utc_iso()
+        jobs[job_id] = {
+            "job_type": "model_reanalysis",
+            "status": "queued",
+            "total": 0,
+            "current": 0,
+            "message": "完整模型重新解析已加入 CAD 工作佇列。",
+            "filename": os.path.basename(source_path),
+            "owner_user_id": current_user.id,
+            "requested_model_id": model_id,
+            "result": None,
+            "output_dir": None,
+            "created_at": now,
+            "updated_at": now,
+            "started_at": None,
+        }
+
+    executor.submit(run_model_reanalysis_job, job_id, source_path)
+    return _job_status_payload(job_id, jobs[job_id])
 
 
 @app.get("/api/status/{job_id}")

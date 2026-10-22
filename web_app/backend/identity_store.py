@@ -945,6 +945,87 @@ class IdentityStore:
             row = conn.execute(select(users).where(users.c.id == user_id)).first()
         return self._public_user_row(row)
 
+    def delete_users(self, user_ids: Iterable[str], actor_user_id: str) -> List[Dict[str, Any]]:
+        target_ids = list(dict.fromkeys(str(user_id).strip() for user_id in user_ids if str(user_id).strip()))
+        if not target_ids:
+            raise ValueError("At least one user must be selected")
+        if actor_user_id in target_ids:
+            raise ValueError("Administrator cannot delete the active account")
+
+        with self.engine.begin() as conn:
+            target_rows = conn.execute(select(users).where(users.c.id.in_(target_ids))).all()
+            found_ids = {row._mapping["id"] for row in target_rows}
+            missing_ids = [user_id for user_id in target_ids if user_id not in found_ids]
+            if missing_ids:
+                raise KeyError(f"Users not found: {', '.join(missing_ids)}")
+
+            active_admin_ids = set(conn.execute(select(users.c.id).where(and_(
+                users.c.role == "ADMIN",
+                users.c.is_active.is_(True),
+            ))).scalars().all())
+            if not (active_admin_ids - set(target_ids)):
+                raise ValueError("At least one active administrator account must remain")
+
+            deleted_users = [self._public_user_row(row) for row in target_rows]
+            artifact_ids = list(conn.execute(select(annotation_artifacts.c.id).where(
+                annotation_artifacts.c.owner_user_id.in_(target_ids)
+            )).scalars().all())
+            case_condition = engineer_tolerance_cases.c.owner_user_id.in_(target_ids)
+            if artifact_ids:
+                case_condition = or_(
+                    case_condition,
+                    engineer_tolerance_cases.c.artifact_id.in_(artifact_ids),
+                )
+            case_ids = list(conn.execute(select(engineer_tolerance_cases.c.id).where(
+                case_condition
+            )).scalars().all())
+
+            for user in deleted_users:
+                self._audit_conn(conn, actor_user_id, "USER_DELETED", "USER", user["id"], {
+                    "email": user.get("email"),
+                    "display_name": user.get("display_name"),
+                    "role": user.get("role"),
+                })
+
+            if case_ids:
+                conn.execute(delete(engineer_case_tag_assignments).where(
+                    engineer_case_tag_assignments.c.case_record_id.in_(case_ids)
+                ))
+            if artifact_ids:
+                conn.execute(delete(artifact_tag_assignments).where(
+                    artifact_tag_assignments.c.artifact_id.in_(artifact_ids)
+                ))
+            conn.execute(delete(engineer_tolerance_cases).where(case_condition))
+            conn.execute(delete(trash_records).where(trash_records.c.owner_user_id.in_(target_ids)))
+            conn.execute(update(trash_records).where(
+                trash_records.c.deleted_by_user_id.in_(target_ids)
+            ).values(deleted_by_user_id=None))
+            conn.execute(delete(annotation_artifacts).where(
+                annotation_artifacts.c.owner_user_id.in_(target_ids)
+            ))
+            conn.execute(delete(engineer_templates).where(engineer_templates.c.owner_user_id.in_(target_ids)))
+            conn.execute(delete(owned_models).where(owned_models.c.owner_user_id.in_(target_ids)))
+            conn.execute(delete(engineer_preferences).where(engineer_preferences.c.user_id.in_(target_ids)))
+            conn.execute(delete(sessions).where(sessions.c.user_id.in_(target_ids)))
+            conn.execute(delete(initial_credentials).where(initial_credentials.c.user_id.in_(target_ids)))
+            conn.execute(delete(credential_notifications).where(
+                credential_notifications.c.user_id.in_(target_ids)
+            ))
+            conn.execute(update(audit_events).where(
+                audit_events.c.actor_user_id.in_(target_ids)
+            ).values(actor_user_id=None))
+            conn.execute(update(system_settings).where(
+                system_settings.c.updated_by_user_id.in_(target_ids)
+            ).values(updated_by_user_id=None))
+            conn.execute(update(company_email_domain_records).where(
+                company_email_domain_records.c.created_by_user_id.in_(target_ids)
+            ).values(created_by_user_id=None))
+            conn.execute(update(recommendation_tags).where(
+                recommendation_tags.c.created_by_user_id.in_(target_ids)
+            ).values(created_by_user_id=None))
+            conn.execute(delete(users).where(users.c.id.in_(target_ids)))
+        return deleted_users
+
     def reset_password(self, user_id: str, new_password: Optional[str], actor_user_id: str) -> str:
         replacement = str(new_password or self.generate_initial_password())
         with self.engine.begin() as conn:
@@ -1043,6 +1124,19 @@ class IdentityStore:
                 owned_models.c.model_id == model_id
             )).scalar_one_or_none()
         return owner == user.id
+
+    def model_registration(self, model_id: str) -> Optional[Dict[str, Any]]:
+        """Return the persisted owner/source metadata needed to replay a model analysis."""
+        with self.engine.connect() as conn:
+            row = conn.execute(select(owned_models).where(
+                owned_models.c.model_id == model_id
+            )).first()
+        if row is None:
+            return None
+        value = dict(row._mapping)
+        if value.get("created_at"):
+            value["created_at"] = value["created_at"].isoformat()
+        return value
 
     def accessible_model_ids(self, user: CurrentUser) -> Optional[set[str]]:
         if user.is_admin:
@@ -1752,7 +1846,16 @@ class IdentityStore:
         return True
 
     def list_audit_events(self, limit: int = 200) -> List[Dict[str, Any]]:
-        stmt = select(audit_events).order_by(audit_events.c.created_at.desc()).limit(max(1, min(limit, 1000)))
+        stmt = (
+            select(
+                audit_events,
+                users.c.display_name.label("actor_display_name"),
+                users.c.email.label("actor_email"),
+            )
+            .select_from(audit_events.outerjoin(users, audit_events.c.actor_user_id == users.c.id))
+            .order_by(audit_events.c.created_at.desc())
+            .limit(max(1, min(limit, 1000)))
+        )
         with self.engine.connect() as conn:
             rows = conn.execute(stmt).all()
         result = []

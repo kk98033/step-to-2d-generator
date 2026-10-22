@@ -319,53 +319,60 @@ def _inject_specialized_dimensions(
     if not tasks:
         return
     modelspace = document.modelspace()
-    map_point, scale, drawing_bbox = _coordinate_mapper(modelspace, view)
+    map_point, _scale, drawing_bbox = _coordinate_mapper(modelspace, view)
     span = max(drawing_bbox[2] - drawing_bbox[0], drawing_bbox[3] - drawing_bbox[1])
+    diameter_tasks = []
+    for task in tasks:
+        if str(task.get("renderer") or "").upper() != "DIAMETER_RENDERER":
+            continue
+        prepared = dict(task)
+        if not prepared.get("anchors"):
+            center = prepared.get("center")
+            radius = float(prepared.get("radius") or 0.0)
+            if not isinstance(center, (list, tuple)) or len(center) < 2 or radius <= 0.0:
+                raise ValueError("Diameter renderer requires anchors or a positive center/radius")
+            prepared["anchors"] = [
+                [float(center[0]) - radius, float(center[1])],
+                [float(center[0]) + radius, float(center[1])],
+            ]
+        prepared["dim_type"] = "DIAMETER"
+        side = str(prepared.get("side") or "TOP").upper()
+        lane = max(int(prepared.get("lane", len(diameter_tasks))), 0)
+        prepared["angle"] = (
+            {"RIGHT": 0.0, "TOP": 90.0, "LEFT": 180.0, "BOTTOM": 270.0}.get(side, 145.0)
+            + lane * 10.0
+        )
+        diameter_tasks.append(prepared)
+    if diameter_tasks:
+        render_annular_dimensions(
+            document,
+            diameter_tasks,
+            map_point=map_point,
+            drawing_bbox=drawing_bbox,
+        )
     for index, task in enumerate(tasks):
         lane = max(int(task.get("lane", index)), 0)
         side = str(task.get("side") or "TOP").upper()
         renderer = str(task.get("renderer") or "LINEAR_DIMENSION_RENDERER")
         label = str(task.get("label") or f"{float(task['nominal_value']):.3f}")
         if renderer == "DIAMETER_RENDERER":
-            if task.get("anchors"):
-                anchors = [map_point(point) for point in task["anchors"]]
-                center = ((anchors[0][0] + anchors[1][0]) / 2.0, (anchors[0][1] + anchors[1][1]) / 2.0)
-                radius = math.dist(anchors[0], anchors[1]) / 2.0
-            else:
-                center = map_point(task["center"])
-                radius = float(task["radius"]) * scale
-            angle = {"RIGHT": 0.0, "TOP": 90.0, "LEFT": 180.0, "BOTTOM": 270.0}.get(side, 135.0)
-            location_radius = radius + span * (0.045 + lane * 0.025)
-            location = (
-                center[0] + location_radius * math.cos(math.radians(angle)),
-                center[1] + location_radius * math.sin(math.radians(angle)),
-            )
-            dimension = modelspace.add_diameter_dim(
-                center=center,
-                radius=radius,
-                angle=angle,
-                location=location,
-                text=label,
-                dimstyle="EZ_RADIUS",
-                dxfattribs={"layer": "DIM"},
-            )
-        else:
-            source_anchors = task.get("anchors") or (task.get("p1"), task.get("p2"))
-            p1, p2 = [map_point(point) for point in source_anchors]
-            delta_x, delta_y = p2[0] - p1[0], p2[1] - p1[1]
-            length = max(math.hypot(delta_x, delta_y), 1e-9)
-            normal = (-delta_y / length, delta_x / length)
-            side_vector = _side_vector(side)
-            sign = 1.0 if normal[0] * side_vector[0] + normal[1] * side_vector[1] >= 0.0 else -1.0
-            distance = sign * span * (0.055 + lane * 0.035)
-            dimension = modelspace.add_aligned_dim(
-                p1=p1,
-                p2=p2,
-                distance=distance,
-                text=label,
-                dimstyle="EZDXF",
-                dxfattribs={"layer": "DIM"},
-            )
+            continue
+        source_anchors = task.get("anchors") or (task.get("p1"), task.get("p2"))
+        p1, p2 = [map_point(point) for point in source_anchors]
+        delta_x, delta_y = p2[0] - p1[0], p2[1] - p1[1]
+        length = max(math.hypot(delta_x, delta_y), 1e-9)
+        normal = (-delta_y / length, delta_x / length)
+        side_vector = _side_vector(side)
+        sign = 1.0 if normal[0] * side_vector[0] + normal[1] * side_vector[1] >= 0.0 else -1.0
+        distance = sign * span * (0.055 + lane * 0.035)
+        dimension = modelspace.add_aligned_dim(
+            p1=p1,
+            p2=p2,
+            distance=distance,
+            text=label,
+            dimstyle="EZDXF",
+            dxfattribs={"layer": "DIM"},
+        )
         dimension.render()
 
 
@@ -438,6 +445,9 @@ def _render_one(
     audit = _audit_dxf(paths["dxf"])
     expected_full_span_diameters = sum(
         str(task.get("dim_type") or "").upper() == "DIAMETER" for task in annular_tasks
+    ) + sum(
+        str(task.get("renderer") or "").upper() == "DIAMETER_RENDERER"
+        for task in specialized_tasks
     )
     audit["expected_full_span_diameter_count"] = expected_full_span_diameters
     audit["full_span_diameter_contract_passed"] = (
@@ -636,11 +646,21 @@ def render_minimal_multiview_drawing(
 
     specialized_tasks = []
     specialized_rejections = []
-    hole_result = detect_rectangular_hole_pattern(shape)
-    hole_by_id = {
-        str(item["task_id"]): item
-        for item in build_rectangular_hole_render_tasks(hole_result)
-    } if hole_result.get("resolved") else {}
+    hole_by_id = {}
+    if rectangular_hole_selections:
+        hole_result = detect_rectangular_hole_pattern(shape)
+        if hole_result.get("resolved"):
+            try:
+                hole_by_id = {
+                    str(item["task_id"]): item
+                    for item in build_rectangular_hole_render_tasks(hole_result)
+                }
+            except ValueError as exc:
+                specialized_rejections.extend({
+                    "feature_id": str(selection.get("feature_id") or selection.get("id") or ""),
+                    "reason": "INVALID_RECTANGULAR_HOLE_GEOMETRY",
+                    "detail": str(exc),
+                } for selection in rectangular_hole_selections)
     shaft_result = extract_solid_shaft_features(shape)
     shaft_by_id = {str(item["id"]): item for item in shaft_result.get("dimensions") or []}
     thin_wall_result = extract_thin_wall_dimension(shape)
@@ -773,7 +793,7 @@ def render_minimal_multiview_drawing(
         "rejected_annular_selections": annular_rejections,
         "rejected_specialized_selections": specialized_rejections,
         "radial_band_angle_placement": {
-            "strategy": "GROUP_RELATED_ANGLES_THEN_MAXIMIZE_POLAR_CLEARANCE",
+            "strategy": "JOINTLY_MAXIMIZE_GROUP_SEPARATION_THEN_RESERVED_CLEARANCE",
             "placements": radial_band_placement_trace,
             "group_separations_deg": placement_separations,
             "minimum_group_separation_deg": min(placement_separations) if placement_separations else None,

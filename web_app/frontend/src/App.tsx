@@ -140,8 +140,26 @@ function SinglePartViewerWithFeatures({
     }
   }, [viewMode]);
 
-  if (loading) return null;
-  if (error || !geometry) return null;
+  if (loading) {
+    return (
+      <Html center>
+        <div style={{ minWidth: 210, padding: '12px 16px', borderRadius: 6, border: '1px solid #404040', background: '#171717', color: '#e5e5e5', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, fontSize: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.45)' }}>
+          <Loader2 size={17} color="#3b82f6" className="animate-spin" />
+          <span>正在載入 3D 模型…</span>
+        </div>
+      </Html>
+    );
+  }
+  if (error || !geometry) {
+    return (
+      <Html center>
+        <div style={{ minWidth: 210, padding: '12px 16px', borderRadius: 6, border: '1px solid #7f1d1d', background: '#171717', color: '#fca5a5', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, fontSize: 12 }}>
+          <AlertTriangle size={17} />
+          <span>{error || '3D 模型無法顯示'}</span>
+        </div>
+      </Html>
+    );
+  }
 
   return (
     <group>
@@ -219,7 +237,7 @@ function SinglePartViewerWithFeatures({
         ];
 
         const tag = featureId || `F${idx + 1}`;
-        const fType = (feat.type || '').toLowerCase();
+        const fType = (feat.type || feat.canonical_feature_type || feat.category || feat.feature_family || '').toLowerCase();
 
         let tagBg = '#0284c7';
         if (fType.includes('journal') || fType.includes('shaft')) tagBg = '#2563eb';
@@ -678,6 +696,9 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   const [viewTab, setViewTab] = useState<'main' | 'features3d' | 'smart_annotation'>('main');
   const [annotationTemplates, setAnnotationTemplates] = useState<any[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('shaft_standard_preset');
+  const [candidateEngine, setCandidateEngine] = useState<'legacy_smart' | 'experimental_v026'>('legacy_smart');
+  const [candidateEngineMeta, setCandidateEngineMeta] = useState<any>(null);
+  const [includeHalfSection, setIncludeHalfSection] = useState(false);
   const [candidateRules, setCandidateRules] = useState<any[]>([]);
   const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set());
   const [expandedRuleIds, setExpandedRuleIds] = useState<Set<string>>(new Set());
@@ -706,12 +727,26 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     svg_url?: string;
     png_url?: string;
     timestamp?: string;
+    candidate_engine?: string;
+    primary_view?: string;
+    report_url?: string;
+    multiview_files?: Record<string, any>;
+    half_section_file?: Record<string, string> | null;
   } | null>(null);
   const [isRenderingDrawing, setIsRenderingDrawing] = useState(false);
   const [annotationJobId, setAnnotationJobId] = useState<string | null>(null);
   const [annotationJobMessage, setAnnotationJobMessage] = useState('');
   const [annotationQueuePosition, setAnnotationQueuePosition] = useState(0);
   const [annotationWorkerLimit, setAnnotationWorkerLimit] = useState(1);
+
+  useEffect(() => {
+    if (user.role !== 'ADMIN' && candidateEngine === 'experimental_v026') {
+      setCandidateEngine('legacy_smart');
+      setIncludeHalfSection(false);
+      setSelectedRuleIds(new Set());
+      setCustomDrawingResult(null);
+    }
+  }, [user.role, candidateEngine]);
   const [saveTemplateModalOpen, setSaveTemplateModalOpen] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
   const [newTemplateDesc, setNewTemplateDesc] = useState('');
@@ -720,6 +755,12 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   const [isPanningDrawing, setIsPanningDrawing] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isLoadingFeatures, setIsLoadingFeatures] = useState<boolean>(false);
+  const [isLoadingCandidateRules, setIsLoadingCandidateRules] = useState<boolean>(false);
+  const [isReanalyzingPart, setIsReanalyzingPart] = useState<boolean>(false);
+  const [isSubmittingModelReanalysis, setIsSubmittingModelReanalysis] = useState<boolean>(false);
+  const [analysisLoadError, setAnalysisLoadError] = useState<string | null>(null);
+  const [analysisRefreshToken, setAnalysisRefreshToken] = useState(0);
+  const forceReanalysisRef = useRef(false);
 
   useEffect(() => {
     axios.get(`${API_BASE}/api/annotation/jobs/active`).then(response => {
@@ -752,6 +793,11 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
             svg_url: job.result.svg_url,
             png_url: job.result.png_url,
             timestamp: job.result.timestamp,
+            candidate_engine: job.result.candidate_engine,
+            primary_view: job.result.primary_view,
+            report_url: job.result.report_url,
+            multiview_files: job.result.multiview_files,
+            half_section_file: job.result.half_section_file,
           });
           setAnnotationJobId(null);
           setIsRenderingDrawing(false);
@@ -760,7 +806,10 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
           setAnnotationJobId(null);
           setIsRenderingDrawing(false);
           window.localStorage.removeItem(`cad-annotation-job:${user.id}`);
-          alert(`標註工程圖產生失敗：${job.error || job.message || '未知錯誤'}`);
+          const auditLocation = job.audit_url
+            ? `\n工作編號：${job.job_id}\n詳細紀錄：${job.audit_url}`
+            : `\n工作編號：${job.job_id}`;
+          alert(`標註工程圖產生失敗：${job.error || job.message || '未知錯誤'}${auditLocation}`);
         }
       } catch (error: any) {
         if (error?.response?.status === 404 && !stopped) {
@@ -892,20 +941,45 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     }
     setFeatureRecords([]);
     setSelectedFeatureIds(new Set());
+    setCandidateRules([]);
+    setSelectedRuleIds(new Set());
+    setCandidateEngineMeta(null);
+    setAnalysisLoadError(null);
 
     const modelId = results?.model_id || results?.output_dir || jobId;
     const partsMapForFeatures: Record<string, any> = results?.parts_map || {};
     const selectedData = selectedPart ? partsMapForFeatures[selectedPart] : null;
 
-    if (!selectedPart) return;
+    if (!selectedPart) {
+      setIsLoadingFeatures(false);
+      setIsLoadingCandidateRules(false);
+      setIsReanalyzingPart(false);
+      return;
+    }
 
     setIsLoadingFeatures(true);
+    setIsLoadingCandidateRules(!!modelId);
+    const forceRefresh = forceReanalysisRef.current;
+    forceReanalysisRef.current = false;
+    const refreshParam = forceRefresh ? '&refresh=true' : '';
 
     // 優先調用後端即時 3D 特徵動態提取 API (保證 100% 所有零件/新舊模型皆有 3D 特徵)
     if (modelId) {
-      axios.get(`${API_BASE}/api/features/${modelId}/${selectedPart}?t=${Date.now()}`)
+      axios.get(`${API_BASE}/api/features/${modelId}/${selectedPart}?t=${Date.now()}${refreshParam}`)
         .then(res => {
           const records = Array.isArray(res.data?.records) ? res.data.records : [];
+          if (forceRefresh && res.data?.stl_url && !selectedData?.stl) {
+            setResults((previous: any) => ({
+              ...previous,
+              parts_map: {
+                ...(previous?.parts_map || {}),
+                [selectedPart]: {
+                  ...(previous?.parts_map?.[selectedPart] || {}),
+                  stl: res.data.stl_url,
+                },
+              },
+            }));
+          }
           if (records.length > 0) {
             setFeatureRecords(records);
             const topKeyFeatures = records.filter((r: any) => {
@@ -956,9 +1030,16 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
         });
 
       // 提取候選標註幾何規則 (Candidate Dimension Rules)
-      axios.get(`${API_BASE}/api/annotation/candidate-rules/${modelId}/${selectedPart}?t=${Date.now()}`)
+      axios.get(`${API_BASE}/api/annotation/candidate-rules/${modelId}/${selectedPart}?engine=${candidateEngine}&t=${Date.now()}${refreshParam}`)
         .then(res => {
           const rules = Array.isArray(res.data?.rules) ? res.data.rules : [];
+          setCandidateEngineMeta({
+            engine: res.data?.candidate_engine || candidateEngine,
+            schemaVersion: res.data?.candidate_schema_version,
+            analysisMethod: res.data?.analysis_method,
+            cached: !!res.data?.cached,
+            summary: res.data?.summary || null,
+          });
           setCandidateRules(rules);
           const initialCfg: Record<string, any> = {};
           rules.forEach((r: any) => {
@@ -980,7 +1061,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
           // 預設選取與 3D 特徵圖層一致（優先核心特徵，最多 15 項，排除微小圓角）
           const topKeyRules = rules.filter((r: any) => {
             const cat = (r.category || r.type || '').toLowerCase();
-            return !cat.includes('fillet') && !cat.includes('round');
+            return r.render_eligible !== false && !cat.includes('fillet') && !cat.includes('round');
           });
           const defaultSelectedIds = (topKeyRules.length <= 15 ? topKeyRules : topKeyRules.slice(0, 15)).map((r: any) => r.rule_id || r.id);
           setSelectedRuleIds(new Set(defaultSelectedIds));
@@ -988,8 +1069,13 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
         })
         .catch(err => {
           console.error('Candidate rules fetch error:', err);
+          setCandidateEngineMeta(null);
           setCandidateRules([]);
           setSelectedRuleIds(new Set());
+          setAnalysisLoadError(err?.response?.data?.detail || '標註特徵解析失敗，請重新解析此零件。');
+        })
+        .finally(() => {
+          setIsLoadingCandidateRules(false);
         });
     } else if (selectedData?.features_json) {
       axios.get(`${API_BASE}${selectedData.features_json}?t=${Date.now()}`)
@@ -1011,8 +1097,62 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
         .finally(() => {
           setIsLoadingFeatures(false);
         });
+    } else {
+      setIsLoadingCandidateRules(false);
     }
-  }, [results, selectedPart, jobId]);
+  }, [results, selectedPart, jobId, candidateEngine, analysisRefreshToken]);
+
+  useEffect(() => {
+    if (!isLoadingFeatures && !isLoadingCandidateRules) {
+      setIsReanalyzingPart(false);
+    }
+  }, [isLoadingFeatures, isLoadingCandidateRules]);
+
+  const reanalyzeSelectedPart = () => {
+    if (!selectedPart || user.role !== 'ADMIN') return;
+    forceReanalysisRef.current = true;
+    setIsReanalyzingPart(true);
+    setAnalysisLoadError(null);
+    setAnalysisRefreshToken(value => value + 1);
+  };
+
+  const reanalyzeWholeModel = async () => {
+    const modelId = results?.model_id || results?.output_dir || jobId;
+    if (!modelId || isSubmittingModelReanalysis) return;
+    if (!window.confirm('將把此模型重新送入完整 CAD 解析佇列。既有工程師標註與操作紀錄會保留，是否繼續？')) return;
+
+    setIsSubmittingModelReanalysis(true);
+    try {
+      const res = await axios.post(`${API_BASE}/api/models/${modelId}/reanalyze`);
+      const nextJobId = res.data?.job_id;
+      if (!nextJobId) throw new Error('後端未回傳重新解析工作編號');
+      setJobId(nextJobId);
+      setQueuePosition(res.data?.queue_position || 0);
+      setAnalysisWorkerLimit(res.data?.worker_limit || 1);
+      setActiveJobFilename(res.data?.filename || modelId);
+      setProgress(res.data?.progress || { current: 0, total: 0 });
+      setProgressMsg(res.data?.message || '完整模型重新解析已加入佇列');
+      window.localStorage.setItem(`cad-active-job:${user.id}`, nextJobId);
+      setStatus('processing');
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      const activeJob = detail?.job;
+      if (activeJob?.job_id) {
+        setJobId(activeJob.job_id);
+        setQueuePosition(activeJob.queue_position || 0);
+        setAnalysisWorkerLimit(activeJob.worker_limit || 1);
+        setActiveJobFilename(activeJob.filename || modelId);
+        setProgress(activeJob.progress || { current: 0, total: 0 });
+        setProgressMsg(activeJob.message || detail.message || '模型工作進行中');
+        window.localStorage.setItem(`cad-active-job:${user.id}`, activeJob.job_id);
+        setStatus('processing');
+      } else {
+        alert(`無法重新解析完整模型：${typeof detail === 'string' ? detail : (detail?.message || err.message)}`);
+      }
+    } finally {
+      setIsSubmittingModelReanalysis(false);
+    }
+  };
 
   const toggleFeature = (id: string) => {
     setSelectedFeatureIds(prev => {
@@ -1048,6 +1188,8 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   };
 
   const toggleRule = (ruleId: string) => {
+    const rule = candidateRules.find(item => (item.rule_id || item.id) === ruleId);
+    if (rule?.render_eligible === false) return;
     setSelectedRuleIds(prev => {
       const next = new Set(prev);
       if (next.has(ruleId)) next.delete(ruleId);
@@ -1092,7 +1234,11 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
         return next;
       });
     } else {
-      setSelectedRuleIds(new Set(candidateRules.map(r => r.id || r.rule_id)));
+      setSelectedRuleIds(new Set(
+        candidateRules
+          .filter(r => r.render_eligible !== false)
+          .map(r => r.id || r.rule_id)
+      ));
     }
   };
 
@@ -1211,7 +1357,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
             // REVIEW_CANDIDATE is deliberately visible but never silently
             // adopted.  The engineer must inspect its source drawing and use
             // the explicit adoption control on the recommendation card.
-            if (rec.tier_level === 'TIER_REVIEW_CANDIDATE') return;
+            if (['TIER_REVIEW_CANDIDATE', 'NOT_APPLICABLE'].includes(rec.tier_level)) return;
             nextCfg[rId] = {
               ...existing,
               ...(existing.tolerance_source === 'EXTERNAL_NEURAL_MODEL' ? {} : {
@@ -1333,7 +1479,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   const handleResetToDefault = () => {
     const topKeyRules = candidateRules.filter((r: any) => {
       const cat = (r.category || r.type || '').toLowerCase();
-      return !cat.includes('fillet') && !cat.includes('round');
+      return r.render_eligible !== false && !cat.includes('fillet') && !cat.includes('round');
     });
     const defaultSelectedIds = (topKeyRules.length <= 15 ? topKeyRules : topKeyRules.slice(0, 12)).map((r: any) => r.id || r.rule_id);
     setSelectedRuleIds(new Set(defaultSelectedIds));
@@ -1390,6 +1536,8 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
       const res = await axios.post(`${API_BASE}/api/annotation/render`, {
         model_id: modelId,
         part_id: selectedPart,
+        candidate_engine: candidateEngine,
+        include_half_section: candidateEngine === 'experimental_v026' && includeHalfSection,
         feature_records: payloadRules,
         storage_tag_ids: Array.from(storageTagIds),
         title_info: {
@@ -1405,7 +1553,12 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
           pdf_url: res.data.pdf_url,
           svg_url: res.data.svg_url,
           png_url: res.data.png_url,
-          timestamp: res.data.timestamp
+          timestamp: res.data.timestamp,
+          candidate_engine: res.data.candidate_engine,
+          primary_view: res.data.primary_view,
+          report_url: res.data.report_url,
+          multiview_files: res.data.multiview_files,
+          half_section_file: res.data.half_section_file,
         });
       } else if (res.data?.job_id && ['queued', 'processing', 'finalizing'].includes(res.data.status)) {
         queuedJob = true;
@@ -2173,6 +2326,17 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
 
   // Determine the STL URL for the currently selected part
   const currentStlUrl = currentPartData?.stl ? `${API_BASE}${currentPartData.stl}` : null;
+  const candidateGeometryReady = candidateRules.some((rule: any) => {
+    const geometry = rule?.geometry;
+    return !!geometry && (
+      (Array.isArray(geometry.center) && geometry.center.length >= 3) ||
+      (Array.isArray(geometry.point) && geometry.point.length >= 3) ||
+      (Array.isArray(geometry.mid_point) && geometry.mid_point.length >= 3) ||
+      typeof geometry.position === 'number'
+    );
+  });
+  const smartFeatureRecords = candidateGeometryReady ? candidateRules : featureRecords;
+  const smartSelectedFeatureIds = candidateGeometryReady ? selectedRuleIds : selectedFeatureIds;
   const currentDrawingUrl = currentPartData?.pdf || currentPartData?.svg || currentPartData?.png;
   const frontViewUrl = currentPartData?.front_pdf || currentPartData?.front_svg;
   const backViewUrl = currentPartData?.back_pdf || currentPartData?.back_svg;
@@ -2339,8 +2503,22 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                         客製工程圖 ({selectedPart})
                       </span>
                       <span style={{ fontSize: 11, background: '#166534', color: '#86efac', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
-                        已套用 {selectedFeatureIds.size} 處特徵標註
+                        已套用 {selectedRuleIds.size} 處特徵標註
                       </span>
+                      <span style={{ fontSize: 10, background: '#262626', color: '#bfdbfe', padding: '2px 7px', borderRadius: 4, border: '1px solid #1e3a8a' }}>
+                        {customDrawingResult.candidate_engine === 'experimental_v026' ? '新版繪圖引擎' : '現行繪圖引擎'}
+                      </span>
+                      {customDrawingResult.multiview_files && Object.entries(customDrawingResult.multiview_files).map(([viewName, files]: [string, any]) => (
+                        <a
+                          key={viewName}
+                          href={`${API_BASE}${files.png_url}?t=${customDrawingResult.timestamp || Date.now()}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ fontSize: 10, color: '#93c5fd', textDecoration: 'none', border: '1px solid #334155', borderRadius: 3, padding: '2px 5px' }}
+                        >
+                          {viewName.toUpperCase()}
+                        </a>
+                      ))}
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       {/* Return / Delete Image Button */}
@@ -2528,7 +2706,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                   </div>
 
                   <div style={{ flex: 1, position: 'relative' }}>
-                    {isLoadingFeatures && (
+                    {(isLoadingFeatures || isLoadingCandidateRules) && (
                       <div style={{ position: 'absolute', inset: 0, background: 'rgba(10, 10, 10, 0.85)', backdropFilter: 'blur(6px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 25, gap: 12 }}>
                         <Loader2 size={32} color="#3b82f6" className="animate-spin" />
                         <span style={{ fontSize: 13, color: '#f5f5f5', fontWeight: 600 }}>
@@ -2557,8 +2735,8 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
 
                         <SinglePartViewerWithFeatures
                           stlUrl={currentStlUrl}
-                          featureRecords={candidateRules.length > 0 ? candidateRules : featureRecords}
-                          selectedFeatureIds={selectedRuleIds}
+                          featureRecords={smartFeatureRecords}
+                          selectedFeatureIds={smartSelectedFeatureIds}
                           hoveredFeatureId={hoveredFeatureId}
                           focusedFeatureId={focusedFeatureId}
                           viewMode={feature3DViewMode}
@@ -2784,12 +2962,98 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                     <Layers size={15} color="#3b82f6" />
                     <span>標註控制台</span>
                   </div>
-                  <span style={{ fontSize: 11, background: '#262626', color: '#a3a3a3', border: '1px solid #333', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
-                    {selectedRuleIds.size} / {candidateRules.length} 規則已選
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ display: 'flex', border: '1px solid #404040', borderRadius: 4, overflow: 'hidden' }}>
+                      {([
+                        ['legacy_smart', '現行繪圖引擎'],
+                        ...(user.role === 'ADMIN'
+                          ? [['experimental_v026', '新版繪圖引擎'] as const]
+                          : []),
+                      ] as const).map(([engineId, label]) => (
+                        <button
+                          key={engineId}
+                          type="button"
+                          onClick={() => {
+                            setCandidateEngine(engineId);
+                            setSelectedRuleIds(new Set());
+                            setCustomDrawingResult(null);
+                            if (engineId === 'legacy_smart') setIncludeHalfSection(false);
+                          }}
+                          style={{
+                            background: candidateEngine === engineId ? '#2563eb' : '#262626',
+                            color: candidateEngine === engineId ? '#ffffff' : '#d4d4d4',
+                            border: 'none',
+                            borderRight: engineId === 'legacy_smart' ? '1px solid #404040' : 'none',
+                            padding: '4px 8px',
+                            fontSize: 10,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={reanalyzeWholeModel}
+                      disabled={isSubmittingModelReanalysis}
+                      title="使用保留的原始 STEP，重新進入完整 CAD 模型分析佇列"
+                      style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 7px', borderRadius: 4, border: '1px solid #2563eb', background: '#262626', color: '#bfdbfe', fontSize: 10, fontWeight: 600, cursor: isSubmittingModelReanalysis ? 'not-allowed' : 'pointer', opacity: isSubmittingModelReanalysis ? 0.55 : 1 }}
+                    >
+                      <RotateCcw size={11} className={isSubmittingModelReanalysis ? 'animate-spin' : ''} />
+                      <span>{isSubmittingModelReanalysis ? '送入佇列中' : '重新解析整個模型'}</span>
+                    </button>
+                    {user.role === 'ADMIN' && (
+                      <button
+                        type="button"
+                        onClick={reanalyzeSelectedPart}
+                        disabled={!selectedPart || isLoadingFeatures || isLoadingCandidateRules}
+                        title="忽略舊快取，強制刷新此零件的 3D 特徵與標註候選"
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 7px', borderRadius: 4, border: '1px solid #404040', background: '#262626', color: '#d4d4d4', fontSize: 10, fontWeight: 600, cursor: (!selectedPart || isLoadingFeatures || isLoadingCandidateRules) ? 'not-allowed' : 'pointer', opacity: (!selectedPart || isLoadingFeatures || isLoadingCandidateRules) ? 0.55 : 1 }}
+                      >
+                        <RotateCcw size={11} className={isReanalyzingPart ? 'animate-spin' : ''} />
+                        <span>{isReanalyzingPart ? '刷新中' : '刷新此零件'}</span>
+                      </button>
+                    )}
+                    <span style={{ fontSize: 11, background: '#262626', color: '#a3a3a3', border: '1px solid #333', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
+                      {selectedRuleIds.size} / {candidateRules.length} 規則已選
+                    </span>
+                  </div>
                 </div>
 
+                {analysisLoadError && (
+                  <div style={{ padding: '7px 12px', background: '#2a1717', borderBottom: '1px solid #7f1d1d', color: '#fca5a5', fontSize: 10, lineHeight: 1.45, display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <AlertTriangle size={13} />
+                    <span>{String(analysisLoadError)}</span>
+                  </div>
+                )}
+
+                {candidateEngine === 'experimental_v026' && (
+                  <div style={{ padding: '7px 12px', background: '#172033', borderBottom: '1px solid #1e3a8a', color: '#bfdbfe', fontSize: 10, lineHeight: 1.45, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <span>
+                      新版引擎已接入特徵選取與獨立多視圖產圖。
+                      {candidateEngineMeta?.analysisMethod ? ` 分析版本：${candidateEngineMeta.analysisMethod}` : ''}
+                      {candidateEngineMeta?.cached ? '（快取）' : ''}
+                    </span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', cursor: 'pointer', color: '#dbeafe' }}>
+                      <input
+                        type="checkbox"
+                        checked={includeHalfSection}
+                        onChange={(event) => setIncludeHalfSection(event.target.checked)}
+                        style={{ accentColor: '#2563eb' }}
+                      />
+                      加入半剖視圖
+                    </label>
+                  </div>
+                )}
+
                 {/* CAD-RAG AI 智慧公差決策區塊 (CAD-RAG AI Tolerance Studio) */}
+                {!isLoadingCandidateRules && candidateRules.length === 0 && featureRecords.length > 0 && (
+                  <div style={{ padding: '7px 12px', background: '#1c2430', borderBottom: '1px solid #334155', color: '#cbd5e1', fontSize: 10, lineHeight: 1.45 }}>
+                    此繪圖引擎沒有產生可繪製的標註候選；3D 視窗目前顯示共用 canonical 特徵。可由管理員按「刷新此零件」確認最新結果。
+                  </div>
+                )}
                 <div style={{ padding: '10px 12px', background: '#121212', borderBottom: '1px solid #262626', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -3104,7 +3368,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
 
                 {/* Rule Customization List */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 10px 12px', display: 'flex', flexDirection: 'column', gap: 6, background: '#0f0f0f' }}>
-                  {isLoadingFeatures ? (
+                  {(isLoadingFeatures || isLoadingCandidateRules) ? (
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 30 }}>
                       <Loader2 size={24} color="#3b82f6" className="animate-spin" />
                       <span style={{ fontSize: 12, color: '#f5f5f5', fontWeight: 600 }}>正在載入標註規則幾何...</span>
@@ -3118,6 +3382,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                     filtered.map((rule, idx) => {
                       const rId = rule.rule_id || rule.id;
                       const isSelected = selectedRuleIds.has(rId);
+                      const renderEligible = rule.render_eligible !== false;
                       const isHovered = hoveredFeatureId === rId;
                       const isFocused = focusedFeatureId === rId;
                       const isExpanded = expandedRuleIds.has(rId);
@@ -3127,7 +3392,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                       const externalPrediction = externalPredictionsByRule[rId];
                       const recommendedSource = rec?.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? 'ENGINEER_PERSONAL' : 'HISTORICAL_RAG';
                       const selectedToleranceSource = cfg.tolerance_source
-                        || (rec && rec.tier_level !== 'TIER_REVIEW_CANDIDATE' ? recommendedSource : 'MANUAL');
+                        || (rec && !['TIER_REVIEW_CANDIDATE', 'NOT_APPLICABLE'].includes(rec.tier_level) ? recommendedSource : 'MANUAL');
                        const rawSides = cfg.sides || cfg.side || rule.sides || rule.side || ['BOTTOM'];
                       const currentSides: string[] = Array.isArray(rawSides) ? rawSides : [rawSides];
                       const currentViews = cfg.views || rule.target_views || rule.views || ['front', 'top', 'right'];
@@ -3165,18 +3430,24 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                         >
                           {/* Header Row: Checkbox + Rule ID + Category Badge + AI Tier Badge */}
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: 1, minWidth: 0 }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: renderEligible ? 'pointer' : 'not-allowed', flex: 1, minWidth: 0 }}>
                               <input
                                 type="checkbox"
                                 checked={isSelected}
                                 onChange={() => toggleRule(rId)}
-                                style={{ cursor: 'pointer', accentColor: '#2563eb', width: 14, height: 14, flexShrink: 0 }}
+                                disabled={!renderEligible}
+                                style={{ cursor: renderEligible ? 'pointer' : 'not-allowed', accentColor: '#2563eb', width: 14, height: 14, flexShrink: 0, opacity: renderEligible ? 1 : 0.45 }}
                               />
                               <span style={{ fontWeight: 600, color: isSelected ? '#f5f5f5' : '#737373', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {rId}
                               </span>
                             </label>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                              {!renderEligible && (
+                                <span style={{ fontSize: 9, padding: '2px 5px', borderRadius: 3, background: '#422006', color: '#fbbf24', border: '1px solid #92400e', fontWeight: 600 }}>
+                                  候選預覽
+                                </span>
+                              )}
                               {rec && (
                                 <span
                                   style={{
@@ -3189,7 +3460,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                                     fontWeight: 600,
                                   }}
                                 >
-                                  {rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? `個人 ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_1_RAG_MATCH' ? `RAG ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? `推論 ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_REVIEW_CANDIDATE' ? `候選 ${(rec.confidence * 100).toFixed(0)}%` : '保底')))}
+                                  {rec.tier_level === 'TIER_0_ENGINEER_PREFERENCE' ? `個人 ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_1_RAG_MATCH' ? `RAG ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_2_RULE_INFERENCE' ? `推論 ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'TIER_REVIEW_CANDIDATE' ? `候選 ${(rec.confidence * 100).toFixed(0)}%` : (rec.tier_level === 'NOT_APPLICABLE' ? '不適用' : '保底'))))}
                                 </span>
                               )}
                               <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: badgeBg, color: badgeColor, fontWeight: 500 }}>
@@ -3349,7 +3620,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                           {(rec || externalPrediction) && (
                             <div style={{ marginLeft: 22, display: 'flex', gap: 5, alignItems: 'center' }}>
                               <span style={{ fontSize: 9, color: '#737373' }}>採用來源:</span>
-                              {rec && (
+                              {rec && rec.tier_level !== 'NOT_APPLICABLE' && (
                                 <button
                                   type="button"
                                   onClick={(event) => { event.stopPropagation(); applyToleranceSource(rId, 'HISTORICAL_RAG'); }}
