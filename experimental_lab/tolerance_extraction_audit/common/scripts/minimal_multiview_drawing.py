@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import ezdxf
+from ezdxf import bbox as ezdxf_bbox
 
 from auto_2d_drawing.smart_annotation_engine import SmartAnnotationEngine
 from auto_2d_drawing.pdf_exporter import export_pdf, export_png
@@ -221,8 +222,24 @@ def _adapt_rules_to_single_view(
 
 
 def _visible_extents(modelspace) -> tuple[float, float, float, float]:
+    visible_entities = [
+        entity for entity in modelspace
+        if str(entity.dxf.get("layer", "")).upper() == "VISIBLE"
+    ]
+    if visible_entities:
+        bounds = ezdxf_bbox.extents(visible_entities, fast=True)
+        if bounds.has_data:
+            return (
+                float(bounds.extmin.x),
+                float(bounds.extmin.y),
+                float(bounds.extmax.x),
+                float(bounds.extmax.y),
+            )
+
+    # Keep a deterministic fallback for the two primitive types used by older
+    # renderer fixtures when their virtual entities cannot be resolved.
     points = []
-    for entity in modelspace.query('*[layer=="VISIBLE"]'):
+    for entity in visible_entities:
         if entity.dxftype() == "LINE":
             points.extend(((entity.dxf.start.x, entity.dxf.start.y), (entity.dxf.end.x, entity.dxf.end.y)))
         elif entity.dxftype() == "LWPOLYLINE":

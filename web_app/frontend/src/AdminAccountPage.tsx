@@ -479,6 +479,7 @@ function SystemLogPanel({ loading, operationLogs, auditEvents, selected, status,
       </div>
       {selected && <div style={{ ...panelStyle, marginBottom: 0, maxHeight: 520, overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><h3 style={{ margin: 0 }}>工作詳細紀錄</h3><div style={subStyle}>{selected.operation_id}</div></div><button onClick={onCloseDetail} aria-label="關閉詳細紀錄" style={{ background: 'transparent', border: 0, color: '#aaa', cursor: 'pointer' }}><X size={17} /></button></div>
+        <a href={`/admin/operations/${encodeURIComponent(selected.operation_id)}`} style={{ ...buttonStyle, display: 'inline-flex', marginTop: 14, textDecoration: 'none' }}><FileText size={15} />開啟重現檢視</a>
         <dl style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '8px 12px', margin: '18px 0', fontSize: 12 }}>
           <dt style={detailTermStyle}>狀態</dt><dd style={detailValueStyle}>{selected.status}</dd>
           <dt style={detailTermStyle}>時間</dt><dd style={detailValueStyle}>{localTime(selected.created_at)} → {localTime(selected.completed_at)}</dd>

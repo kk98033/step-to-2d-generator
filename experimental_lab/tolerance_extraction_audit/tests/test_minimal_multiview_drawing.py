@@ -1,7 +1,10 @@
 import unittest
 
+import ezdxf
+
 from experimental_lab.tolerance_extraction_audit.common.scripts.minimal_multiview_drawing import (
     _adapt_rules_to_single_view,
+    _visible_extents,
     choose_half_section_candidate,
     configure_engineer_selections,
 )
@@ -74,6 +77,15 @@ class MinimalMultiviewDrawingTests(unittest.TestCase):
         adapted = _adapt_rules_to_single_view(rules, "top")
         self.assertEqual(adapted[0]["target_views"], ["front"])
         self.assertEqual(adapted[0]["view_geometry"]["front"]["start_proj"], [1, 2])
+
+    def test_visible_extents_supports_curved_visible_geometry(self):
+        document = ezdxf.new()
+        document.layers.add("VISIBLE")
+        document.modelspace().add_circle((10, 20), radius=5, dxfattribs={"layer": "VISIBLE"})
+
+        bounds = _visible_extents(document.modelspace())
+
+        self.assertEqual(tuple(round(value, 6) for value in bounds), (5.0, 15.0, 15.0, 25.0))
 
 
 if __name__ == "__main__":

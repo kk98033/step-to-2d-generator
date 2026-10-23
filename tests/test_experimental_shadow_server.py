@@ -298,11 +298,16 @@ class ExperimentalShadowServerTests(unittest.TestCase):
             job = server.annotation_jobs[response["job_id"]]
             self.assertEqual(job["candidate_engine"], "experimental_v026")
             self.assertIn("_experimental_annotations", job["custom_out_dir"])
+            self.assertIn(response["job_id"], job["custom_out_dir"])
+            self.assertTrue(job["operation_output_isolated"])
+            self.assertTrue(Path(job["replay_snapshot_path"]).is_file())
             self.assertTrue(job["output_files"]["dxf_url"].endswith("/front/front.dxf"))
             audit_path = Path(job["audit_path"])
             self.assertTrue(audit_path.is_file())
             audit = json.loads(audit_path.read_text(encoding="utf-8"))
             self.assertEqual(audit["operation_id"], response["job_id"])
+            self.assertEqual(audit["schema_version"], 2)
+            self.assertTrue(audit["reproduction"]["snapshot_available"])
             self.assertEqual(audit["engineer"]["id"], user.id)
             self.assertEqual(
                 audit["request"]["feature_records"][0]["rule_id"],
@@ -325,6 +330,41 @@ class ExperimentalShadowServerTests(unittest.TestCase):
             self.assertNotIn("full payload", status["error"])
             self.assertEqual(status["audit_url"], job["audit_url"])
             submit.assert_called_once()
+
+    def test_admin_replay_uses_saved_input_and_forces_isolated_render(self):
+        admin = types.SimpleNamespace(
+            id="00000000-0000-0000-0000-000000000001",
+            is_admin=True,
+        )
+        source = {
+            "audit": {
+                "request": {
+                    "model_id": "model-id",
+                    "part_id": "part-id",
+                    "candidate_engine": "experimental_v026",
+                },
+            },
+            "worker_request": {
+                "part_id": "part-id",
+                "action": "experimental_render",
+                "feature_records": [{
+                    "rule_id": "r1",
+                    "source_engine": "experimental_v026",
+                    "enabled": True,
+                }],
+                "title_info": {"drawing_no": "D-1"},
+            },
+        }
+        with patch.object(server, "load_operation_replay_source", return_value=source), patch.object(
+            server, "_submit_custom_annotation_drawing", return_value={"job_id": "replay-id", "status": "queued"}
+        ) as submit:
+            result = server.replay_annotation_operation("source-id", admin=admin)
+
+        self.assertEqual(result["job_id"], "replay-id")
+        args, kwargs = submit.call_args
+        self.assertEqual(args[0]["feature_records"][0]["rule_id"], "r1")
+        self.assertEqual(kwargs["source_operation_id"], "source-id")
+        self.assertTrue(kwargs["force_render"])
 
 
 if __name__ == "__main__":

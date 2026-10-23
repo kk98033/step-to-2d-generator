@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import gzip
+import hashlib
 import json
 import os
 import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
+from urllib.parse import quote
 
 from auto_2d_drawing.config import OUTPUT_DIR
 
@@ -26,6 +29,41 @@ def _read_json(path: Path) -> Dict[str, Any]:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _find_operation_path(root: Path, operation_id: str) -> Optional[Path]:
+    if not _OPERATION_ID.fullmatch(operation_id or ""):
+        return None
+    matches = list(root.glob(f"*/_users/*/_annotation_audit/*/*_{operation_id}.json"))
+    return max(matches, key=lambda item: item.stat().st_mtime_ns) if matches else None
+
+
+def _safe_diagnostic_path(root: Path, value: Any) -> Optional[Path]:
+    if not value:
+        return None
+    try:
+        candidate = Path(str(value)).resolve()
+        candidate.relative_to(root.resolve())
+    except (OSError, ValueError):
+        return None
+    return candidate if candidate.is_file() else None
+
+
+def _read_gzip_json(path: Path) -> Dict[str, Any]:
+    try:
+        with gzip.open(path, "rt", encoding="utf-8") as source:
+            payload = json.load(source)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _summary(path: Path, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -120,13 +158,10 @@ def _compact_feature_record(record: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def get_operation_log(operation_id: str, *, output_root: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    if not _OPERATION_ID.fullmatch(operation_id or ""):
-        return None
     root = Path(output_root or OUTPUT_DIR).resolve()
-    matches = list(root.glob(f"*/_users/*/_annotation_audit/*/*_{operation_id}.json"))
-    if not matches:
+    path = _find_operation_path(root, operation_id)
+    if path is None:
         return None
-    path = max(matches, key=lambda item: item.stat().st_mtime_ns)
     payload = _read_json(path)
     if not payload:
         return None
@@ -144,3 +179,105 @@ def get_operation_log(operation_id: str, *, output_root: Optional[str] = None) -
     payload["audit_size_bytes"] = path.stat().st_size
     payload["model_binary_included"] = False
     return payload
+
+
+def load_operation_replay_source(
+    operation_id: str,
+    *,
+    output_root: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Load internal replay material while constraining diagnostics to OUTPUT_DIR."""
+    root = Path(output_root or OUTPUT_DIR).resolve()
+    audit_path = _find_operation_path(root, operation_id)
+    if audit_path is None:
+        return None
+    audit = _read_json(audit_path)
+    if not audit:
+        return None
+    execution = audit.get("execution") or {}
+    diagnostics = execution.get("diagnostic_files") or {}
+    snapshot_path = _safe_diagnostic_path(root, diagnostics.get("replay_snapshot"))
+    snapshot = _read_gzip_json(snapshot_path) if snapshot_path else {}
+    worker_request = snapshot.get("worker_request") if isinstance(snapshot.get("worker_request"), dict) else None
+    if worker_request is None:
+        worker_path = _safe_diagnostic_path(root, diagnostics.get("worker_request"))
+        worker_request = _read_json(worker_path) if worker_path else {}
+    return {
+        "audit_path": audit_path,
+        "audit": audit,
+        "snapshot": snapshot,
+        "worker_request": worker_request or {},
+    }
+
+
+def get_operation_reproduction(
+    operation_id: str,
+    *,
+    output_root: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    root = Path(output_root or OUTPUT_DIR).resolve()
+    source = load_operation_replay_source(operation_id, output_root=str(root))
+    if not source:
+        return None
+    audit = source["audit"]
+    snapshot = source["snapshot"]
+    worker_request = source["worker_request"]
+    request = audit.get("request") or {}
+    model_id = str(request.get("model_id") or "")
+    part_id = str(request.get("part_id") or worker_request.get("part_id") or "")
+    records = worker_request.get("feature_records")
+    if not isinstance(records, list):
+        records = request.get("feature_records") if isinstance(request.get("feature_records"), list) else []
+    enabled_count = sum(bool(record.get("enabled")) for record in records if isinstance(record, dict))
+    stl_path = root / model_id / "_parts" / f"{part_id}.stl"
+    model_preview_url = (
+        f"/api/files/{quote(model_id, safe='')}/_parts/{quote(part_id, safe='')}.stl"
+        if stl_path.is_file()
+        else None
+    )
+    reproduction = audit.get("reproduction") or {}
+    model_fingerprint = snapshot.get("model") or reproduction.get("model") or {}
+    runtime = snapshot.get("runtime") or reproduction.get("runtime") or {}
+    step_path = _safe_diagnostic_path(root, worker_request.get("step_path"))
+    if step_path and not model_fingerprint:
+        stat = step_path.stat()
+        model_fingerprint = {
+            "sha256": _sha256(step_path),
+            "size_bytes": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+            "fingerprint_derived_from_current_file": True,
+        }
+    replay_available = bool(worker_request and model_id and part_id and step_path)
+    return {
+        "operation_id": operation_id,
+        "status": audit.get("status"),
+        "message": audit.get("message"),
+        "created_at": audit.get("created_at"),
+        "completed_at": audit.get("completed_at"),
+        "engineer": audit.get("engineer") or {},
+        "model": {
+            "model_id": model_id,
+            "part_id": part_id,
+            "preview_url": model_preview_url,
+            **model_fingerprint,
+        },
+        "request": {
+            "candidate_engine": request.get("candidate_engine") or worker_request.get("candidate_engine") or "legacy_smart",
+            "include_half_section": bool(request.get("include_half_section") or worker_request.get("include_half_section")),
+            "part_category": request.get("part_category"),
+            "product_family": request.get("product_family"),
+            "title_info": worker_request.get("title_info") or request.get("title_info") or {},
+            "storage_tag_ids": request.get("storage_tag_ids") or [],
+            "request_hash": request.get("request_hash"),
+            "feature_record_count": len(records),
+            "enabled_feature_record_count": enabled_count,
+            "feature_records": records,
+        },
+        "runtime": runtime,
+        "events": audit.get("events") or [],
+        "failure": audit.get("failure"),
+        "output_files": (audit.get("execution") or {}).get("output_files") or {},
+        "source_operation_id": (audit.get("reproduction") or {}).get("source_operation_id"),
+        "replay_available": replay_available,
+        "model_binary_included": False,
+    }

@@ -2,6 +2,8 @@ import os
 import sys
 import uuid
 import json
+import gzip
+import platform
 import shutil
 import secrets
 import threading
@@ -11,6 +13,7 @@ from math import isfinite
 from typing import Dict, Any, List, Optional, Literal
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
+from importlib import metadata as importlib_metadata
 from fastapi import FastAPI, UploadFile, File, Body, HTTPException, Header, Request, Depends
 from fastapi.responses import Response, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +35,7 @@ from web_app.backend.account_api import (
 )
 from web_app.backend.engineer_personalization import personalize_recommendations
 from web_app.backend.identity_store import CurrentUser
+from web_app.backend.admin_log_service import load_operation_replay_source
 
 app = FastAPI(
     title="FORCECON STEP-to-2D API",
@@ -166,10 +170,98 @@ ANNOTATION_ACTIVE_STATUSES = {"queued", "processing", "finalizing"}
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CAD_ANNOTATION_WORKER = os.path.join(REPO_ROOT, "tools", "cad_annotation_worker.py")
 CAD_ANNOTATION_TIMEOUT_SECONDS = max(30, int(os.environ.get("CAD_ANNOTATION_TIMEOUT_SECONDS", "900")))
+_runtime_fingerprint_cache: Optional[Dict[str, Any]] = None
 
 
 def _utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _file_sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _runtime_fingerprint() -> Dict[str, Any]:
+    global _runtime_fingerprint_cache
+    if _runtime_fingerprint_cache is not None:
+        return dict(_runtime_fingerprint_cache)
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        ).stdout.strip() or None
+    except (OSError, subprocess.SubprocessError):
+        commit = None
+    packages: Dict[str, Optional[str]] = {}
+    for package in ("ezdxf", "pythonocc-core", "fastapi"):
+        try:
+            packages[package] = importlib_metadata.version(package)
+        except importlib_metadata.PackageNotFoundError:
+            packages[package] = None
+    _runtime_fingerprint_cache = {
+        "git_commit": commit,
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "packages": packages,
+        "worker_schema_version": 2,
+    }
+    return dict(_runtime_fingerprint_cache)
+
+
+def _annotation_worker_payload(job_id: str, job: Dict[str, Any]) -> Dict[str, Any]:
+    candidate_engine = job.get("candidate_engine") or "legacy_smart"
+    return {
+        "action": "experimental_render" if candidate_engine == "experimental_v026" else "render",
+        "step_path": job["step_path"],
+        "part_id": job["part_id"],
+        "output_dir": job["custom_out_dir"],
+        "output_stem": f"{job['part_id']}_custom",
+        "feature_records": job["feature_records"],
+        "title_info": job["title_info"],
+        "include_half_section": bool(job.get("include_half_section")),
+        "candidate_engine": candidate_engine,
+        "primary_view": job.get("primary_view"),
+        "operation_id": job_id,
+        "diagnostic_dir": job["worker_dir"],
+    }
+
+
+def _write_annotation_replay_snapshot(job_id: str, job: Dict[str, Any]) -> None:
+    step_path = job.get("step_path")
+    if not step_path or not os.path.isfile(step_path):
+        return
+    stat = os.stat(step_path)
+    model = {
+        "sha256": _file_sha256(step_path),
+        "size_bytes": stat.st_size,
+        "mtime_ns": stat.st_mtime_ns,
+    }
+    snapshot_path = os.path.join(job["worker_dir"], "replay_snapshot.json.gz")
+    os.makedirs(job["worker_dir"], exist_ok=True)
+    payload = {
+        "schema_version": 2,
+        "operation_id": job_id,
+        "source_operation_id": job.get("source_operation_id"),
+        "captured_at": _utc_iso(),
+        "model": model,
+        "runtime": _runtime_fingerprint(),
+        "worker_request": _annotation_worker_payload(job_id, job),
+    }
+    temporary = f"{snapshot_path}.{uuid.uuid4().hex}.tmp"
+    with gzip.open(temporary, "wt", encoding="utf-8") as output_file:
+        json.dump(payload, output_file, ensure_ascii=False, separators=(",", ":"), default=str)
+    os.replace(temporary, snapshot_path)
+    job["replay_snapshot_path"] = snapshot_path
+    job["model_fingerprint"] = model
+    job["runtime_fingerprint"] = payload["runtime"]
 
 
 def _atomic_json_write(path: str, payload: Dict[str, Any]) -> None:
@@ -184,9 +276,11 @@ def _compact_annotation_record_for_audit(record: Dict[str, Any]) -> Dict[str, An
     return {
         key: record.get(key)
         for key in (
-            "rule_id", "id", "category", "feature_type", "type", "enabled",
+            "rule_id", "id", "name", "category", "feature_type", "type", "semantic", "enabled",
             "preferred_view", "views", "target_views", "side", "sides",
-            "tolerance", "tolerance_config", "baseline", "offset",
+            "tolerance", "tolerance_config", "tolerance_source", "prefix", "baseline", "offset",
+            "nominal_value", "unit", "feature_family", "measurement_role",
+            "experimental_feature_id", "verification_status", "verification_confidence",
         )
         if record.get(key) is not None
     }
@@ -207,6 +301,7 @@ def _annotation_audit_payload(job_id: str, job: Dict[str, Any]) -> Dict[str, Any
         "worker_request": os.path.join(worker_dir, "worker_request.json") if worker_dir else None,
         "worker_result": os.path.join(worker_dir, "worker_result.json") if worker_dir else None,
         "worker_log": os.path.join(worker_dir, "worker.log") if worker_dir else None,
+        "replay_snapshot": job.get("replay_snapshot_path"),
         "renderer_failure_audit": os.path.join(
             worker_dir or "",
             "experimental_renderer_failure_audit.json",
@@ -223,7 +318,7 @@ def _annotation_audit_payload(job_id: str, job: Dict[str, Any]) -> Dict[str, Any
         if isinstance(record, dict)
     ]
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "record_type": "CAD_ANNOTATION_OPERATION_AUDIT",
         "operation_id": job_id,
         "status": job.get("status"),
@@ -255,6 +350,14 @@ def _annotation_audit_payload(job_id: str, job: Dict[str, Any]) -> Dict[str, Any
             "primary_view": job.get("primary_view"),
             "output_files": job.get("output_files") or {},
             "diagnostic_files": diagnostic_files,
+        },
+        "reproduction": {
+            "source_operation_id": job.get("source_operation_id"),
+            "diagnostic_replay": bool(job.get("diagnostic_replay")),
+            "operation_output_isolated": bool(job.get("operation_output_isolated")),
+            "model": job.get("model_fingerprint") or {},
+            "runtime": job.get("runtime_fingerprint") or {},
+            "snapshot_available": bool(job.get("replay_snapshot_path")),
         },
         "result": job.get("result"),
         "failure": (
@@ -2710,24 +2813,8 @@ def _run_annotation_job(job_id: str) -> None:
             started_at=_utc_iso(),
         )
         candidate_engine = job.get("candidate_engine") or "legacy_smart"
-        worker_action = (
-            "experimental_render"
-            if candidate_engine == "experimental_v026"
-            else "render"
-        )
         worker_result = _run_cad_annotation_worker(
-            {
-                "action": worker_action,
-                "step_path": job["step_path"],
-                "part_id": job["part_id"],
-                "output_dir": job["custom_out_dir"],
-                "output_stem": f"{job['part_id']}_custom",
-                "feature_records": job["feature_records"],
-                "title_info": job["title_info"],
-                "include_half_section": bool(job.get("include_half_section")),
-                "operation_id": job_id,
-                "diagnostic_dir": job["worker_dir"],
-            },
+            _annotation_worker_payload(job_id, job),
             job["worker_dir"],
         )
         _set_annotation_job_state(
@@ -2738,19 +2825,21 @@ def _run_annotation_job(job_id: str) -> None:
             worker_pid=worker_result.get("pid"),
             worker_elapsed_seconds=worker_result.get("elapsed_seconds"),
         )
-        learning = identity_store.record_artifact_and_cases(
-            user=job["user"],
-            model_id=job["model_id"],
-            part_id=job["part_id"],
-            feature_records=job["feature_records"],
-            output_files=job["output_files"],
-            title=(job["title_info"] or {}).get("drawing_title")
-            or f"{job['part_id']} annotation",
-            part_type=job.get("part_category"),
-            product_family=job.get("product_family")
-            or FeatureCaseBase.infer_product_family(job["part_id"]),
-            tag_ids=job["storage_tag_ids"],
-        )
+        learning = {}
+        if not job.get("diagnostic_replay"):
+            learning = identity_store.record_artifact_and_cases(
+                user=job["user"],
+                model_id=job["model_id"],
+                part_id=job["part_id"],
+                feature_records=job["feature_records"],
+                output_files=job["output_files"],
+                title=(job["title_info"] or {}).get("drawing_title")
+                or f"{job['part_id']} annotation",
+                part_type=job.get("part_category"),
+                product_family=job.get("product_family")
+                or FeatureCaseBase.infer_product_family(job["part_id"]),
+                tag_ids=job["storage_tag_ids"],
+            )
         timestamp = uuid.uuid4().hex[:8]
         manifest_temp_path = f"{job['manifest_path']}.{uuid.uuid4().hex}.tmp"
         with open(manifest_temp_path, "w", encoding="utf-8") as manifest_file:
@@ -2759,6 +2848,8 @@ def _run_annotation_job(job_id: str) -> None:
                     "request_hash": job["request_hash"],
                     "timestamp": timestamp,
                     "rendered_at": _utc_iso(),
+                    "operation_id": job_id,
+                    "output_dir": job["custom_out_dir"],
                 },
                 manifest_file,
                 ensure_ascii=False,
@@ -2774,14 +2865,11 @@ def _run_annotation_job(job_id: str) -> None:
             "candidate_engine": candidate_engine,
             "operation_id": job_id,
             "audit_url": job.get("audit_url"),
+            "diagnostic_replay": bool(job.get("diagnostic_replay")),
+            "source_operation_id": job.get("source_operation_id"),
         }
         if candidate_engine == "experimental_v026":
-            relative_root = (
-                "_users",
-                job["owner_user_id"],
-                "_experimental_annotations",
-                job["part_id"],
-            )
+            relative_root = tuple(job["relative_output_parts"])
             result.update({
                 "primary_view": worker_result.get("primary_view"),
                 "report_url": _api_file_url(
@@ -2867,6 +2955,16 @@ def submit_custom_annotation_drawing(
     body: Dict[str, Any] = Body(...),
     current_user: CurrentUser = Depends(require_user),
 ):
+    return _submit_custom_annotation_drawing(body, current_user)
+
+
+def _submit_custom_annotation_drawing(
+    body: Dict[str, Any],
+    current_user: CurrentUser,
+    *,
+    source_operation_id: Optional[str] = None,
+    force_render: bool = False,
+):
     model_id = body.get("model_id")
     part_id = body.get("part_id")
     feature_records = body.get("feature_records") or []
@@ -2915,15 +3013,29 @@ def submit_custom_annotation_drawing(
     if not stp_path:
         raise HTTPException(status_code=404, detail=f"STEP file for {part_id} not found")
 
+    active = _active_annotation_job_for_user(current_user.id)
+    if active:
+        active_id, active_job = active
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "ANNOTATION_ALREADY_RUNNING",
+                "message": "此帳號已有標註工作進行中",
+                "job": _annotation_job_status_payload(active_id, active_job),
+            },
+        )
+
     user_workspace = _user_workspace(output_dir, current_user.id)
     annotation_folder = (
         "_experimental_annotations"
         if candidate_engine == "experimental_v026"
         else "_custom_annotations"
     )
-    custom_out_dir = os.path.join(user_workspace, annotation_folder, part_id)
+    job_id = str(uuid.uuid4())
+    annotation_root = os.path.join(user_workspace, annotation_folder, part_id)
+    custom_out_dir = os.path.join(annotation_root, "_operations", job_id)
     os.makedirs(custom_out_dir, exist_ok=True)
-    manifest_path = os.path.join(custom_out_dir, ".render_request.json")
+    manifest_path = os.path.join(annotation_root, ".render_cache.json")
     request_hash = hashlib.sha256(
         json.dumps(
             {
@@ -2942,7 +3054,9 @@ def submit_custom_annotation_drawing(
             default=str,
         ).encode("utf-8")
     ).hexdigest()
-    relative_parts = ("_users", current_user.id, annotation_folder, part_id)
+    relative_parts = (
+        "_users", current_user.id, annotation_folder, part_id, "_operations", job_id,
+    )
     enabled_records = [record for record in feature_records if record.get("enabled")]
     primary_view = str(
         next(
@@ -2979,19 +3093,40 @@ def submit_custom_annotation_drawing(
             os.path.join(custom_out_dir, f"{part_id}_custom.{extension}")
             for extension in ("dxf", "pdf", "svg", "png")
         ]
-    if os.path.exists(manifest_path) and all(os.path.exists(path) for path in output_paths):
+    worker_dir = os.path.join(user_workspace, "_annotation_jobs", job_id)
+    audit_path, audit_url = _new_annotation_audit_location(
+        user_workspace,
+        model_id,
+        current_user.id,
+        job_id,
+    )
+    if not force_render and os.path.exists(manifest_path):
         try:
             with open(manifest_path, "r", encoding="utf-8") as manifest_file:
                 cached_manifest = json.load(manifest_file)
-            if cached_manifest.get("request_hash") == request_hash:
-                operation_id = str(uuid.uuid4())
+            source_output_dir = os.path.realpath(str(cached_manifest.get("output_dir") or ""))
+            source_is_safe = (
+                source_output_dir
+                and os.path.commonpath([os.path.realpath(annotation_root), source_output_dir])
+                == os.path.realpath(annotation_root)
+            )
+            if candidate_engine == "experimental_v026":
+                source_output_paths = [
+                    os.path.join(source_output_dir, primary_view, f"{primary_view}.{extension}")
+                    for extension in ("dxf", "pdf", "png")
+                ]
+            else:
+                source_output_paths = [
+                    os.path.join(source_output_dir, f"{part_id}_custom.{extension}")
+                    for extension in ("dxf", "pdf", "svg", "png")
+                ]
+            if (
+                cached_manifest.get("request_hash") == request_hash
+                and source_is_safe
+                and all(os.path.isfile(path) for path in source_output_paths)
+            ):
+                shutil.copytree(source_output_dir, custom_out_dir, dirs_exist_ok=True)
                 cached_at = _utc_iso()
-                audit_path, audit_url = _new_annotation_audit_location(
-                    user_workspace,
-                    model_id,
-                    current_user.id,
-                    operation_id,
-                )
                 cached_job = {
                     "status": "completed",
                     "message": "使用相同設定的既有標註工程圖",
@@ -3007,11 +3142,17 @@ def submit_custom_annotation_drawing(
                     "candidate_engine": candidate_engine,
                     "include_half_section": bool(body.get("include_half_section")),
                     "primary_view": primary_view,
+                    "step_path": stp_path,
                     "custom_out_dir": custom_out_dir,
-                    "worker_dir": None,
+                    "relative_output_parts": relative_parts,
+                    "worker_dir": worker_dir,
                     "request_hash": request_hash,
                     "output_files": output_files,
                     "cache_hit": True,
+                    "cache_source_operation_id": cached_manifest.get("operation_id"),
+                    "source_operation_id": source_operation_id,
+                    "diagnostic_replay": bool(source_operation_id),
+                    "operation_output_isolated": True,
                     "events": [{
                         "at": cached_at,
                         "status": "completed",
@@ -3030,40 +3171,20 @@ def submit_custom_annotation_drawing(
                     "cached": True,
                     "candidate_engine": candidate_engine,
                     "primary_view": primary_view if candidate_engine == "experimental_v026" else None,
-                    "operation_id": operation_id,
+                    "operation_id": job_id,
                     "audit_url": audit_url,
+                    "source_operation_id": source_operation_id,
                 }
                 cached_job["result"] = cached_result
-                _persist_annotation_audit(operation_id, cached_job)
+                _write_annotation_replay_snapshot(job_id, cached_job)
+                _persist_annotation_audit(job_id, cached_job)
                 return {
                     **cached_result,
                 }
-        except (OSError, json.JSONDecodeError):
+        except (OSError, ValueError, json.JSONDecodeError):
             pass
-
-    active = _active_annotation_job_for_user(current_user.id)
-    if active:
-        active_id, active_job = active
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "ANNOTATION_ALREADY_RUNNING",
-                "message": "此帳號已有標註工作進行中",
-                "job": _annotation_job_status_payload(active_id, active_job),
-            },
-        )
-
-    job_id = str(uuid.uuid4())
     now = _utc_iso()
-    worker_dir = os.path.join(user_workspace, "_annotation_jobs", job_id)
-    audit_path, audit_url = _new_annotation_audit_location(
-        user_workspace,
-        model_id,
-        current_user.id,
-        job_id,
-    )
-    with annotation_state_lock:
-        annotation_jobs[job_id] = {
+    queued_job = {
             "status": "queued",
             "message": "標註工作已加入佇列",
             "current": 0,
@@ -3082,12 +3203,16 @@ def submit_custom_annotation_drawing(
             "include_half_section": bool(body.get("include_half_section")),
             "primary_view": primary_view,
             "custom_out_dir": custom_out_dir,
+            "relative_output_parts": relative_parts,
             "worker_dir": worker_dir,
             "audit_path": audit_path,
             "audit_url": audit_url,
             "manifest_path": manifest_path,
             "request_hash": request_hash,
             "output_files": output_files,
+            "source_operation_id": source_operation_id,
+            "diagnostic_replay": bool(source_operation_id),
+            "operation_output_isolated": True,
             "created_at": now,
             "updated_at": now,
             "started_at": None,
@@ -3097,6 +3222,9 @@ def submit_custom_annotation_drawing(
                 "message": "標註工程圖工作已排入佇列",
             }],
         }
+    _write_annotation_replay_snapshot(job_id, queued_job)
+    with annotation_state_lock:
+        annotation_jobs[job_id] = queued_job
         _persist_annotation_audit(job_id, annotation_jobs[job_id])
     annotation_executor.submit(_run_annotation_job, job_id)
     return _annotation_job_status_payload(job_id, annotation_jobs[job_id])
@@ -3118,6 +3246,52 @@ def get_annotation_job(job_id: str, current_user: CurrentUser = Depends(require_
     if not job or (not current_user.is_admin and job.get("owner_user_id") != current_user.id):
         raise HTTPException(status_code=404, detail="Annotation job not found")
     return _annotation_job_status_payload(job_id, job)
+
+
+@app.post("/api/admin/operation-logs/{operation_id}/replay")
+def replay_annotation_operation(
+    operation_id: str,
+    admin: CurrentUser = Depends(require_admin),
+):
+    source = load_operation_replay_source(operation_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Operation replay source not found")
+    audit = source.get("audit") or {}
+    original_request = audit.get("request") or {}
+    worker_request = source.get("worker_request") or {}
+    feature_records = worker_request.get("feature_records")
+    if not isinstance(feature_records, list):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "REPLAY_INPUT_UNAVAILABLE",
+                "message": "此紀錄沒有完整的特徵與參數快照，無法安全重跑",
+            },
+        )
+    body = {
+        "model_id": original_request.get("model_id"),
+        "part_id": original_request.get("part_id") or worker_request.get("part_id"),
+        "candidate_engine": original_request.get("candidate_engine")
+        or worker_request.get("candidate_engine")
+        or ("experimental_v026" if worker_request.get("action") == "experimental_render" else "legacy_smart"),
+        "include_half_section": bool(
+            original_request.get("include_half_section")
+            or worker_request.get("include_half_section")
+        ),
+        "feature_records": feature_records,
+        "title_info": worker_request.get("title_info") or original_request.get("title_info") or {},
+        "storage_tag_ids": [],
+        "part_category": original_request.get("part_category"),
+        "product_family": original_request.get("product_family"),
+    }
+    if not body["model_id"] or not body["part_id"]:
+        raise HTTPException(status_code=409, detail="Replay model or part reference is unavailable")
+    return _submit_custom_annotation_drawing(
+        body,
+        admin,
+        source_operation_id=operation_id,
+        force_render=True,
+    )
 
 
 def _experimental_candidate_cache_signature(stp_path: str) -> Dict[str, Any]:
@@ -4295,6 +4469,10 @@ FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 if os.path.exists(FRONTEND_DIR):
     @app.get("/admin/accounts", include_in_schema=False)
     def admin_accounts_page():
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"), media_type="text/html")
+
+    @app.get("/admin/operations/{operation_id}", include_in_schema=False)
+    def admin_operation_replay_page(operation_id: str):
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"), media_type="text/html")
 
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

@@ -18,7 +18,11 @@ from web_app.backend.identity_store import (
     IdentityStore,
     canonical_company_email,
 )
-from web_app.backend.admin_log_service import get_operation_log, list_operation_logs
+from web_app.backend.admin_log_service import (
+    get_operation_log,
+    get_operation_reproduction,
+    list_operation_logs,
+)
 
 
 SESSION_COOKIE = "cad_session"
@@ -743,6 +747,17 @@ def admin_operation_log_detail(
     if not log:
         raise HTTPException(status_code=404, detail="Operation log not found")
     return {"status": "ok", "log": log}
+
+
+@router.get("/admin/operation-logs/{operation_id}/reproduction")
+def admin_operation_reproduction(
+    operation_id: str,
+    admin: CurrentUser = Depends(require_admin),
+):
+    reproduction = get_operation_reproduction(operation_id)
+    if not reproduction:
+        raise HTTPException(status_code=404, detail="Operation reproduction data not found")
+    return {"status": "ok", "reproduction": reproduction}
 
 
 @router.get("/admin/trash")
