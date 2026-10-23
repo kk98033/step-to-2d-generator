@@ -663,6 +663,7 @@ def render_minimal_multiview_drawing(
 
     specialized_tasks = []
     specialized_rejections = []
+    invalid_rectangular_ids: set[str] = set()
     hole_by_id = {}
     if rectangular_hole_selections:
         hole_result = detect_rectangular_hole_pattern(shape)
@@ -673,6 +674,10 @@ def render_minimal_multiview_drawing(
                     for item in build_rectangular_hole_render_tasks(hole_result)
                 }
             except ValueError as exc:
+                invalid_rectangular_ids = {
+                    str(selection.get("feature_id") or selection.get("id") or "")
+                    for selection in rectangular_hole_selections
+                }
                 specialized_rejections.extend({
                     "feature_id": str(selection.get("feature_id") or selection.get("id") or ""),
                     "reason": "INVALID_RECTANGULAR_HOLE_GEOMETRY",
@@ -693,6 +698,8 @@ def render_minimal_multiview_drawing(
     for group, candidates_by_id, rejection_reason, family in selection_groups:
         for lane, selection in enumerate(group):
             feature_id = str(selection.get("feature_id") or selection.get("id") or "")
+            if family == "hole" and feature_id in invalid_rectangular_ids:
+                continue
             candidate = candidates_by_id.get(feature_id)
             if candidate is None:
                 specialized_rejections.append({"feature_id": feature_id, "reason": rejection_reason})

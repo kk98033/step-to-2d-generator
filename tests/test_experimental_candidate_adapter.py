@@ -22,6 +22,12 @@ def _intent(intent_id: str, status: str = "AUTO_VERIFIED"):
             "family": "ANNULAR_SECTION",
             "feature_id": "annular-1",
             "topology_refs": ["face:1"],
+            "display_geometry": {
+                "kind": "linear_span",
+                "start": [0.0, 0.0, 0.0],
+                "end": [0.0, 0.0, 32.0],
+                "radius": 2.0,
+            },
         },
         "measurement": {
             "semantic": "annular_section.outer_diameter",
@@ -91,6 +97,7 @@ class ExperimentalCandidateAdapterTests(unittest.TestCase):
         self.assertEqual(diameter["default_prefix"], "%%c")
         self.assertEqual(diameter["experimental_selection_group"], "annular_selections")
         self.assertEqual(diameter["experimental_selection_id"], "annular-1.outer_diameter")
+        self.assertEqual(diameter["display_geometry"]["kind"], "linear_span")
         summary = candidate_summary(rules)
         self.assertEqual(summary["total"], 3)
         self.assertEqual(summary["render_eligible"], 3)

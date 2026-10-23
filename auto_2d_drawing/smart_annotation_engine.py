@@ -93,6 +93,9 @@ class TemplateManager:
             rule_id = str(item.get("rule_id", "")).lower()
             name = str(item.get("name", "")).lower()
             role = str(item.get("role", "")).lower()
+            measurement_role = str(item.get("measurement_role", "")).lower()
+            semantic = str(item.get("semantic", "")).lower()
+            feature_family = str(item.get("feature_family", "")).lower()
 
             matched = False
             for r in rules:
@@ -113,7 +116,7 @@ class TemplateManager:
                     if role_pattern:
                         if not any(
                             re.search(role_pattern, value, re.IGNORECASE)
-                            for value in (name, rule_id, role)
+                            for value in (name, rule_id, role, measurement_role, semantic, feature_family)
                         ):
                             continue
 

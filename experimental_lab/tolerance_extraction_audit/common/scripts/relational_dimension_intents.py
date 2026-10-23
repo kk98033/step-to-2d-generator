@@ -17,8 +17,10 @@ from auto_2d_drawing.drawing_projection import project_point
 
 try:
     from .annular_composite_features import _best_views, extract_cylindrical_faces
+    from .rectangular_hole_renderer import rectangular_hole_frame
 except ImportError:  # Direct script execution keeps the scripts directory on sys.path.
     from annular_composite_features import _best_views, extract_cylindrical_faces
+    from rectangular_hole_renderer import rectangular_hole_frame
 
 
 def circular_difference(start: float, end: float) -> float:
@@ -294,24 +296,31 @@ def detect_rectangular_hole_pattern(shape: Any) -> dict[str, Any]:
         if len(unique) < 4:
             continue
         for combo in itertools.combinations(unique, 4):
-            xs = [item["point"][0] for item in combo]
-            ys = [item["point"][1] for item in combo]
-            width, height = max(xs) - min(xs), max(ys) - min(ys)
+            try:
+                frame = rectangular_hole_frame([item["point"] for item in combo])
+            except ValueError:
+                continue
+            width, height = float(frame["width"]), float(frame["height"])
             if width <= 4 * group[0]["radius"] or height <= 4 * group[0]["radius"]:
                 continue
-            corners = [(min(xs), min(ys)), (min(xs), max(ys)), (max(xs), min(ys)), (max(xs), max(ys))]
-            residual = sum(min(math.dist(corner, item["point"]) for item in combo) for corner in corners) / 4.0
-            normalised = residual / max(math.hypot(width, height), 1e-9)
-            if normalised > 0.02:
-                continue
-            patterns.append((width * height * (1.0 - normalised), normalised, view_name, combo, width, height))
+            normalised = float(frame["residual_ratio"])
+            patterns.append((width * height * (1.0 - normalised), normalised, view_name, combo, width, height, frame))
     if not patterns:
         return {"resolved": False, "reason": "NO_RECTANGULAR_SAME_DIAMETER_HOLE_GROUP", "cylindrical_face_count": len(cylinders)}
-    _, residual, view_name, combo, width, height = max(patterns, key=lambda item: item[0])
+    _, residual, view_name, combo, width, height, frame = max(patterns, key=lambda item: item[0])
     ordered = sorted(combo, key=lambda item: (item["point"][1], item["point"][0]))
     radius = sum(item["cylinder"]["radius"] for item in combo) / 4.0
     confidence = max(0.0, min(1.0, 0.96 - residual * 4.0))
+    verification_status = (
+        "AUTO_VERIFIED" if confidence >= 0.90 and len(patterns) == 1 else "REVIEW_CANDIDATE"
+    )
     face_refs = [f"solid:{item['cylinder']['solid_index']}/face:{item['cylinder']['face_index']}" for item in ordered]
+    def center_3d(point_2d: Sequence[float]) -> list[float]:
+        item = min(combo, key=lambda candidate: math.dist(point_2d, candidate["point"]))
+        return [float(value) for value in item["cylinder"]["center"][:3]]
+    horizontal_pair_3d = [center_3d(point) for point in frame["horizontal_pair"]]
+    vertical_pair_3d = [center_3d(point) for point in frame["vertical_pair"]]
+    centers_3d = [center_3d(item["point"]) for item in ordered]
     return {
         "resolved": True,
         "view": view_name,
@@ -320,9 +329,22 @@ def detect_rectangular_hole_pattern(shape: Any) -> dict[str, Any]:
         "horizontal_center_distance": width,
         "vertical_center_distance": height,
         "centers": [list(item["point"]) for item in ordered],
+        "centers_3d": centers_3d,
+        "display_geometry": {
+            "mounting_hole_pattern.hole_diameter": {
+                "kind": "point_set", "points": centers_3d, "radius": radius,
+            },
+            "mounting_hole_pattern.horizontal_center_distance": {
+                "kind": "linear_span", "start": horizontal_pair_3d[0], "end": horizontal_pair_3d[1], "radius": radius * 0.35,
+            },
+            "mounting_hole_pattern.vertical_center_distance": {
+                "kind": "linear_span", "start": vertical_pair_3d[0], "end": vertical_pair_3d[1], "radius": radius * 0.35,
+            },
+        },
         "topology_refs": face_refs,
         "rectangle_residual_ratio": residual,
-        "verification_status": "AUTO_VERIFIED" if confidence >= 0.90 else "REVIEW_CANDIDATE",
+        "candidate_pattern_count": len(patterns),
+        "verification_status": verification_status,
         "confidence": confidence,
         "intents": [
             {"semantic": "mounting_hole_pattern.hole_diameter", "nominal_value": radius * 2.0, "unit": "mm", "topology_refs": face_refs},

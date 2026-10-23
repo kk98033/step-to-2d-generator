@@ -95,6 +95,7 @@ def _base_intent(
             "topology_refs": sorted(str(value) for value in topology_refs),
             "axis": _axis_signature(axis),
             "material_relation": material_relation,
+            "display_geometry": copy.deepcopy(dimension.get("display_geometry")),
         },
         "measurement": {
             "semantic": str(dimension["semantic"]),

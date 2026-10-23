@@ -365,8 +365,11 @@ def bridge_experimental_candidate_records(
                 rule["canonical_feature_role"] = record.get("role")
                 rule["canonical_nominal"] = copy.deepcopy(record.get("nominal") or {})
                 rule["geometry"] = copy.deepcopy(record.get("geometry") or {})
-                rule["tolerance_eligible"] = True
-                rule["tolerance_block_reason"] = None
+                ambiguous_count = int(bridge.get("ambiguous_equivalent_count") or 0)
+                rule["tolerance_eligible"] = ambiguous_count <= 1
+                rule["tolerance_block_reason"] = (
+                    None if ambiguous_count <= 1 else "AMBIGUOUS_CANONICAL_FEATURE_MATCH"
+                )
             else:
                 rule["tolerance_eligible"] = False
                 rule["tolerance_block_reason"] = "NO_CONFIDENT_CANONICAL_FEATURE_MATCH"
@@ -377,6 +380,23 @@ def bridge_experimental_candidate_records(
             "canonical_schema": CANONICAL_FEATURE_SCHEMA,
             "part_type": part_type,
         }
+        verification_status = str(rule.get("verification_status") or "")
+        family = str(rule.get("feature_family") or "").upper()
+        part_key = str(part_type or "").upper()
+        default_selected = bool(
+            rule.get("render_eligible")
+            and verification_status == "AUTO_VERIFIED"
+            and str(bridge.get("status") or "") not in {"UNRESOLVED", "UNSUPPORTED"}
+        )
+        if part_key == "FAN_HOUSING" and family == "SOLID_SHAFT":
+            default_selected = False
+            default_reason = "FAN_HOUSING_SHAFT_CANDIDATE_REQUIRES_REVIEW"
+        elif default_selected:
+            default_reason = "AUTO_VERIFIED_COMMON_FEATURE"
+        else:
+            default_reason = "NOT_AUTO_VERIFIED_OR_NOT_RENDERABLE"
+        rule["default_selected"] = default_selected
+        rule["default_selection_reason"] = default_reason
         status = str(bridge.get("status") or "UNRESOLVED")
         status_counts[status] = status_counts.get(status, 0) + 1
         enriched.append(rule)

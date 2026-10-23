@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any, Mapping
 
 from auto_2d_drawing.smart_extractors.experimental_family_policy import (
@@ -10,7 +11,7 @@ from auto_2d_drawing.smart_extractors.experimental_family_policy import (
 
 
 ENGINE_ID = "experimental_v026"
-CANDIDATE_SCHEMA_VERSION = 3
+CANDIDATE_SCHEMA_VERSION = 5
 EXPECTED_METHOD = "DRAWING_EXPERIMENTAL_MAIN_V0_26"
 
 
@@ -98,6 +99,7 @@ def _intent_rule(intent: Mapping[str, Any]) -> dict[str, Any]:
         "default_tolerance": "",
         "geometry_payload": geometry_payload,
         "view_geometry": {view: geometry_payload} if geometry_payload else {},
+        "display_geometry": copy.deepcopy(feature.get("display_geometry")),
         "canonical_feature_id": feature.get("feature_id"),
         "feature_id": feature.get("feature_id"),
         "feature_family": family,
@@ -198,7 +200,10 @@ def _rectangular_hole_rules(report: Mapping[str, Any]) -> list[dict[str, Any]]:
             "sides": ["BOTTOM"],
             "baseline": "NONE",
             "topology_refs": intent.get("topology_refs") or [],
-            "verification_status": "AUTO_VERIFIED",
+            "display_geometry": copy.deepcopy(
+                (detector.get("display_geometry") or {}).get(semantic)
+            ),
+            "verification_status": str(detector.get("verification_status") or "REVIEW_CANDIDATE"),
             "verification_confidence": float(detector.get("confidence") or 0.0),
             "source_engine": ENGINE_ID,
             "candidate_schema_version": CANDIDATE_SCHEMA_VERSION,

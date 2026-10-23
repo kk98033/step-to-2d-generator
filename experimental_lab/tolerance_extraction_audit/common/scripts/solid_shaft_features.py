@@ -245,12 +245,21 @@ def build_solid_shaft_dimension_candidates(chain: dict[str, Any]) -> list[dict[s
         center = project_point(segment["center"], view_name)
         half_length = segment["length"] / 2.0
         radius = segment["radius"]
+        center_coordinate = _dot(segment["center"], axis)
+        start_3d = _point_on_axis(segment["center"], axis, center_coordinate - half_length)
+        end_3d = _point_on_axis(segment["center"], axis, center_coordinate + half_length)
         base = {
             "shaft_chain_id": chain["id"],
             "segment_id": segment["id"],
             "view": view_name,
             "confidence": segment["confidence"],
             "verification_status": segment["status"],
+            "display_geometry": {
+                "kind": "linear_span",
+                "start": list(start_3d),
+                "end": list(end_3d),
+                "radius": float(radius),
+            },
         }
         candidates.extend([
             {
@@ -284,6 +293,12 @@ def build_solid_shaft_dimension_candidates(chain: dict[str, Any]) -> list[dict[s
         "view": view_name,
         "confidence": chain["confidence"],
         "verification_status": chain["status"],
+        "display_geometry": {
+            "kind": "linear_span",
+            "start": list(_point_on_axis(chain["axis_location"], axis, chain["overall_start"])),
+            "end": list(_point_on_axis(chain["axis_location"], axis, chain["overall_end"])),
+            "radius": float(max((segment["radius"] for segment in chain.get("segments") or []), default=0.5)),
+        },
         "anchors": [[overall_center[0] - axis_2d[0] * half_overall, overall_center[1] - axis_2d[1] * half_overall], [overall_center[0] + axis_2d[0] * half_overall, overall_center[1] + axis_2d[1] * half_overall]],
     })
     return candidates

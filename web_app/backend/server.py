@@ -2825,13 +2825,24 @@ def _run_annotation_job(job_id: str) -> None:
             worker_pid=worker_result.get("pid"),
             worker_elapsed_seconds=worker_result.get("elapsed_seconds"),
         )
+        render_warnings = worker_result.get("render_warnings") or {}
+        rejected_selection_ids = {
+            str(item.get("feature_id") or "")
+            for values in render_warnings.values()
+            for item in (values if isinstance(values, list) else [])
+            if isinstance(item, dict) and item.get("feature_id")
+        }
+        accepted_feature_records = [
+            record for record in job["feature_records"]
+            if str(record.get("experimental_selection_id") or "") not in rejected_selection_ids
+        ]
         learning = {}
         if not job.get("diagnostic_replay"):
             learning = identity_store.record_artifact_and_cases(
                 user=job["user"],
                 model_id=job["model_id"],
                 part_id=job["part_id"],
-                feature_records=job["feature_records"],
+                feature_records=accepted_feature_records,
                 output_files=job["output_files"],
                 title=(job["title_info"] or {}).get("drawing_title")
                 or f"{job['part_id']} annotation",
@@ -2867,6 +2878,8 @@ def _run_annotation_job(job_id: str) -> None:
             "audit_url": job.get("audit_url"),
             "diagnostic_replay": bool(job.get("diagnostic_replay")),
             "source_operation_id": job.get("source_operation_id"),
+            "render_status": worker_result.get("render_status") or "completed",
+            "render_warnings": render_warnings,
         }
         if candidate_engine == "experimental_v026":
             relative_root = tuple(job["relative_output_parts"])
@@ -2905,7 +2918,11 @@ def _run_annotation_job(job_id: str) -> None:
             job_id,
             status="completed",
             current=3,
-            message="標註工程圖已完成",
+            message=(
+                "標註工程圖已完成，部分未通過驗證的特徵已略過"
+                if worker_result.get("render_status") == "partial_success"
+                else "標註工程圖已完成"
+            ),
             result=result,
             completed_at=_utc_iso(),
         )
@@ -3298,7 +3315,7 @@ def _experimental_candidate_cache_signature(stp_path: str) -> Dict[str, Any]:
     stat = os.stat(stp_path)
     return {
         "candidate_engine": "experimental_v026",
-        "candidate_schema_version": 3,
+        "candidate_schema_version": 5,
         "step_size": stat.st_size,
         "step_mtime_ns": stat.st_mtime_ns,
     }

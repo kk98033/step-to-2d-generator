@@ -31,6 +31,21 @@ const formatHistoricalTolerance = (config: Record<string, any> = {}) => {
   return '未指定公差';
 };
 
+const defaultCandidateRuleIds = (rules: any[], engine: string, limit = 15): string[] => {
+  const renderable = rules.filter((rule: any) => {
+    const category = String(rule.category || rule.type || '').toLowerCase();
+    return rule.render_eligible !== false && !category.includes('fillet') && !category.includes('round');
+  });
+  if (engine === 'experimental_v026') {
+    const hasServerPolicy = renderable.some((rule: any) => typeof rule.default_selected === 'boolean');
+    const selected = hasServerPolicy
+      ? renderable.filter((rule: any) => rule.default_selected)
+      : renderable.filter((rule: any) => String(rule.verification_status || '') === 'AUTO_VERIFIED');
+    return selected.slice(0, limit).map((rule: any) => rule.rule_id || rule.id);
+  }
+  return renderable.slice(0, limit).map((rule: any) => rule.rule_id || rule.id);
+};
+
 interface TreeNode {
   name: string;
   type: string;
@@ -193,6 +208,70 @@ function SinglePartViewerWithFeatures({
         const isHovered = hoveredFeatureId === featureId || focusedFeatureId === featureId;
         if (!selectedFeatureIds.has(featureId) && !isHovered) return null;
 
+        const tag = featureId || `F${idx + 1}`;
+        const fType = (feat.type || feat.canonical_feature_type || feat.category || feat.feature_family || '').toLowerCase();
+        let tagBg = '#0284c7';
+        if (fType.includes('journal') || fType.includes('shaft')) tagBg = '#2563eb';
+        else if (fType.includes('groove') || fType.includes('slot')) tagBg = '#9333ea';
+        else if (fType.includes('cone') || fType.includes('chamfer')) tagBg = '#d97706';
+        else if (fType.includes('step')) tagBg = '#ea580c';
+        else if (fType.includes('fillet')) tagBg = '#db2777';
+        else if (fType.includes('hole')) tagBg = '#059669';
+        else if (fType.includes('datum')) tagBg = '#4f46e5';
+        const boxColor = isHovered ? '#fbbf24' : tagBg;
+
+        const displayGeometry = feat.display_geometry || {};
+        if (displayGeometry.kind === 'point_set' && Array.isArray(displayGeometry.points)) {
+          const points = displayGeometry.points.filter((point: any) => Array.isArray(point) && point.length >= 3);
+          const radius = Math.max(Number(displayGeometry.radius) || 0, modelRadius * 0.006);
+          return <group key={featureId || idx}>
+            {points.map((point: number[], pointIndex: number) => (
+              <mesh
+                key={`${featureId}-${pointIndex}`}
+                position={[point[0] - modelCenter.x, point[1] - modelCenter.y, point[2] - modelCenter.z]}
+                onPointerOver={(event) => { event.stopPropagation(); onHoverFeature(featureId); }}
+                onPointerOut={(event) => { event.stopPropagation(); onHoverFeature(null); }}
+                onClick={(event) => { event.stopPropagation(); onSelectFeature(featureId); }}
+              >
+                <sphereGeometry args={[radius * (isHovered ? 1.25 : 1), 18, 18]} />
+                <meshStandardMaterial color={boxColor} emissive={boxColor} emissiveIntensity={isHovered ? 1.2 : 0.35} transparent opacity={isHovered ? 0.7 : 0.25} depthWrite={false} />
+              </mesh>
+            ))}
+          </group>;
+        }
+        if (
+          displayGeometry.kind === 'linear_span'
+          && Array.isArray(displayGeometry.start)
+          && Array.isArray(displayGeometry.end)
+          && displayGeometry.start.length >= 3
+          && displayGeometry.end.length >= 3
+        ) {
+          const start = new THREE.Vector3(...displayGeometry.start.slice(0, 3)).sub(modelCenter);
+          const end = new THREE.Vector3(...displayGeometry.end.slice(0, 3)).sub(modelCenter);
+          const direction = end.clone().sub(start);
+          const length = direction.length();
+          if (!Number.isFinite(length) || length <= 1e-6) return null;
+          const midpoint = start.clone().add(end).multiplyScalar(0.5);
+          const rotation = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0), direction.clone().normalize(),
+          );
+          const radius = Math.max(Number(displayGeometry.radius) || 0, modelRadius * 0.004);
+          return <group key={featureId || idx} position={midpoint} quaternion={rotation}>
+            <mesh
+              onPointerOver={(event) => { event.stopPropagation(); onHoverFeature(featureId); }}
+              onPointerOut={(event) => { event.stopPropagation(); onHoverFeature(null); }}
+              onClick={(event) => { event.stopPropagation(); onSelectFeature(featureId); }}
+            >
+              <cylinderGeometry args={[radius, radius, length, 18]} />
+              <meshStandardMaterial color={boxColor} emissive={boxColor} emissiveIntensity={isHovered ? 1.2 : 0.2} transparent opacity={isHovered ? 0.55 : 0.14} depthWrite={false} />
+            </mesh>
+            <mesh><cylinderGeometry args={[radius * 1.08, radius * 1.08, length, 18]} /><meshBasicMaterial color={boxColor} wireframe transparent opacity={isHovered ? 1 : 0.75} depthTest={!isHovered} /></mesh>
+            {(isHovered || selectedFeatureIds.size <= 8) && <Html position={[0, length / 2 + radius * 2, 0]} center distanceFactor={22} style={{ pointerEvents: 'auto', cursor: 'pointer', userSelect: 'none', zIndex: isHovered ? 99 : 1 }}>
+              <div onMouseEnter={() => onHoverFeature(featureId)} onMouseLeave={() => onHoverFeature(null)} onClick={() => onSelectFeature(featureId)} style={{ background: '#0f172a', border: `1px solid ${boxColor}`, color: '#e5e7eb', padding: '4px 7px', fontSize: 10, whiteSpace: 'nowrap' }}>{tag} · {feat.name || feat.label || feat.measurement_role || ''}</div>
+            </Html>}
+          </group>;
+        }
+
         const geom = feat.geometry || {};
         let rawPos: [number, number, number] | null = null;
         let rawSize: [number, number, number] = [2.0, 1.5, 2.0];
@@ -235,20 +314,6 @@ function SinglePartViewerWithFeatures({
           rawPos[1] - modelCenter.y,
           rawPos[2] - modelCenter.z,
         ];
-
-        const tag = featureId || `F${idx + 1}`;
-        const fType = (feat.type || feat.canonical_feature_type || feat.category || feat.feature_family || '').toLowerCase();
-
-        let tagBg = '#0284c7';
-        if (fType.includes('journal') || fType.includes('shaft')) tagBg = '#2563eb';
-        else if (fType.includes('groove') || fType.includes('slot')) tagBg = '#9333ea';
-        else if (fType.includes('cone') || fType.includes('chamfer')) tagBg = '#d97706';
-        else if (fType.includes('step')) tagBg = '#ea580c';
-        else if (fType.includes('fillet')) tagBg = '#db2777';
-        else if (fType.includes('hole')) tagBg = '#059669';
-        else if (fType.includes('datum')) tagBg = '#4f46e5';
-
-        const boxColor = isHovered ? '#fbbf24' : tagBg;
 
         return (
           <group key={featureId || idx} position={pos}>
@@ -1058,12 +1123,9 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
             };
           });
 
-          // 預設選取與 3D 特徵圖層一致（優先核心特徵，最多 15 項，排除微小圓角）
-          const topKeyRules = rules.filter((r: any) => {
-            const cat = (r.category || r.type || '').toLowerCase();
-            return r.render_eligible !== false && !cat.includes('fillet') && !cat.includes('round');
-          });
-          const defaultSelectedIds = (topKeyRules.length <= 15 ? topKeyRules : topKeyRules.slice(0, 15)).map((r: any) => r.rule_id || r.id);
+          // 新版使用後端的驗證/零件類型政策；舊版維持既有核心特徵排序。
+          const resolvedEngine = res.data?.candidate_engine || candidateEngine;
+          const defaultSelectedIds = defaultCandidateRuleIds(rules, resolvedEngine, 15);
           setSelectedRuleIds(new Set(defaultSelectedIds));
           setRuleConfig(initialCfg);
         })
@@ -1477,11 +1539,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   };
 
   const handleResetToDefault = () => {
-    const topKeyRules = candidateRules.filter((r: any) => {
-      const cat = (r.category || r.type || '').toLowerCase();
-      return r.render_eligible !== false && !cat.includes('fillet') && !cat.includes('round');
-    });
-    const defaultSelectedIds = (topKeyRules.length <= 15 ? topKeyRules : topKeyRules.slice(0, 12)).map((r: any) => r.id || r.rule_id);
+    const defaultSelectedIds = defaultCandidateRuleIds(candidateRules, candidateEngine, 15);
     setSelectedRuleIds(new Set(defaultSelectedIds));
 
     const resetCfg: Record<string, any> = { ...ruleConfig };
@@ -1591,11 +1649,14 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
 
     const rules: any[] = [];
     candidateRules.forEach(r => {
-      if (selectedRuleIds.has(r.rule_id)) {
-        const cfg = ruleConfig[r.rule_id] || {};
+      const rId = r.rule_id || r.id;
+      if (selectedRuleIds.has(rId)) {
+        const cfg = ruleConfig[rId] || {};
+        const reusableRole = String(r.measurement_role || r.semantic || r.role || rId);
+        const reusablePattern = `^${reusableRole.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
         rules.push({
           feature_type: r.category || r.dim_type,
-          role_pattern: `^${r.rule_id}$`,
+          role_pattern: reusablePattern,
           enabled: true,
           preferred_view: cfg.preferred_view || r.preferred_view || 'front',
           tolerance: cfg.tolerance || r.default_tolerance || '',
@@ -1611,6 +1672,8 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
         name: newTemplateName.trim(),
         description: newTemplateDesc.trim() || `自訂標註樣板 (${new Date().toLocaleDateString()})`,
         target_type: 'CUSTOM',
+        candidate_engine: candidateEngine,
+        // TODO: add part-family similarity scoring before automatic cross-model application.
         rules: rules
       });
 
@@ -2327,8 +2390,10 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   // Determine the STL URL for the currently selected part
   const currentStlUrl = currentPartData?.stl ? `${API_BASE}${currentPartData.stl}` : null;
   const candidateGeometryReady = candidateRules.some((rule: any) => {
-    const geometry = rule?.geometry;
+    const geometry = rule?.display_geometry || rule?.geometry;
     return !!geometry && (
+      (geometry.kind === 'linear_span' && Array.isArray(geometry.start) && Array.isArray(geometry.end)) ||
+      (geometry.kind === 'point_set' && Array.isArray(geometry.points)) ||
       (Array.isArray(geometry.center) && geometry.center.length >= 3) ||
       (Array.isArray(geometry.point) && geometry.point.length >= 3) ||
       (Array.isArray(geometry.mid_point) && geometry.mid_point.length >= 3) ||

@@ -210,6 +210,23 @@ class DrawingTemplateTests(unittest.TestCase):
         self.assertEqual(result["geometry_payload"]["angle"], 135.0)
         self.assertEqual(result["view_geometry"]["front"]["angle"], 135.0)
 
+    def test_template_matches_experimental_measurement_role_across_rule_ids(self):
+        candidate = {
+            "rule_id": "dimint_axial_thickness_new_model_id",
+            "category": "thickness",
+            "measurement_role": "AXIAL_THICKNESS",
+            "enabled": False,
+        }
+        template = {"rules": [{
+            "feature_type": "thickness",
+            "role_pattern": "^AXIAL_THICKNESS$",
+            "enabled": True,
+            "preferred_view": "right",
+        }]}
+        result = TemplateManager().match_and_apply(template, [candidate])[0]
+        self.assertTrue(result["enabled"])
+        self.assertEqual(result["preferred_view"], "right")
+
 
 if __name__ == "__main__":
     unittest.main()

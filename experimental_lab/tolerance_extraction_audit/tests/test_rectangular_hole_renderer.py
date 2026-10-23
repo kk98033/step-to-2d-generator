@@ -34,6 +34,26 @@ class RectangularHoleRendererTests(unittest.TestCase):
                 "centers": [[0, 0], [10, 0], [0, 8], [10, 8]],
             })
 
+    def test_supports_rotated_rectangular_pattern(self):
+        tasks = build_rectangular_hole_render_tasks({
+            "diameter": 2.0,
+            "horizontal_center_distance": 10.0,
+            "vertical_center_distance": 10.0,
+            "centers": [[0, 0], [7.0710678, 7.0710678], [0, 14.1421356], [-7.0710678, 7.0710678]],
+        })
+        self.assertEqual(len(tasks), 3)
+        self.assertAlmostEqual(tasks[1]["nominal_value"], 10.0, places=5)
+
+    def test_rejects_near_rectangle_with_misaligned_corner(self):
+        with self.assertRaises(ValueError):
+            build_rectangular_hole_render_tasks({
+                "diameter": 0.4,
+                "centers": [
+                    [-80.5117, -117.9563], [-62.9112, -117.8698],
+                    [-80.0815, -41.2134], [-62.9158, -35.8061],
+                ],
+            })
+
 
 if __name__ == "__main__":
     unittest.main()

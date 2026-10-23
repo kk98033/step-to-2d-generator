@@ -186,14 +186,32 @@ def _run_experimental_render(
         shaft_dimension_selections=selection_config["shaft_dimension_selections"],
         thickness_selections=selection_config["thickness_selections"],
     )
+    render_status = "completed" if drawing_report.get("success") else "error"
+    render_warnings: dict[str, Any] = {}
     if not drawing_report.get("success"):
+        drawings_for_audit = list(drawing_report.get("orthographic_drawings") or [])
+        if drawing_report.get("half_section_drawing"):
+            drawings_for_audit.append(drawing_report["half_section_drawing"])
+        partial_allowed = bool(
+            int(drawing_report.get("configured_selection_count") or 0) > 0
+            and bool((drawing_report.get("radial_band_angle_placement") or {}).get("collision_avoidance_passed", True))
+            and all(int(item.get("audit_error_count") or 0) == 0 for item in drawings_for_audit)
+            and all(bool(item.get("full_span_diameter_contract_passed", True)) for item in drawings_for_audit)
+        )
+        render_status = "partial_success" if partial_allowed else "error"
+        render_warnings = {
+            "rejected_feature_selections": drawing_report.get("rejected_feature_selections") or [],
+            "rejected_radial_band_angle_selections": drawing_report.get("rejected_radial_band_angle_selections") or [],
+            "rejected_annular_selections": drawing_report.get("rejected_annular_selections") or [],
+            "rejected_specialized_selections": drawing_report.get("rejected_specialized_selections") or [],
+        }
         diagnostic_dir = Path(str(job.get("diagnostic_dir") or output_dir)).resolve()
         failure_audit_path = diagnostic_dir / "experimental_renderer_failure_audit.json"
         _write_json(
             failure_audit_path,
             {
                 "schema_version": 1,
-                "status": "error",
+                "status": render_status,
                 "stage": "experimental_renderer_audit",
                 "operation_id": job.get("operation_id"),
                 "step_path": str(step_path),
@@ -205,16 +223,14 @@ def _run_experimental_render(
                 "drawing_report": drawing_report,
             },
         )
-        raise RuntimeError(
-            "Experimental renderer audit failed: "
-            + json.dumps({
-                "rejected_feature_selections": drawing_report.get("rejected_feature_selections"),
-                "rejected_radial_band_angle_selections": drawing_report.get("rejected_radial_band_angle_selections"),
-                "rejected_annular_selections": drawing_report.get("rejected_annular_selections"),
-                "rejected_specialized_selections": drawing_report.get("rejected_specialized_selections"),
-                "radial_band_angle_placement": drawing_report.get("radial_band_angle_placement"),
-            }, ensure_ascii=False)
-        )
+        if not partial_allowed:
+            raise RuntimeError(
+                "Experimental renderer audit failed: "
+                + json.dumps({
+                    **render_warnings,
+                    "radial_band_angle_placement": drawing_report.get("radial_band_angle_placement"),
+                }, ensure_ascii=False)
+            )
 
     selected_views = [
         str(item.get("view") or "front")
@@ -245,6 +261,8 @@ def _run_experimental_render(
         "analysis_method": analysis.get("method"),
         "selection_summary": selection_summary,
         "drawing_report": drawing_report,
+        "render_status": render_status,
+        "render_warnings": render_warnings,
         "primary_view": primary_view,
         "primary_files": files,
         "multiview_drawings": drawings,

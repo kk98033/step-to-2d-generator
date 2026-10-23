@@ -108,6 +108,31 @@ class ExperimentalFeatureBridgeTests(unittest.TestCase):
         self.assertEqual(rules[0]["feature_bridge"]["status"], "UNRESOLVED")
         self.assertEqual(summary["unresolved_count"], 1)
 
+    def test_ambiguous_nominal_match_blocks_automatic_tolerance(self):
+        duplicate = {**self.records[0], "id": "hole_32_duplicate"}
+        rules, _summary = bridge_experimental_candidate_records(
+            [self._rule("inner", "INNER_DIAMETER", 32.0)],
+            [self.records[0], duplicate],
+        )
+        self.assertFalse(rules[0]["tolerance_eligible"])
+        self.assertEqual(rules[0]["tolerance_block_reason"], "AMBIGUOUS_CANONICAL_FEATURE_MATCH")
+
+    def test_fan_housing_shaft_candidate_is_not_selected_by_default(self):
+        rule = self._rule("shaft", "AXIAL_SEGMENT_LENGTH", 5.0, dim_type="LINEAR")
+        rule.update({
+            "feature_family": "SOLID_SHAFT",
+            "render_eligible": True,
+            "verification_status": "AUTO_VERIFIED",
+        })
+        rules, _summary = bridge_experimental_candidate_records(
+            [rule], self.records, part_type="FAN_HOUSING",
+        )
+        self.assertFalse(rules[0]["default_selected"])
+        self.assertEqual(
+            rules[0]["default_selection_reason"],
+            "FAN_HOUSING_SHAFT_CANDIDATE_REQUIRES_REVIEW",
+        )
+
     def test_radial_pattern_uses_detected_radius_on_canonical_axis(self):
         records = self.records + [
             {
