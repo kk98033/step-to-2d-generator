@@ -10,7 +10,7 @@ except ImportError:
 class DrawingLayout:
     """三視圖佈局管理器 — 第三角投影法"""
 
-    def __init__(self, view_sizes, tasks_dict=None, paper="A3"):
+    def __init__(self, view_sizes, tasks_dict=None, paper="A3", adaptive=False):
         """
         Args:
             view_sizes: {'front': (w,h), 'top': (w,h), 'right': (w,h)}
@@ -21,6 +21,7 @@ class DrawingLayout:
         self.margin = MARGIN
         self.view_sizes = view_sizes
         self.tasks_dict = tasks_dict or {}
+        self.adaptive = adaptive
         self.title_h = 60    # 標題欄區域高度
         self.revision_h = 30  # 版次欄區域高度
         
@@ -29,6 +30,63 @@ class DrawingLayout:
         self.layer_spacing = 8.0
         
         self._calculate_scale()
+        if self.adaptive:
+            self._calculate_adaptive_layout()
+
+    def _calculate_adaptive_layout(self):
+        names = [name for name in ("front", "top", "right") if name in self.view_sizes]
+        gap = 15.0
+        x0 = self.margin
+        y0 = self.margin + self.title_h
+        width = self.paper_w - 2 * self.margin
+        height = self.paper_h - 2 * self.margin - self.title_h - self.revision_h
+        horizontal_width = (width - gap * (len(names) - 1)) / max(len(names), 1)
+        vertical_height = (height - gap * (len(names) - 1)) / max(len(names), 1)
+        candidates = {
+            "HORIZONTAL_MAX_FIT": {
+                name: (x0 + index * (horizontal_width + gap), y0, horizontal_width, height)
+                for index, name in enumerate(names)
+            },
+            "VERTICAL_MAX_FIT": {
+                name: (x0, y0 + (len(names) - index - 1) * (vertical_height + gap), width, vertical_height)
+                for index, name in enumerate(names)
+            },
+        }
+        if set(names) == {"front", "top", "right"}:
+            left_width = (width - gap) * 0.62
+            right_width = width - gap - left_width
+            row_height = (height - gap) / 2.0
+            candidates["ORTHOGRAPHIC_L_MAX_FIT"] = {
+                "front": (x0, y0, left_width, row_height),
+                "top": (x0, y0 + row_height + gap, left_width, row_height),
+                "right": (x0 + left_width + gap, y0, right_width, height),
+            }
+
+        best = None
+        for strategy, cells in candidates.items():
+            scales = {}
+            offsets = {}
+            area = 0.0
+            for name, (cell_x, cell_y, cell_w, cell_h) in cells.items():
+                view_w, view_h = self.view_sizes[name]
+                pad_top, pad_bottom, pad_left, pad_right = self._get_view_padding(name)
+                usable_w = max(cell_w - pad_left - pad_right, 1.0)
+                usable_h = max(cell_h - pad_top - pad_bottom, 1.0)
+                scale = min(usable_w / max(view_w, 1e-9), usable_h / max(view_h, 1e-9), 5.0)
+                scale = max(scale, 0.05)
+                scaled_w, scaled_h = view_w * scale, view_h * scale
+                offsets[name] = (
+                    cell_x + pad_left + (usable_w - scaled_w) / 2.0,
+                    cell_y + pad_bottom + (usable_h - scaled_h) / 2.0,
+                )
+                scales[name] = scale
+                area += scaled_w * scaled_h
+            candidate = (area, strategy, scales, offsets)
+            if best is None or candidate[0] > best[0]:
+                best = candidate
+
+        _area, self.layout_strategy, self.view_scales, self.view_offsets = best
+        self.scale = min(self.view_scales.values())
 
     def _get_view_padding(self, view_name):
         """
@@ -123,6 +181,8 @@ class DrawingLayout:
         self.start_y = self.margin + self.title_h + margin_bottom
 
     def get_scale_text(self):
+        if self.adaptive:
+            return "VARIES"
         """回傳比例文字 (如 '1:2', '2:1')"""
         if self.scale >= 1.0:
             return f"{self.scale:.0f} : 1" if self.scale == int(self.scale) else f"{self.scale:.1f} : 1"
@@ -139,6 +199,8 @@ class DrawingLayout:
           [front]   在左下
           [right]   在前視圖正右方
         """
+        if self.adaptive:
+            return self.view_offsets.get(view_name, (0, 0))
         s = self.scale
         fw, fh = self.view_sizes.get('front', (100, 100))
 
@@ -153,7 +215,13 @@ class DrawingLayout:
     def get_scaled_size(self, view_name):
         """回傳視圖的縮放後尺寸"""
         w, h = self.view_sizes.get(view_name, (0, 0))
-        return w * self.scale, h * self.scale
+        scale = self.get_view_scale(view_name)
+        return w * scale, h * scale
+
+    def get_view_scale(self, view_name):
+        if self.adaptive:
+            return self.view_scales.get(view_name, self.scale)
+        return self.scale
 
 
 class DxfDrawer:

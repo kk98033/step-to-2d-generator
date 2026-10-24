@@ -178,7 +178,9 @@ class SmartAnnotationEngine:
         png_path: str,
         feature_records: List[Dict[str, Any]],
         view_data: Dict[str, Any],
-        title_info: Optional[Dict[str, Any]] = None
+        title_info: Optional[Dict[str, Any]] = None,
+        paper: str = "A3",
+        adaptive_multiview: bool = False,
     ) -> Dict[str, str]:
         """渲染已選規則為 DXF / PDF / SVG / PNG"""
         return self.engine.render_custom_drawing(
@@ -187,5 +189,7 @@ class SmartAnnotationEngine:
             png_path=png_path,
             configured_rules=feature_records,
             view_data=view_data,
-            title_info=title_info
+            title_info=title_info,
+            paper=paper,
+            adaptive_multiview=adaptive_multiview,
         )

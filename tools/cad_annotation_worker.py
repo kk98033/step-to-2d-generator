@@ -190,6 +190,8 @@ def _run_experimental_render(
     render_warnings: dict[str, Any] = {}
     if not drawing_report.get("success"):
         drawings_for_audit = list(drawing_report.get("orthographic_drawings") or [])
+        if drawing_report.get("combined_multiview_drawing"):
+            drawings_for_audit.append(drawing_report["combined_multiview_drawing"])
         if drawing_report.get("half_section_drawing"):
             drawings_for_audit.append(drawing_report["half_section_drawing"])
         partial_allowed = bool(
@@ -232,25 +234,16 @@ def _run_experimental_render(
                 }, ensure_ascii=False)
             )
 
-    selected_views = [
-        str(item.get("view") or "front")
-        for key, values in selection_config.items()
-        if key.endswith("_selections")
-        for item in values
-    ]
-    primary_view = selected_views[0] if selected_views else "front"
     drawings = list(drawing_report.get("orthographic_drawings") or [])
-    primary = next(
-        (item for item in drawings if item.get("view") == primary_view),
-        drawings[0] if drawings else None,
-    )
+    primary_view = "multiview"
+    primary = drawing_report.get("combined_multiview_drawing")
     if primary is None:
-        raise RuntimeError("Experimental renderer returned no orthographic drawings")
+        raise RuntimeError("Experimental renderer returned no combined multiview drawing")
     files = dict(primary.get("files") or {})
     for name in ("dxf", "pdf", "png"):
         path = Path(str(files.get(name) or ""))
         if not path.is_file() or path.stat().st_size <= 0:
-            raise RuntimeError(f"Experimental render missing {name} output for {primary_view}")
+            raise RuntimeError(f"Experimental render missing {name} combined output")
 
     return {
         "status": "ok",
@@ -266,6 +259,7 @@ def _run_experimental_render(
         "primary_view": primary_view,
         "primary_files": files,
         "multiview_drawings": drawings,
+        "combined_multiview_drawing": primary,
         "half_section_drawing": drawing_report.get("half_section_drawing"),
         "report_path": str((output_dir / "minimal_multiview_report.json").resolve()),
     }

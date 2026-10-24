@@ -301,7 +301,7 @@ class ExperimentalShadowServerTests(unittest.TestCase):
             self.assertIn(response["job_id"], job["custom_out_dir"])
             self.assertTrue(job["operation_output_isolated"])
             self.assertTrue(Path(job["replay_snapshot_path"]).is_file())
-            self.assertTrue(job["output_files"]["dxf_url"].endswith("/front/front.dxf"))
+            self.assertTrue(job["output_files"]["dxf_url"].endswith("/multiview/multiview.dxf"))
             audit_path = Path(job["audit_path"])
             self.assertTrue(audit_path.is_file())
             audit = json.loads(audit_path.read_text(encoding="utf-8"))

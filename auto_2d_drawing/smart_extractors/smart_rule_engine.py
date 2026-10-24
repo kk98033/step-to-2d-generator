@@ -1117,8 +1117,10 @@ class SmartDimensionEngine:
         png_path: str,
         configured_rules: List[Dict[str, Any]],
         view_data: Dict[str, Any],
-        title_info: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, str]:
+        title_info: Optional[Dict[str, Any]] = None,
+        paper: str = "A3",
+        adaptive_multiview: bool = False,
+    ) -> Dict[str, Any]:
         """
         將已設定的規則清單渲染為 DXF、向量 PDF、SVG 與高解析 PNG 工程圖。
         """
@@ -1299,12 +1301,12 @@ class SmartDimensionEngine:
         except ImportError:
             from dxf_drawer import DrawingLayout
         view_sizes = {vn: view_data[vn]['size'] for vn in ['front', 'top', 'right'] if vn in view_data}
-        layout = DrawingLayout(view_sizes, view_tasks)
+        layout = DrawingLayout(view_sizes, view_tasks, paper=paper, adaptive=adaptive_multiview)
         layout_engine = LayoutEngine(layout)
 
         # 3. 繪製圖框與標題欄 (Title Block)
         info = title_info or {}
-        tb = TitleBlock()
+        tb = TitleBlock(paper=paper)
         tb.draw(
             msp,
             part_name=info.get("part_name", "SMART ANNOTATED PART"),
@@ -1323,9 +1325,10 @@ class SmartDimensionEngine:
             vd = view_data[vn]
             ox, oy = layout.get_view_offset(vn)
             bbox_x0, bbox_y0 = vd['bbox'][0], vd['bbox'][1]
+            view_scale = layout.get_view_scale(vn)
 
-            drawer.draw_edges(msp, vd.get('visible', []), ox, oy, layout.scale, bbox_x0, bbox_y0, 'VISIBLE')
-            drawer.draw_edges(msp, vd.get('hidden', []), ox, oy, layout.scale, bbox_x0, bbox_y0, 'HIDDEN')
+            drawer.draw_edges(msp, vd.get('visible', []), ox, oy, view_scale, bbox_x0, bbox_y0, 'VISIBLE')
+            drawer.draw_edges(msp, vd.get('hidden', []), ox, oy, view_scale, bbox_x0, bbox_y0, 'HIDDEN')
             drawer.draw_view_label(msp, ox, oy, VIEW_CONFIG.get(vn, {}).get("label", vn.upper()))
 
         # 5. 精確渲染已選取之標註任務 (精確幾何排版對齊)
@@ -1345,8 +1348,31 @@ class SmartDimensionEngine:
         export_pdf(doc, msp, pdf_path, dark_bg=True)
         export_png(doc, msp, png_path, dark_bg=True)
 
+        view_rectangles = {
+            vn: {
+                "x": layout.get_view_offset(vn)[0],
+                "y": layout.get_view_offset(vn)[1],
+                "width": layout.get_scaled_size(vn)[0],
+                "height": layout.get_scaled_size(vn)[1],
+            }
+            for vn in ("front", "top", "right")
+            if vn in view_data
+        }
         return {
             "dxf": dxf_path,
             "pdf": pdf_path,
             "png": png_path,
+            "layout": {
+                "paper": paper,
+                "paper_width": layout.paper_w,
+                "paper_height": layout.paper_h,
+                "scale": layout.scale,
+                "scale_text": layout.get_scale_text(),
+                "view_scales": {
+                    vn: layout.get_view_scale(vn)
+                    for vn in view_rectangles
+                },
+                "strategy": getattr(layout, "layout_strategy", "ORTHOGRAPHIC_L_COMMON_SCALE"),
+                "view_rectangles": view_rectangles,
+            },
         }

@@ -2,8 +2,11 @@ import unittest
 
 import ezdxf
 
+from auto_2d_drawing.dxf_drawer import DrawingLayout
 from experimental_lab.tolerance_extraction_audit.common.scripts.minimal_multiview_drawing import (
     _adapt_rules_to_single_view,
+    _rectangles_overlap,
+    _select_multiview_paper,
     _visible_extents,
     choose_half_section_candidate,
     configure_engineer_selections,
@@ -86,6 +89,32 @@ class MinimalMultiviewDrawingTests(unittest.TestCase):
         bounds = _visible_extents(document.modelspace())
 
         self.assertEqual(tuple(round(value, 6) for value in bounds), (5.0, 15.0, 15.0, 25.0))
+
+    def test_adaptive_multiview_layout_maximizes_each_view_without_overlap(self):
+        layout = DrawingLayout(
+            {"front": (120.0, 120.0), "top": (25.0, 120.0), "right": (120.0, 25.0)},
+            paper="A3",
+            adaptive=True,
+        )
+        rectangles = {
+            name: {
+                "x": layout.get_view_offset(name)[0],
+                "y": layout.get_view_offset(name)[1],
+                "width": layout.get_scaled_size(name)[0],
+                "height": layout.get_scaled_size(name)[1],
+            }
+            for name in ("front", "top", "right")
+        }
+        pairs = [("front", "top"), ("front", "right"), ("top", "right")]
+        self.assertTrue(all(not _rectangles_overlap(rectangles[a], rectangles[b]) for a, b in pairs))
+        self.assertTrue(all(layout.get_view_scale(name) > 0.0 for name in rectangles))
+        self.assertIn(layout.layout_strategy, {
+            "HORIZONTAL_MAX_FIT", "VERTICAL_MAX_FIT", "ORTHOGRAPHIC_L_MAX_FIT",
+        })
+
+    def test_dense_multiview_uses_larger_sheet(self):
+        self.assertEqual(_select_multiview_paper(15), "A3")
+        self.assertEqual(_select_multiview_paper(24), "A2")
 
 
 if __name__ == "__main__":

@@ -153,10 +153,22 @@ class ExperimentalShadowWorkerTests(unittest.TestCase):
                     path = front / f"front.{extension}"
                     path.write_text("drawing", encoding="utf-8")
                     files[extension] = str(path)
+                multiview = output / "multiview"
+                multiview.mkdir(parents=True)
+                combined_files = {}
+                for extension in ("dxf", "pdf", "png"):
+                    path = multiview / f"multiview.{extension}"
+                    path.write_text("drawing", encoding="utf-8")
+                    combined_files[extension] = str(path)
                 (output / "minimal_multiview_report.json").write_text("{}", encoding="utf-8")
                 return {
                     "success": True,
                     "orthographic_drawings": [{"view": "front", "files": files}],
+                    "combined_multiview_drawing": {
+                        "view": "multiview",
+                        "files": combined_files,
+                        "layout": {"overlap_free": True},
+                    },
                     "half_section_drawing": None,
                 }
 
@@ -182,6 +194,7 @@ class ExperimentalShadowWorkerTests(unittest.TestCase):
                 })
 
             self.assertEqual(result["selection_summary"]["routed"], 1)
+            self.assertEqual(result["primary_view"], "multiview")
             self.assertEqual(
                 captured["radial_band_angle_selections"][0]["feature_id"],
                 "outer_annular_slots.full_angle",

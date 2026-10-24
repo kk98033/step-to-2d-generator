@@ -796,6 +796,12 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     primary_view?: string;
     report_url?: string;
     multiview_files?: Record<string, any>;
+    multiview_layout?: {
+      paper?: string;
+      scale_text?: string;
+      overlap_free?: boolean;
+      view_fill_ratio?: number;
+    };
     half_section_file?: Record<string, string> | null;
   } | null>(null);
   const [isRenderingDrawing, setIsRenderingDrawing] = useState(false);
@@ -862,6 +868,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
             primary_view: job.result.primary_view,
             report_url: job.result.report_url,
             multiview_files: job.result.multiview_files,
+            multiview_layout: job.result.multiview_layout,
             half_section_file: job.result.half_section_file,
           });
           setAnnotationJobId(null);
@@ -1616,6 +1623,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
           primary_view: res.data.primary_view,
           report_url: res.data.report_url,
           multiview_files: res.data.multiview_files,
+          multiview_layout: res.data.multiview_layout,
           half_section_file: res.data.half_section_file,
         });
       } else if (res.data?.job_id && ['queued', 'processing', 'finalizing'].includes(res.data.status)) {
@@ -2563,7 +2571,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                 <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', background: '#090d16' }}>
                   {/* Custom Drawing Action Toolbar */}
                   <div style={{ padding: '8px 16px', background: '#171717', borderBottom: '1px solid #262626', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: '#f5f5f5' }}>
                         客製工程圖 ({selectedPart})
                       </span>
@@ -2573,6 +2581,14 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                       <span style={{ fontSize: 10, background: '#262626', color: '#bfdbfe', padding: '2px 7px', borderRadius: 4, border: '1px solid #1e3a8a' }}>
                         {customDrawingResult.candidate_engine === 'experimental_v026' ? '新版繪圖引擎' : '現行繪圖引擎'}
                       </span>
+                      {customDrawingResult.candidate_engine === 'experimental_v026' && customDrawingResult.multiview_layout && (
+                        <span
+                          title={`View fill ${Math.round((customDrawingResult.multiview_layout.view_fill_ratio || 0) * 100)}%`}
+                          style={{ fontSize: 10, background: '#172554', color: '#bfdbfe', padding: '2px 7px', borderRadius: 4, border: '1px solid #2563eb' }}
+                        >
+                          MULTIVIEW · {customDrawingResult.multiview_layout.paper || 'A3'} · {customDrawingResult.multiview_layout.scale_text || 'AUTO FIT'}
+                        </span>
+                      )}
                       {customDrawingResult.multiview_files && Object.entries(customDrawingResult.multiview_files).map(([viewName, files]: [string, any]) => (
                         <a
                           key={viewName}

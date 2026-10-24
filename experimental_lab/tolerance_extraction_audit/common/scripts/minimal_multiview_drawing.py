@@ -254,15 +254,31 @@ def _visible_extents(modelspace) -> tuple[float, float, float, float]:
     )
 
 
-def _coordinate_mapper(modelspace, view: Mapping[str, Any]):
-    drawing_bbox = _visible_extents(modelspace)
+def _coordinate_mapper(
+    modelspace,
+    view: Mapping[str, Any],
+    placement: Mapping[str, Any] | None = None,
+):
     source_bbox = view["bbox"]
     source_width = max(float(source_bbox[2]) - float(source_bbox[0]), 1e-9)
     source_height = max(float(source_bbox[3]) - float(source_bbox[1]), 1e-9)
-    scale = min(
-        (drawing_bbox[2] - drawing_bbox[0]) / source_width,
-        (drawing_bbox[3] - drawing_bbox[1]) / source_height,
-    )
+    if placement is None:
+        drawing_bbox = _visible_extents(modelspace)
+        scale = min(
+            (drawing_bbox[2] - drawing_bbox[0]) / source_width,
+            (drawing_bbox[3] - drawing_bbox[1]) / source_height,
+        )
+    else:
+        drawing_bbox = (
+            float(placement["x"]),
+            float(placement["y"]),
+            float(placement["x"]) + float(placement["width"]),
+            float(placement["y"]) + float(placement["height"]),
+        )
+        scale = min(
+            float(placement["width"]) / source_width,
+            float(placement["height"]) / source_height,
+        )
 
     def map_point(point: Sequence[float]) -> tuple[float, float]:
         return (
@@ -273,11 +289,16 @@ def _coordinate_mapper(modelspace, view: Mapping[str, Any]):
     return map_point, scale, drawing_bbox
 
 
-def _inject_angular_dimensions(document, tasks: Sequence[Mapping[str, Any]], view: Mapping[str, Any]) -> None:
+def _inject_angular_dimensions(
+    document,
+    tasks: Sequence[Mapping[str, Any]],
+    view: Mapping[str, Any],
+    placement: Mapping[str, Any] | None = None,
+) -> None:
     if not tasks:
         return
     modelspace = document.modelspace()
-    map_point, scale, _drawing_bbox = _coordinate_mapper(modelspace, view)
+    map_point, scale, _drawing_bbox = _coordinate_mapper(modelspace, view, placement)
 
     for task in tasks:
         center = map_point(task["center"])
@@ -306,11 +327,16 @@ def _inject_angular_dimensions(document, tasks: Sequence[Mapping[str, Any]], vie
         dimension.render()
 
 
-def _inject_annular_dimensions(document, tasks: Sequence[Mapping[str, Any]], view: Mapping[str, Any]) -> None:
+def _inject_annular_dimensions(
+    document,
+    tasks: Sequence[Mapping[str, Any]],
+    view: Mapping[str, Any],
+    placement: Mapping[str, Any] | None = None,
+) -> None:
     if not tasks:
         return
     modelspace = document.modelspace()
-    map_point, _scale, drawing_bbox = _coordinate_mapper(modelspace, view)
+    map_point, _scale, drawing_bbox = _coordinate_mapper(modelspace, view, placement)
     render_annular_dimensions(
         document,
         tasks,
@@ -332,11 +358,12 @@ def _inject_specialized_dimensions(
     document,
     tasks: Sequence[Mapping[str, Any]],
     view: Mapping[str, Any],
+    placement: Mapping[str, Any] | None = None,
 ) -> None:
     if not tasks:
         return
     modelspace = document.modelspace()
-    map_point, _scale, drawing_bbox = _coordinate_mapper(modelspace, view)
+    map_point, _scale, drawing_bbox = _coordinate_mapper(modelspace, view, placement)
     span = max(drawing_bbox[2] - drawing_bbox[0], drawing_bbox[3] - drawing_bbox[1])
     diameter_tasks = []
     for task in tasks:
@@ -479,6 +506,119 @@ def _render_one(
         "annular_annotation_count": len(annular_tasks),
         "specialized_annotation_count": len(specialized_tasks),
         "files": {name: str(path.resolve()) for name, path in paths.items()},
+        **audit,
+    }
+
+
+def _rectangles_overlap(first: Mapping[str, Any], second: Mapping[str, Any]) -> bool:
+    return not (
+        float(first["x"]) + float(first["width"]) <= float(second["x"])
+        or float(second["x"]) + float(second["width"]) <= float(first["x"])
+        or float(first["y"]) + float(first["height"]) <= float(second["y"])
+        or float(second["y"]) + float(second["height"]) <= float(first["y"])
+    )
+
+
+def _select_multiview_paper(annotation_count: int) -> str:
+    # Three orthographic views always need at least A3. Dense dimension sets use
+    # A2 so fixed-size text and arrowheads retain clearance while geometry grows.
+    return "A2" if annotation_count >= 24 else "A3"
+
+
+def _render_combined_multiview(
+    engine: SmartAnnotationEngine,
+    output_dir: Path,
+    views: Mapping[str, Mapping[str, Any]],
+    rules: Sequence[dict[str, Any]],
+    title_info: Mapping[str, Any],
+    angular_tasks: Sequence[Mapping[str, Any]],
+    annular_tasks: Sequence[Mapping[str, Any]],
+    specialized_tasks: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    drawing_dir = output_dir / "multiview"
+    drawing_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "dxf": drawing_dir / "multiview.dxf",
+        "pdf": drawing_dir / "multiview.pdf",
+        "png": drawing_dir / "multiview.png",
+    }
+    annotation_count = len(rules) + len(angular_tasks) + len(annular_tasks) + len(specialized_tasks)
+    paper = _select_multiview_paper(annotation_count)
+    render_result = engine.render_custom_drawing(
+        dxf_path=str(paths["dxf"]),
+        pdf_path=str(paths["pdf"]),
+        png_path=str(paths["png"]),
+        feature_records=[copy.deepcopy(rule) for rule in rules],
+        view_data={name: _normalise_view(views[name]) for name in ORTHOGRAPHIC_VIEWS},
+        title_info=dict(title_info),
+        paper=paper,
+        adaptive_multiview=True,
+    )
+    layout = dict(render_result.get("layout") or {})
+    rectangles = dict(layout.get("view_rectangles") or {})
+    document = ezdxf.readfile(paths["dxf"])
+    for view_name in ORTHOGRAPHIC_VIEWS:
+        placement = rectangles.get(view_name)
+        if placement is None:
+            raise ValueError(f"Combined drawing layout is missing {view_name} placement")
+        view = views[view_name]
+        _inject_angular_dimensions(
+            document,
+            [task for task in angular_tasks if task.get("view") == view_name],
+            view,
+            placement,
+        )
+        _inject_annular_dimensions(
+            document,
+            [task for task in annular_tasks if task.get("view") == view_name],
+            view,
+            placement,
+        )
+        _inject_specialized_dimensions(
+            document,
+            [task for task in specialized_tasks if task.get("view") == view_name],
+            view,
+            placement,
+        )
+    document.saveas(paths["dxf"])
+    export_pdf(document, document.modelspace(), str(paths["pdf"]), dark_bg=True)
+    export_png(document, document.modelspace(), str(paths["png"]), dark_bg=True)
+
+    overlaps = [
+        [first_name, second_name]
+        for index, (first_name, first) in enumerate(rectangles.items())
+        for second_name, second in list(rectangles.items())[index + 1:]
+        if _rectangles_overlap(first, second)
+    ]
+    paper_area = max(float(layout.get("paper_width") or 0.0) * float(layout.get("paper_height") or 0.0), 1.0)
+    view_area = sum(float(item["width"]) * float(item["height"]) for item in rectangles.values())
+    layout.update({
+        "packing_strategy": layout.get("strategy") or "ADAPTIVE_MAX_FIT",
+        "strategy": "ADAPTIVE_MULTIVIEW_MAX_FIT_WITH_ANNOTATION_CLEARANCE",
+        "annotation_count": annotation_count,
+        "view_overlap_pairs": overlaps,
+        "overlap_free": not overlaps,
+        "view_fill_ratio": round(view_area / paper_area, 6),
+    })
+    audit = _audit_dxf(paths["dxf"])
+    expected_full_span_diameters = sum(
+        str(task.get("dim_type") or "").upper() == "DIAMETER" for task in annular_tasks
+    ) + sum(
+        str(task.get("renderer") or "").upper() == "DIAMETER_RENDERER"
+        for task in specialized_tasks
+    )
+    audit["expected_full_span_diameter_count"] = expected_full_span_diameters
+    audit["full_span_diameter_contract_passed"] = (
+        audit["full_span_diameter_count"] == expected_full_span_diameters
+        and audit["full_span_diameter_arrows_inward"]
+    )
+    return {
+        "view": "multiview",
+        "included_views": list(ORTHOGRAPHIC_VIEWS),
+        "selected_feature_ids": [str(rule.get("rule_id") or rule.get("id")) for rule in rules],
+        "selected_annotation_count": annotation_count,
+        "files": {name: str(path.resolve()) for name, path in paths.items()},
+        "layout": layout,
         **audit,
     }
 
@@ -750,6 +890,17 @@ def render_minimal_multiview_drawing(
             specialized_tasks=view_specialized_tasks,
         ))
 
+    combined_multiview = _render_combined_multiview(
+        engine,
+        output_dir,
+        standard_views,
+        accepted_rules,
+        {**title_base, "drawing_no": f"EXP-{step_path.stem}-MULTIVIEW"},
+        angular_tasks,
+        annular_tasks,
+        specialized_tasks,
+    )
+
     half_section = None
     if include_half_section:
         selected_section = build_prior_verified_section_candidate(shape, projector, half_section_selection)
@@ -782,7 +933,7 @@ def render_minimal_multiview_drawing(
         half_section["quality"] = selected_section["quality"]
         half_section["selection_source"] = selected_section.get("selection_source", "GEOMETRY_QUALITY")
 
-    all_drawings = drawings + ([half_section] if half_section else [])
+    all_drawings = drawings + [combined_multiview] + ([half_section] if half_section else [])
     placement_groups: dict[str, float] = {}
     for placement in radial_band_placement_trace:
         placement_groups.setdefault(
@@ -804,7 +955,7 @@ def render_minimal_multiview_drawing(
         or min(placement_separations) >= 45.0
     )
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "method": METHOD,
         "source_step": str(step_path.resolve()),
         "selection_authority": "EXPLICIT_ENGINEER_SELECTION",
@@ -829,6 +980,7 @@ def render_minimal_multiview_drawing(
             "arrowheads_face_inward": True,
         },
         "orthographic_drawings": drawings,
+        "combined_multiview_drawing": combined_multiview,
         "half_section_drawing": half_section,
         "success": (
             not rejected_rules
@@ -842,6 +994,7 @@ def render_minimal_multiview_drawing(
             == len(selections) + len(relational_selections) + len(pattern_angle_selections) + len(radial_band_angle_selections) + len(annular_selections) + len(rectangular_hole_selections) + len(shaft_dimension_selections) + len(thickness_selections)
             and all(item["audit_error_count"] == 0 for item in all_drawings)
             and all(item["full_span_diameter_contract_passed"] for item in all_drawings)
+            and bool(combined_multiview.get("layout", {}).get("overlap_free"))
         ),
         "production_integrated": False,
     }

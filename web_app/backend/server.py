@@ -2885,6 +2885,10 @@ def _run_annotation_job(job_id: str) -> None:
             relative_root = tuple(job["relative_output_parts"])
             result.update({
                 "primary_view": worker_result.get("primary_view"),
+                "multiview_layout": (
+                    (worker_result.get("combined_multiview_drawing") or {}).get("layout")
+                    or {}
+                ),
                 "report_url": _api_file_url(
                     job["model_id"], *relative_root, "minimal_multiview_report.json"
                 ),
@@ -3065,6 +3069,7 @@ def _submit_custom_annotation_drawing(
                 "product_family": body.get("product_family"),
                 "candidate_engine": candidate_engine,
                 "include_half_section": bool(body.get("include_half_section")),
+                "drawing_layout_schema": 2 if candidate_engine == "experimental_v026" else 1,
             },
             sort_keys=True,
             ensure_ascii=False,
@@ -3089,6 +3094,7 @@ def _submit_custom_annotation_drawing(
     if primary_view not in {"front", "top", "right", "left", "back"}:
         primary_view = "front"
     if candidate_engine == "experimental_v026":
+        primary_view = "multiview"
         output_files = {
             f"{extension}_url": _api_file_url(
                 model_id, *relative_parts, primary_view, f"{primary_view}.{extension}"
@@ -3192,6 +3198,30 @@ def _submit_custom_annotation_drawing(
                     "audit_url": audit_url,
                     "source_operation_id": source_operation_id,
                 }
+                if candidate_engine == "experimental_v026":
+                    cached_report_path = os.path.join(custom_out_dir, "minimal_multiview_report.json")
+                    cached_report = {}
+                    if os.path.isfile(cached_report_path):
+                        with open(cached_report_path, "r", encoding="utf-8") as report_file:
+                            cached_report = json.load(report_file)
+                    cached_result.update({
+                        "report_url": _api_file_url(
+                            model_id, *relative_parts, "minimal_multiview_report.json"
+                        ),
+                        "multiview_layout": (
+                            (cached_report.get("combined_multiview_drawing") or {}).get("layout")
+                            or {}
+                        ),
+                        "multiview_files": {
+                            view_name: {
+                                f"{extension}_url": _api_file_url(
+                                    model_id, *relative_parts, view_name, f"{view_name}.{extension}"
+                                )
+                                for extension in ("dxf", "pdf", "png")
+                            }
+                            for view_name in ("front", "top", "right")
+                        },
+                    })
                 cached_job["result"] = cached_result
                 _write_annotation_replay_snapshot(job_id, cached_job)
                 _persist_annotation_audit(job_id, cached_job)
