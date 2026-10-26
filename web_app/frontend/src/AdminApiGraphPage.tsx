@@ -11,6 +11,8 @@ import { LoginPage, apiErrorMessage, buttonStyle, fieldStyle, type AuthUser } fr
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 const NODE_WIDTH = 250;
 const NODE_HEIGHT = 48;
+const COLUMN_GAP = 440;
+const ROW_GAP = 58;
 
 type SourceRef = { file: string; line: number; symbol: string };
 type ApiRoute = { id: string; method: string; path: string; handler: string; source: SourceRef };
@@ -244,7 +246,7 @@ export default function AdminApiGraphPage() {
       const group = visible.nodes.filter(node => node.kind === kind).sort((a, b) => a.label.localeCompare(b.label));
       maximumRows = Math.max(maximumRows, group.length);
       group.forEach((node, row) => {
-        next[node.id] = { x: 46 + column * 350, y: 76 + row * 72 };
+        next[node.id] = { x: 52 + column * COLUMN_GAP, y: 76 + row * ROW_GAP };
       });
     });
     setPositions(current => {
@@ -253,8 +255,8 @@ export default function AdminApiGraphPage() {
     });
     const rect = canvasRef.current?.getBoundingClientRect();
     if (rect) {
-      const worldWidth = 60 + columns.length * 350;
-      const worldHeight = 112 + maximumRows * 72;
+      const worldWidth = 80 + columns.length * COLUMN_GAP;
+      const worldHeight = 112 + maximumRows * ROW_GAP;
       const scale = Math.max(0.08, Math.min(1, (rect.width - 32) / worldWidth, (rect.height - 32) / worldHeight));
       setViewport({ x: 16, y: 16, scale });
     }
@@ -274,6 +276,7 @@ export default function AdminApiGraphPage() {
   };
 
   const startPan = (event: ReactPointerEvent<SVGSVGElement>) => {
+    event.preventDefault();
     interaction.current = {
       type: 'pan', startX: event.clientX, startY: event.clientY,
       originX: viewport.x, originY: viewport.y,
@@ -282,6 +285,7 @@ export default function AdminApiGraphPage() {
   };
 
   const startNodeDrag = (event: ReactPointerEvent<SVGGElement>, id: string) => {
+    event.preventDefault();
     event.stopPropagation();
     const point = toWorld(event.clientX, event.clientY);
     const current = positions[id] || { x: 0, y: 0 };
@@ -397,7 +401,7 @@ export default function AdminApiGraphPage() {
           onPointerUp={() => { interaction.current = null; }}
           onPointerCancel={() => { interaction.current = null; }}
           onWheel={zoom}
-          style={{ display: 'block', background: '#0a0a0a', cursor: interaction.current?.type === 'pan' ? 'grabbing' : 'grab', touchAction: 'none' }}
+          style={{ display: 'block', background: '#0a0a0a', cursor: interaction.current?.type === 'pan' ? 'grabbing' : 'grab', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
         >
           <defs>
             <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="#1f1f1f" strokeWidth="1" /></pattern>
@@ -406,8 +410,8 @@ export default function AdminApiGraphPage() {
           <rect width="100%" height="100%" fill="url(#grid)" />
           <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
             {(['frontend', 'api', 'backend', 'worker'] as GraphNode['kind'][]).map((kind, column) => <g key={`lane-${kind}`}>
-              <rect x={24 + column * 350} y="20" width="294" height={Math.max(180, 120 + Math.max(1, visible.nodes.filter(node => node.kind === kind).length) * 72)} rx="8" fill="#111" stroke="#292929" />
-              <text x={46 + column * 350} y="50" fill={kindConfig[kind].text} fontSize="13" fontWeight="700">{kindConfig[kind].label}</text>
+              <rect x={24 + column * COLUMN_GAP} y="20" width="320" height={Math.max(170, 108 + Math.max(1, visible.nodes.filter(node => node.kind === kind).length) * ROW_GAP)} rx="8" fill="#111" stroke="#292929" />
+              <text x={52 + column * COLUMN_GAP} y="50" fill={kindConfig[kind].text} fontSize="13" fontWeight="700" style={{ pointerEvents: 'none', userSelect: 'none' }}>{kindConfig[kind].label}</text>
             </g>)}
             {visible.edges.map((edge, index) => {
               const from = positions[edge.from];
@@ -430,8 +434,8 @@ export default function AdminApiGraphPage() {
               const active = selectedId === node.id;
               return <g key={node.id} transform={`translate(${point.x} ${point.y})`} onPointerDown={event => startNodeDrag(event, node.id)} style={{ cursor: 'move' }}>
                 <rect width={NODE_WIDTH} height={NODE_HEIGHT} rx="5" fill={style.fill} stroke={active ? '#f5f5f5' : style.stroke} strokeWidth={active ? 2.5 : 1.3} />
-                <text x="10" y="20" fill={style.text} fontSize="12" fontWeight="700">{truncate(node.label)}</text>
-                <text x="10" y="37" fill="#a3a3a3" fontSize="10">{truncate(node.detail, 42)}</text>
+                <text x="10" y="20" fill={style.text} fontSize="12" fontWeight="700" style={{ pointerEvents: 'none', userSelect: 'none' }}>{truncate(node.label)}</text>
+                <text x="10" y="37" fill="#a3a3a3" fontSize="10" style={{ pointerEvents: 'none', userSelect: 'none' }}>{truncate(node.detail, 42)}</text>
               </g>;
             })}
           </g>

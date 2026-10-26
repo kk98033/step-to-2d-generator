@@ -2142,7 +2142,7 @@
       "raw_url": "${API_BASE}/api/admin/system-api-graph",
       "source": {
         "file": "web_app/frontend/src/AdminApiGraphPage.tsx",
-        "line": 130,
+        "line": 132,
         "symbol": "loadGraph"
       }
     },
@@ -2153,7 +2153,7 @@
       "raw_url": "${API_BASE}/api/auth/me",
       "source": {
         "file": "web_app/frontend/src/AdminApiGraphPage.tsx",
-        "line": 141,
+        "line": 143,
         "symbol": "loadGraph"
       }
     },
