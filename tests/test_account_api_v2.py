@@ -83,8 +83,66 @@ def test_admin_account_creation_password_visibility_and_reset_policy():
     changed = authenticated.put("/api/auth/password", json={
         "current_password": reset.json()["initial_password"],
         "new_password": "Engineer-Changed-Password-2026!",
+        "confirm_password": "Engineer-Changed-Password-2026!",
     })
     assert changed.status_code == 200
+
+    second_login = authenticated.post("/api/auth/login", json={
+        "email_local": "api.engineer",
+        "email_domain": "forcecon-group.com",
+        "password": "Engineer-Changed-Password-2026!",
+    })
+    assert second_login.status_code == 200
+    blocked_change = authenticated.put("/api/auth/password", json={
+        "current_password": "Engineer-Changed-Password-2026!",
+        "new_password": "Engineer-Second-Password-2026!",
+        "confirm_password": "Engineer-Second-Password-2026!",
+    })
+    assert blocked_change.status_code == 403
+
+
+def test_admin_manages_company_domains_and_import_templates():
+    authenticated = admin_client()
+    created = authenticated.post("/api/admin/company-email-domains", json={
+        "domain": "forcecon-lab.com",
+    })
+    assert created.status_code == 201
+    assert "forcecon-lab.com" in authenticated.get("/api/auth/config").json()["company_email_domains"]
+
+    renamed = authenticated.put("/api/admin/company-email-domains/forcecon-lab.com", json={
+        "domain": "forcecon-cad.com",
+    })
+    assert renamed.status_code == 200
+    deleted = authenticated.delete("/api/admin/company-email-domains/forcecon-cad.com")
+    assert deleted.status_code == 200
+
+    csv_template = authenticated.get("/api/admin/users/import-template?format=csv")
+    assert csv_template.status_code == 200
+    assert "text/csv" in csv_template.headers["content-type"]
+    assert b"email,display_name,role" in csv_template.content
+    xlsx_template = authenticated.get("/api/admin/users/import-template?format=xlsx")
+    assert xlsx_template.status_code == 200
+    assert xlsx_template.content.startswith(b"PK")
+
+
+def test_admin_updates_cad_concurrency_limits():
+    authenticated = admin_client()
+    initial = authenticated.get("/api/admin/settings/cad-concurrency")
+    assert initial.status_code == 200
+    hard_limit = initial.json()["hard_limit"]
+    selected = min(2, hard_limit)
+    updated = authenticated.put("/api/admin/settings/cad-concurrency", json={
+        "analysis_max_concurrency": selected,
+        "annotation_max_concurrency": selected,
+    })
+    assert updated.status_code == 200
+    assert updated.json()["analysis_max_concurrency"] == selected
+    assert updated.json()["annotation_max_concurrency"] == selected
+    rejected = authenticated.put("/api/admin/settings/cad-concurrency", json={
+        "analysis_max_concurrency": hard_limit + 1,
+        "annotation_max_concurrency": 1,
+    })
+    assert rejected.status_code in {400, 422}
 
 
 def test_excel_bulk_import_and_email_delivery_contract():
@@ -118,3 +176,44 @@ def test_excel_bulk_import_and_email_delivery_contract():
         json={"status": "SENT", "provider_message_id": "mail-001"},
     )
     assert acknowledged.status_code == 200
+
+
+def test_bulk_import_skips_unknown_domains_then_admin_resolves_each_domain():
+    authenticated = admin_client()
+    csv_content = "\n".join([
+        "email,display_name,role",
+        "partial.valid@forcecon.com.tw,Partial Valid,ENGINEER",
+        "partial.typo@forcecon.con.tw,Partial Typo,ENGINEER",
+        "partial.partner@partner-forcecon.com,Partial Partner,ENGINEER",
+        "missing.name@forcecon.com.tw,,ENGINEER",
+    ])
+    imported = authenticated.post(
+        "/api/admin/users/import",
+        files={"file": ("accounts.csv", csv_content.encode("utf-8"), "text/csv")},
+    )
+    assert imported.status_code == 201
+    result = imported.json()
+    assert result["status"] == "review_required"
+    assert result["created_count"] == 1
+    assert len(result["unresolved_domain_rows"]) == 2
+    assert len(result["rejected_rows"]) == 1
+
+    resolved = authenticated.post(
+        "/api/admin/users/import/resolve-domains",
+        json={
+            "rows": result["unresolved_domain_rows"],
+            "resolutions": {
+                "forcecon.con.tw": "forcecon.com.tw",
+                "partner-forcecon.com": "__add__",
+            },
+        },
+    )
+    assert resolved.status_code == 201
+    resolved_result = resolved.json()
+    assert resolved_result["created_count"] == 2
+    assert resolved_result["rejected_rows"] == []
+    assert resolved_result["domains_added"] == ["partner-forcecon.com"]
+    assert {item["email"] for item in resolved_result["users"]} == {
+        "partial.typo@forcecon.com.tw",
+        "partial.partner@partner-forcecon.com",
+    }

@@ -115,7 +115,7 @@ export function AccountDialog({ user, onClose, onLogout }: { user: AuthUser; onC
   const [trash, setTrash] = useState<any[]>([]);
   const [retentionDays, setRetentionDays] = useState(30);
   const [message, setMessage] = useState('');
-  const [passwords, setPasswords] = useState({ current_password: '', new_password: '' });
+  const [passwords, setPasswords] = useState({ current_password: '', new_password: '', confirm_password: '' });
 
   const load = async () => {
     const [preferenceResponse, artifactResponse, caseResponse, trashResponse] = await Promise.all([
@@ -160,6 +160,10 @@ export function AccountDialog({ user, onClose, onLogout }: { user: AuthUser; onC
     setMessage('資料已復原');
   };
   const changePassword = async () => {
+    if (passwords.new_password !== passwords.confirm_password) {
+      setMessage('兩次輸入的新密碼不一致');
+      return;
+    }
     try {
       await axios.put(`${API_BASE}/api/auth/password`, passwords);
       onLogout();
@@ -171,7 +175,9 @@ export function AccountDialog({ user, onClose, onLogout }: { user: AuthUser; onC
     { id: 'cases', label: '個人公差案例', icon: History },
     { id: 'artifacts', label: '標註成品', icon: FileBox },
     { id: 'trash', label: '回收桶', icon: ArchiveRestore },
-    { id: 'security', label: '登入安全', icon: ShieldCheck },
+    ...(user.role === 'ADMIN' || requiresPasswordChange
+      ? [{ id: 'security', label: '登入安全', icon: ShieldCheck }]
+      : []),
   ];
 
   return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.72)', zIndex: 5000, display: 'grid', placeItems: 'center', padding: 20 }}>
@@ -198,7 +204,7 @@ export function AccountDialog({ user, onClose, onLogout }: { user: AuthUser; onC
         {tab === 'cases' && <ListSection title="個人公差案例" empty="目前沒有個人案例">{personalCases.map(item => <RecordRow key={item.id} title={item.inferred_role || item.feature_type} detail={`${item.model_id} / ${item.part_id} / ${item.rule_id}`} tags={item.tag_ids} onDelete={() => deleteCase(item.id)} />)}</ListSection>}
         {tab === 'artifacts' && <ListSection title="標註成品" empty="目前沒有標註成品">{artifacts.map(item => <RecordRow key={item.id} title={item.title} detail={`${item.model_id} / ${item.part_id} · ${new Date(item.created_at).toLocaleString()}`} tags={item.tag_ids} links={item.output_files} onDelete={() => deleteArtifact(item.id)} />)}</ListSection>}
         {tab === 'trash' && <section><h2 style={{ marginTop: 0 }}>回收桶</h2><p style={{ color: '#999' }}>刪除資料保留 {retentionDays} 天。期限內可自行復原，永久刪除由管理員處理。</p>{trash.length === 0 && <Empty text="回收桶目前是空的" />}{trash.map(item => <div key={item.id} style={rowStyle}><div><strong>{item.record_type === 'ANNOTATION_ARTIFACT' ? '標註成品' : '公差案例'}</strong><div style={{ color: '#888', fontSize: 12, marginTop: 6 }}>刪除：{new Date(item.deleted_at).toLocaleString()} · 清除：{new Date(item.purge_after).toLocaleString()}</div></div><button onClick={() => restore(item.id)} style={buttonStyle}><ArchiveRestore size={15} />復原</button></div>)}</section>}
-        {tab === 'security' && <section><h2 style={{ marginTop: 0 }}>登入安全</h2>{requiresPasswordChange && <div style={{ padding: 12, background: '#422006', color: '#fde68a', border: '1px solid #92400e', marginBottom: 18 }}>此帳號使用初始或重設密碼，必須先修改密碼。</div>}<p style={{ color: '#999' }}>若忘記現有密碼，請由管理員在帳號管理頁重設。</p><label style={{ display: 'block', margin: '12px 0 7px', color: '#aaa' }}>目前密碼</label><input type="password" style={fieldStyle} value={passwords.current_password} onChange={event => setPasswords({ ...passwords, current_password: event.target.value })} /><label style={{ display: 'block', margin: '16px 0 7px', color: '#aaa' }}>新密碼（至少 10 字元）</label><input type="password" style={fieldStyle} value={passwords.new_password} onChange={event => setPasswords({ ...passwords, new_password: event.target.value })} /><button onClick={changePassword} style={{ ...buttonStyle, marginTop: 18 }}><KeyRound size={16} />修改密碼並重新登入</button></section>}
+        {tab === 'security' && <section><h2 style={{ marginTop: 0 }}>登入安全</h2>{requiresPasswordChange && <div style={{ padding: 12, background: '#422006', color: '#fde68a', border: '1px solid #92400e', marginBottom: 18 }}>此帳號使用初始或重設密碼，必須先修改密碼。</div>}<p style={{ color: '#999' }}>{user.role === 'ADMIN' ? '管理員可在此修改自己的密碼。' : '完成首次改密碼後，後續密碼變更需由管理員重設。'}</p><label style={{ display: 'block', margin: '12px 0 7px', color: '#aaa' }}>目前密碼</label><input type="password" autoComplete="current-password" style={fieldStyle} value={passwords.current_password} onChange={event => setPasswords({ ...passwords, current_password: event.target.value })} /><label style={{ display: 'block', margin: '16px 0 7px', color: '#aaa' }}>新密碼（至少 10 字元）</label><input type="password" autoComplete="new-password" style={fieldStyle} value={passwords.new_password} onChange={event => setPasswords({ ...passwords, new_password: event.target.value })} /><label style={{ display: 'block', margin: '16px 0 7px', color: '#aaa' }}>再次輸入新密碼</label><input type="password" autoComplete="new-password" style={fieldStyle} value={passwords.confirm_password} onChange={event => setPasswords({ ...passwords, confirm_password: event.target.value })} /><button onClick={changePassword} disabled={!passwords.current_password || passwords.new_password.length < 10 || passwords.new_password !== passwords.confirm_password} style={{ ...buttonStyle, marginTop: 18, opacity: (!passwords.current_password || passwords.new_password.length < 10 || passwords.new_password !== passwords.confirm_password) ? .5 : 1 }}><KeyRound size={16} />修改密碼並重新登入</button></section>}
       </main>
     </div>
   </div>;

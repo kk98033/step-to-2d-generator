@@ -4,7 +4,13 @@ from pathlib import Path
 import ezdxf
 
 from auto_2d_drawing.tolerance.audit_visual_assets import _feature_box
-from web_app.backend.account_api import is_admin_only_path, require_admin
+from web_app.backend.account_api import (
+    admin_system_api_graph,
+    is_admin_only_path,
+    require_admin,
+    router as account_router,
+)
+from web_app.backend.identity_store import CurrentUser
 from web_app.backend.server import (
     _add_uncertainty_overlay,
     _modelspace_render_box,
@@ -30,7 +36,7 @@ class ToleranceAuditVisualTests(unittest.TestCase):
         self.assertFalse(is_admin_only_path("/api/tolerance/recommend"))
         self.assertFalse(is_admin_only_path("/api/tolerance/drawing-pdf/example"))
 
-        for path in ("/tolerance-audit-v2.html", "/tolerance-inspector.html"):
+        for path in ("/tolerance-audit-v2.html", "/tolerance-inspector.html", "/admin/api-graph"):
             route = next(route for route in server_app.routes if getattr(route, "path", None) == path)
             dependency_calls = [item.call for item in route.dependant.dependencies]
             self.assertIn(require_admin, dependency_calls)
@@ -45,6 +51,18 @@ class ToleranceAuditVisualTests(unittest.TestCase):
             }
         })
         self.assertEqual(result, ([2.0, 3.0, 4.0], [10.0, 12.0, 10.0]))
+
+    def test_live_api_graph_endpoint_is_admin_only(self):
+        route = next(item for item in account_router.routes if item.path == "/api/admin/system-api-graph")
+        self.assertIn(require_admin, [dependency.call for dependency in route.dependant.dependencies])
+        admin = CurrentUser(
+            id="admin", username="admin", display_name="Administrator",
+            email="admin@forcecon.com.tw", role="ADMIN", is_active=True,
+            must_change_password=False,
+        )
+        payload = admin_system_api_graph(admin)
+        self.assertEqual(payload["status"], "ok")
+        self.assertGreaterEqual(payload["graph"]["summary"]["backend_routes"], 90)
 
     def test_audit_page_uses_lazy_images_instead_of_pdf_iframe(self):
         page = (

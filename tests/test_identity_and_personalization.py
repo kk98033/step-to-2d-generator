@@ -34,6 +34,10 @@ class IdentityAndPersonalizationTests(unittest.TestCase):
         self.store.claim_model("model-a_batch", self.engineer.id, "model-a.step")
         self.assertTrue(self.store.can_access_model(self.engineer, "model-a_batch"))
         self.assertTrue(self.store.can_access_model(self.admin, "model-a_batch"))
+        registration = self.store.model_registration("model-a_batch")
+        self.assertEqual(registration["owner_user_id"], self.engineer.id)
+        self.assertEqual(registration["source_filename"], "model-a.step")
+        self.assertIsNone(self.store.model_registration("missing-model"))
 
         other = self.store.create_user({
             "username": "engineer-b",
@@ -94,6 +98,18 @@ class IdentityAndPersonalizationTests(unittest.TestCase):
         self.assertEqual(reset["recommendation_mode"], "BALANCED")
         self.assertEqual(reset["personal_case_weight"], 0.35)
         self.assertEqual(reset["dimension_placement"], {})
+
+    def test_admin_can_persist_cad_concurrency_limits(self):
+        defaults = self.store.cad_concurrency_limits()
+        self.assertGreaterEqual(defaults["hard_limit"], 1)
+        analysis_limit = min(2, defaults["hard_limit"])
+        annotation_limit = min(3, defaults["hard_limit"])
+        configured = self.store.set_cad_concurrency_limits(analysis_limit, annotation_limit, self.admin.id)
+        self.assertEqual(configured["analysis_max_concurrency"], analysis_limit)
+        self.assertEqual(configured["annotation_max_concurrency"], annotation_limit)
+        self.assertEqual(self.store.cad_concurrency_limits(), configured)
+        with self.assertRaises(ValueError):
+            self.store.set_cad_concurrency_limits(configured["hard_limit"] + 1, 1, self.admin.id)
 
     def test_deleted_artifact_and_cases_can_be_restored_from_trash(self):
         result = self.store.record_artifact_and_cases(
@@ -210,6 +226,26 @@ class IdentityAndPersonalizationTests(unittest.TestCase):
         self.assertEqual(reset_visible["initial_password"], reset_password)
         notifications = self.store.pending_credential_notifications()
         self.assertTrue(any(item["user_id"] == user.id for item in notifications))
+
+    def test_company_email_domains_can_be_added_renamed_and_deleted(self):
+        self.assertEqual(self.store.list_company_email_domains(), ["forcecon.com.tw"])
+        self.store.create_company_email_domain("lab.forcecon.com", self.admin.id)
+        created = self.store.create_user({
+            "email": "cad.user@lab.forcecon.com",
+            "display_name": "CAD User",
+            "role": "ENGINEER",
+            "password": "CAD-User-Password-2026!",
+        }, self.admin.id)
+        self.store.update_company_email_domain(
+            "lab.forcecon.com", "cad.forcecon.com", self.admin.id
+        )
+        renamed = next(item for item in self.store.list_users() if item["id"] == created["id"])
+        self.assertEqual(renamed["email"], "cad.user@cad.forcecon.com")
+        with self.assertRaises(ValueError):
+            self.store.delete_company_email_domain("cad.forcecon.com", self.admin.id)
+        self.store.update_user(created["id"], {"email": "cad.user@forcecon.com.tw"}, self.admin.id)
+        self.store.delete_company_email_domain("cad.forcecon.com", self.admin.id)
+        self.assertEqual(self.store.list_company_email_domains(), ["forcecon.com.tw"])
 
     def test_bulk_accounts_reject_non_company_domains(self):
         with self.assertRaises(ValueError):

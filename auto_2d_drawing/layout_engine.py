@@ -54,7 +54,8 @@ class LayoutEngine:
             return
 
         bbox = vd['bbox'] if vd else (0, 0, sw, sh)
-        scale = self.layout.scale
+        view_name = tasks[0].view_name if tasks else "front"
+        scale = self.layout.get_view_scale(view_name)
 
         # 按 side 或 dim_type 分組
         bottom_tasks = [t for t in tasks if t.side == "BOTTOM" and t.dim_type == "LINEAR"]

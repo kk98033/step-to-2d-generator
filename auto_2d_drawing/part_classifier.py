@@ -6,6 +6,26 @@
 """
 
 
+def normalize_part_semantic_type(part_type, part_hint=None):
+    """Normalize classifier and UI aliases to one canonical part taxonomy."""
+    raw = str(part_type or "").upper()
+    hint = str(part_hint or "").upper()
+    combined = f"{raw} {hint}"
+    if any(token in combined for token in ("FAN_IMPELLER", "IMPELLER", "BLADE", "FAN BLADE")):
+        return "FAN_IMPELLER"
+    if raw == "FAN":
+        return "FAN_IMPELLER"
+    if any(token in combined for token in ("FAN_HOUSING", "HOUSING", "SHROUD", "FRAME")):
+        return "FAN_HOUSING"
+    if any(token in combined for token in ("STAMPED_FAN_BASE", "STAMPED", "DISH")):
+        return "STAMPED_FAN_BASE"
+    if any(token in combined for token in ("MOTOR_RING", "RING", "SLEEVE", "BUSHING")):
+        return "MOTOR_RING"
+    if "SHAFT" in combined:
+        return "SHAFT"
+    return raw or "GENERAL_MECHANICAL"
+
+
 class PartClassifier:
     """零件類型分類器"""
 
@@ -51,6 +71,10 @@ class PartClassifier:
 
         # 規則 3: 通用
         return "GENERIC"
+
+    @staticmethod
+    def normalize_semantic_type(part_type, part_hint=None):
+        return normalize_part_semantic_type(part_type, part_hint)
 
     def _name_says_stamped_fan_base(self, part_hint):
         if not part_hint:

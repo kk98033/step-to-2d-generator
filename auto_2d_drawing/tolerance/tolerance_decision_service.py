@@ -125,6 +125,35 @@ class ToleranceDecisionService:
             nom_val = float(rule.get("nominal_value", 0.0))
             is_dia = (dim_type == "DIAMETER")
 
+            # Relationship annotations can be highlighted and drawn, but must
+            # not silently inherit one arbitrary member feature's tolerance.
+            # Legacy rules omit this field and keep their existing behavior.
+            if rule.get("tolerance_eligible") is False:
+                block_reason = str(
+                    rule.get("tolerance_block_reason")
+                    or "NO_CONFIDENT_CANONICAL_FEATURE_MATCH"
+                )
+                recommendations[rule_id] = ToleranceRecommendation(
+                    rule_id=rule_id,
+                    feature_type=str(rule.get("candidate_kind") or cat or "relationship"),
+                    inferred_role=str(rule.get("measurement_role") or "RELATIONSHIP"),
+                    nominal_value=nom_val,
+                    recommended_mode="NONE",
+                    confidence=0.0,
+                    tier_level="NOT_APPLICABLE",
+                    retrieval_trace={
+                        "decision_source": "FEATURE_BRIDGE_GUARD",
+                        "block_reason": block_reason,
+                    },
+                    reasoning_description=(
+                        "No tolerance was generated because this drawing intent "
+                        "is not linked to one auditable FRG feature node."
+                    ),
+                    decision_status="NOT_APPLICABLE",
+                    confidence_basis="EXPLICIT_FEATURE_BRIDGE_GUARD",
+                ).to_dict()
+                continue
+
             # 在 FRG 中尋找對應之特徵節點
             matched_node = self._match_rule_to_node(rule, graph)
 

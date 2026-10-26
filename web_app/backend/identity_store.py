@@ -59,9 +59,17 @@ def company_email_domains() -> List[str]:
     return domains or ["forcecon.com.tw"]
 
 
-def canonical_company_email(identifier: str, domain: Optional[str] = None) -> str:
+def canonical_company_email(
+    identifier: str,
+    domain: Optional[str] = None,
+    allowed_domains: Optional[Iterable[str]] = None,
+) -> str:
     value = str(identifier or "").strip().lower()
-    allowed = company_email_domains()
+    allowed = [str(item).strip().lower().lstrip("@") for item in (
+        allowed_domains if allowed_domains is not None else company_email_domains()
+    ) if str(item).strip()]
+    if not allowed:
+        raise ValueError("At least one company email domain is required")
     if "@" in value:
         local, selected_domain = value.rsplit("@", 1)
     else:
@@ -317,6 +325,16 @@ system_settings = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
+company_email_domain_records = Table(
+    "company_email_domains",
+    metadata,
+    Column("domain", String(120), primary_key=True),
+    Column("sort_order", Integer, nullable=False, default=0),
+    Column("created_by_user_id", String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
 recommendation_tags = Table(
     "recommendation_tags",
     metadata,
@@ -402,6 +420,7 @@ class IdentityStore:
             ).digest()
             self._credential_cipher = Fernet(urlsafe_b64encode(derived))
         metadata.create_all(self.engine)
+        self._bootstrap_company_email_domains()
         self._bootstrap_admin()
         self._migrate_email_identities()
         self._bootstrap_recommendation_tags()
@@ -410,6 +429,119 @@ class IdentityStore:
     def close(self) -> None:
         """Release pooled database connections (primarily used by tests/tools)."""
         self.engine.dispose()
+
+    @staticmethod
+    def _normalize_domain(domain: str) -> str:
+        normalized = str(domain or "").strip().lower().lstrip("@")
+        if (
+            len(normalized) > 120
+            or not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+", normalized)
+        ):
+            raise ValueError("A valid company email domain is required")
+        return normalized
+
+    def _bootstrap_company_email_domains(self) -> None:
+        with self.engine.begin() as conn:
+            if conn.execute(select(company_email_domain_records.c.domain).limit(1)).first():
+                return
+            now = _utcnow()
+            for index, domain in enumerate(company_email_domains()):
+                conn.execute(insert(company_email_domain_records).values(
+                    domain=self._normalize_domain(domain),
+                    sort_order=index,
+                    created_by_user_id=None,
+                    created_at=now,
+                    updated_at=now,
+                ))
+
+    def list_company_email_domains(self) -> List[str]:
+        with self.engine.connect() as conn:
+            return list(conn.execute(
+                select(company_email_domain_records.c.domain).order_by(
+                    company_email_domain_records.c.sort_order,
+                    company_email_domain_records.c.domain,
+                )
+            ).scalars().all())
+
+    def canonical_company_email(self, identifier: str, domain: Optional[str] = None) -> str:
+        return canonical_company_email(identifier, domain, self.list_company_email_domains())
+
+    def create_company_email_domain(self, domain: str, actor_user_id: str) -> str:
+        normalized = self._normalize_domain(domain)
+        now = _utcnow()
+        with self.engine.begin() as conn:
+            if conn.execute(select(company_email_domain_records.c.domain).where(
+                company_email_domain_records.c.domain == normalized
+            )).first():
+                raise ValueError("Company email domain already exists")
+            next_order = len(conn.execute(select(company_email_domain_records.c.domain)).scalars().all())
+            conn.execute(insert(company_email_domain_records).values(
+                domain=normalized,
+                sort_order=next_order,
+                created_by_user_id=actor_user_id,
+                created_at=now,
+                updated_at=now,
+            ))
+            self._audit_conn(conn, actor_user_id, "COMPANY_EMAIL_DOMAIN_CREATED", "EMAIL_DOMAIN", normalized, {})
+        return normalized
+
+    def update_company_email_domain(self, current_domain: str, new_domain: str, actor_user_id: str) -> str:
+        current = self._normalize_domain(current_domain)
+        replacement = self._normalize_domain(new_domain)
+        if current == replacement:
+            return current
+        now = _utcnow()
+        with self.engine.begin() as conn:
+            if not conn.execute(select(company_email_domain_records.c.domain).where(
+                company_email_domain_records.c.domain == current
+            )).first():
+                raise KeyError("Company email domain not found")
+            if conn.execute(select(company_email_domain_records.c.domain).where(
+                company_email_domain_records.c.domain == replacement
+            )).first():
+                raise ValueError("Company email domain already exists")
+
+            affected_users = conn.execute(select(users).where(users.c.email.like(f"%@{current}"))).all()
+            replacement_emails = [
+                f"{row._mapping['email'].rsplit('@', 1)[0]}@{replacement}" for row in affected_users
+            ]
+            if replacement_emails:
+                conflicts = conn.execute(select(users.c.email).where(and_(
+                    users.c.email.in_(replacement_emails),
+                    ~users.c.id.in_([row._mapping["id"] for row in affected_users]),
+                ))).scalars().all()
+                if conflicts:
+                    raise ValueError("Domain rename would create duplicate user emails")
+            for row, email in zip(affected_users, replacement_emails):
+                conn.execute(update(users).where(users.c.id == row._mapping["id"]).values(
+                    email=email, username=email, updated_at=now,
+                ))
+                conn.execute(update(credential_notifications).where(
+                    credential_notifications.c.user_id == row._mapping["id"]
+                ).values(recipient_email=email, updated_at=now))
+
+            conn.execute(update(company_email_domain_records).where(
+                company_email_domain_records.c.domain == current
+            ).values(domain=replacement, updated_at=now))
+            self._audit_conn(conn, actor_user_id, "COMPANY_EMAIL_DOMAIN_UPDATED", "EMAIL_DOMAIN", current, {
+                "new_domain": replacement, "updated_user_count": len(affected_users),
+            })
+        return replacement
+
+    def delete_company_email_domain(self, domain: str, actor_user_id: str) -> None:
+        normalized = self._normalize_domain(domain)
+        with self.engine.begin() as conn:
+            domain_count = conn.execute(select(company_email_domain_records.c.domain)).scalars().all()
+            if normalized not in domain_count:
+                raise KeyError("Company email domain not found")
+            if len(domain_count) <= 1:
+                raise ValueError("At least one company email domain must remain")
+            if conn.execute(select(users.c.id).where(users.c.email.like(f"%@{normalized}")).limit(1)).first():
+                raise ValueError("Company email domain is still used by an account")
+            conn.execute(delete(company_email_domain_records).where(
+                company_email_domain_records.c.domain == normalized
+            ))
+            self._audit_conn(conn, actor_user_id, "COMPANY_EMAIL_DOMAIN_DELETED", "EMAIL_DOMAIN", normalized, {})
 
     @staticmethod
     def _row_user(row: Any) -> CurrentUser:
@@ -425,7 +557,7 @@ class IdentityStore:
         )
 
     def _bootstrap_admin(self) -> None:
-        username = canonical_company_email(
+        username = self.canonical_company_email(
             os.environ.get("CAD_ADMIN_EMAIL") or os.environ.get("CAD_ADMIN_USERNAME", "admin")
         )
         password = os.environ.get("CAD_ADMIN_PASSWORD", "ForceconAdmin!2026")
@@ -452,7 +584,8 @@ class IdentityStore:
 
     def _migrate_email_identities(self) -> None:
         """Backfill legacy username accounts into the company-email identity model."""
-        primary_domain = company_email_domains()[0]
+        allowed_domains = self.list_company_email_domains()
+        primary_domain = allowed_domains[0]
         with self.engine.begin() as conn:
             rows = conn.execute(select(users)).all()
             occupied = {str(row._mapping.get("email") or "").lower() for row in rows}
@@ -461,14 +594,16 @@ class IdentityStore:
                 current_email = str(mapping.get("email") or "").strip().lower()
                 local = str(mapping.get("username") or "user").split("@", 1)[0].strip().lower()
                 try:
-                    canonical = canonical_company_email(current_email or local)
+                    canonical = canonical_company_email(current_email or local, allowed_domains=allowed_domains)
                 except ValueError:
                     safe_local = re.sub(r"[^a-z0-9._+\-]", "-", local).strip(".-")
                     safe_local = safe_local or f"user-{mapping['id'][:8]}"
-                    canonical = canonical_company_email(safe_local[:64], primary_domain)
+                    canonical = canonical_company_email(safe_local[:64], primary_domain, allowed_domains)
                 if canonical in occupied and canonical != current_email:
                     canonical_local = canonical.split("@", 1)[0]
-                    canonical = canonical_company_email(f"{canonical_local[:56]}-{mapping['id'][:6]}", primary_domain)
+                    canonical = canonical_company_email(
+                        f"{canonical_local[:56]}-{mapping['id'][:6]}", primary_domain, allowed_domains
+                    )
                 occupied.add(canonical)
                 if current_email != canonical or mapping["username"] != canonical:
                     conn.execute(update(users).where(users.c.id == mapping["id"]).values(
@@ -519,7 +654,7 @@ class IdentityStore:
 
     def authenticate(self, username: str, password: str, domain: Optional[str] = None) -> Optional[CurrentUser]:
         try:
-            normalized = canonical_company_email(username, domain)
+            normalized = self.canonical_company_email(username, domain)
         except ValueError:
             return None
         with self.engine.begin() as conn:
@@ -665,7 +800,7 @@ class IdentityStore:
 
     def create_user(self, payload: Dict[str, Any], actor_user_id: str) -> Dict[str, Any]:
         email_input = str(payload.get("email") or payload.get("username") or "").strip()
-        email = canonical_company_email(email_input, payload.get("email_domain"))
+        email = self.canonical_company_email(email_input, payload.get("email_domain"))
         username = email
         role = str(payload.get("role") or "ENGINEER").upper()
         if role not in {"ADMIN", "ENGINEER"}:
@@ -704,7 +839,7 @@ class IdentityStore:
         prepared: List[Dict[str, Any]] = []
         seen: set[str] = set()
         for index, row in enumerate(rows, start=2):
-            email = canonical_company_email(
+            email = self.canonical_company_email(
                 str(row.get("email") or row.get("account") or ""), row.get("email_domain")
             )
             if email in seen:
@@ -782,7 +917,7 @@ class IdentityStore:
         if "display_name" in payload:
             allowed["display_name"] = str(payload["display_name"]).strip()
         if "email" in payload:
-            email = canonical_company_email(str(payload["email"]))
+            email = self.canonical_company_email(str(payload["email"]))
             allowed["email"] = email
             allowed["username"] = email
         if "role" in payload:
@@ -809,6 +944,87 @@ class IdentityStore:
             self._audit_conn(conn, actor_user_id, "USER_UPDATED", "USER", user_id, payload)
             row = conn.execute(select(users).where(users.c.id == user_id)).first()
         return self._public_user_row(row)
+
+    def delete_users(self, user_ids: Iterable[str], actor_user_id: str) -> List[Dict[str, Any]]:
+        target_ids = list(dict.fromkeys(str(user_id).strip() for user_id in user_ids if str(user_id).strip()))
+        if not target_ids:
+            raise ValueError("At least one user must be selected")
+        if actor_user_id in target_ids:
+            raise ValueError("Administrator cannot delete the active account")
+
+        with self.engine.begin() as conn:
+            target_rows = conn.execute(select(users).where(users.c.id.in_(target_ids))).all()
+            found_ids = {row._mapping["id"] for row in target_rows}
+            missing_ids = [user_id for user_id in target_ids if user_id not in found_ids]
+            if missing_ids:
+                raise KeyError(f"Users not found: {', '.join(missing_ids)}")
+
+            active_admin_ids = set(conn.execute(select(users.c.id).where(and_(
+                users.c.role == "ADMIN",
+                users.c.is_active.is_(True),
+            ))).scalars().all())
+            if not (active_admin_ids - set(target_ids)):
+                raise ValueError("At least one active administrator account must remain")
+
+            deleted_users = [self._public_user_row(row) for row in target_rows]
+            artifact_ids = list(conn.execute(select(annotation_artifacts.c.id).where(
+                annotation_artifacts.c.owner_user_id.in_(target_ids)
+            )).scalars().all())
+            case_condition = engineer_tolerance_cases.c.owner_user_id.in_(target_ids)
+            if artifact_ids:
+                case_condition = or_(
+                    case_condition,
+                    engineer_tolerance_cases.c.artifact_id.in_(artifact_ids),
+                )
+            case_ids = list(conn.execute(select(engineer_tolerance_cases.c.id).where(
+                case_condition
+            )).scalars().all())
+
+            for user in deleted_users:
+                self._audit_conn(conn, actor_user_id, "USER_DELETED", "USER", user["id"], {
+                    "email": user.get("email"),
+                    "display_name": user.get("display_name"),
+                    "role": user.get("role"),
+                })
+
+            if case_ids:
+                conn.execute(delete(engineer_case_tag_assignments).where(
+                    engineer_case_tag_assignments.c.case_record_id.in_(case_ids)
+                ))
+            if artifact_ids:
+                conn.execute(delete(artifact_tag_assignments).where(
+                    artifact_tag_assignments.c.artifact_id.in_(artifact_ids)
+                ))
+            conn.execute(delete(engineer_tolerance_cases).where(case_condition))
+            conn.execute(delete(trash_records).where(trash_records.c.owner_user_id.in_(target_ids)))
+            conn.execute(update(trash_records).where(
+                trash_records.c.deleted_by_user_id.in_(target_ids)
+            ).values(deleted_by_user_id=None))
+            conn.execute(delete(annotation_artifacts).where(
+                annotation_artifacts.c.owner_user_id.in_(target_ids)
+            ))
+            conn.execute(delete(engineer_templates).where(engineer_templates.c.owner_user_id.in_(target_ids)))
+            conn.execute(delete(owned_models).where(owned_models.c.owner_user_id.in_(target_ids)))
+            conn.execute(delete(engineer_preferences).where(engineer_preferences.c.user_id.in_(target_ids)))
+            conn.execute(delete(sessions).where(sessions.c.user_id.in_(target_ids)))
+            conn.execute(delete(initial_credentials).where(initial_credentials.c.user_id.in_(target_ids)))
+            conn.execute(delete(credential_notifications).where(
+                credential_notifications.c.user_id.in_(target_ids)
+            ))
+            conn.execute(update(audit_events).where(
+                audit_events.c.actor_user_id.in_(target_ids)
+            ).values(actor_user_id=None))
+            conn.execute(update(system_settings).where(
+                system_settings.c.updated_by_user_id.in_(target_ids)
+            ).values(updated_by_user_id=None))
+            conn.execute(update(company_email_domain_records).where(
+                company_email_domain_records.c.created_by_user_id.in_(target_ids)
+            ).values(created_by_user_id=None))
+            conn.execute(update(recommendation_tags).where(
+                recommendation_tags.c.created_by_user_id.in_(target_ids)
+            ).values(created_by_user_id=None))
+            conn.execute(delete(users).where(users.c.id.in_(target_ids)))
+        return deleted_users
 
     def reset_password(self, user_id: str, new_password: Optional[str], actor_user_id: str) -> str:
         replacement = str(new_password or self.generate_initial_password())
@@ -908,6 +1124,19 @@ class IdentityStore:
                 owned_models.c.model_id == model_id
             )).scalar_one_or_none()
         return owner == user.id
+
+    def model_registration(self, model_id: str) -> Optional[Dict[str, Any]]:
+        """Return the persisted owner/source metadata needed to replay a model analysis."""
+        with self.engine.connect() as conn:
+            row = conn.execute(select(owned_models).where(
+                owned_models.c.model_id == model_id
+            )).first()
+        if row is None:
+            return None
+        value = dict(row._mapping)
+        if value.get("created_at"):
+            value["created_at"] = value["created_at"].isoformat()
+        return value
 
     def accessible_model_ids(self, user: CurrentUser) -> Optional[set[str]]:
         if user.is_admin:
@@ -1199,6 +1428,81 @@ class IdentityStore:
                 "days": normalized
             })
         return normalized
+
+    def cad_concurrency_limits(self) -> Dict[str, int]:
+        """Return persistent heavy-work limits bounded by the deployment hard cap."""
+        try:
+            hard_limit = max(1, min(8, int(os.environ.get("CAD_CONCURRENCY_HARD_LIMIT", "4"))))
+        except ValueError:
+            hard_limit = 4
+        def environment_default(name: str) -> int:
+            try:
+                return max(1, min(hard_limit, int(os.environ.get(name, "1"))))
+            except ValueError:
+                return 1
+
+        defaults = {
+            "analysis_max_concurrency": environment_default("CAD_ANALYSIS_MAX_WORKERS"),
+            "annotation_max_concurrency": environment_default("CAD_ANNOTATION_MAX_CONCURRENCY"),
+        }
+        with self.engine.connect() as conn:
+            raw = conn.execute(select(system_settings.c.value_json).where(
+                system_settings.c.key == "cad_concurrency_limits"
+            )).scalar_one_or_none()
+        saved = _load_json(raw, {})
+        if not isinstance(saved, dict):
+            saved = {}
+
+        def bounded(key: str) -> int:
+            try:
+                return max(1, min(hard_limit, int(saved.get(key, defaults[key]))))
+            except (TypeError, ValueError):
+                return defaults[key]
+
+        return {
+            "analysis_max_concurrency": bounded("analysis_max_concurrency"),
+            "annotation_max_concurrency": bounded("annotation_max_concurrency"),
+            "hard_limit": hard_limit,
+        }
+
+    def set_cad_concurrency_limits(
+        self,
+        analysis_max_concurrency: int,
+        annotation_max_concurrency: int,
+        actor_user_id: str,
+    ) -> Dict[str, int]:
+        current = self.cad_concurrency_limits()
+        hard_limit = current["hard_limit"]
+        analysis_limit = int(analysis_max_concurrency)
+        annotation_limit = int(annotation_max_concurrency)
+        if not 1 <= analysis_limit <= hard_limit:
+            raise ValueError(f"Analysis concurrency must be between 1 and {hard_limit}")
+        if not 1 <= annotation_limit <= hard_limit:
+            raise ValueError(f"Annotation concurrency must be between 1 and {hard_limit}")
+        stored = {
+            "analysis_max_concurrency": analysis_limit,
+            "annotation_max_concurrency": annotation_limit,
+        }
+        now = _utcnow()
+        with self.engine.begin() as conn:
+            existing = conn.execute(select(system_settings.c.key).where(
+                system_settings.c.key == "cad_concurrency_limits"
+            )).first()
+            values = {
+                "value_json": _json(stored),
+                "updated_by_user_id": actor_user_id,
+                "updated_at": now,
+            }
+            if existing:
+                conn.execute(update(system_settings).where(
+                    system_settings.c.key == "cad_concurrency_limits"
+                ).values(**values))
+            else:
+                conn.execute(insert(system_settings).values(
+                    key="cad_concurrency_limits", **values
+                ))
+            self._audit_conn(conn, actor_user_id, "CAD_CONCURRENCY_LIMITS_UPDATED", "SYSTEM", None, stored)
+        return {**stored, "hard_limit": hard_limit}
 
     def _trash_conn(
         self,
@@ -1542,7 +1846,16 @@ class IdentityStore:
         return True
 
     def list_audit_events(self, limit: int = 200) -> List[Dict[str, Any]]:
-        stmt = select(audit_events).order_by(audit_events.c.created_at.desc()).limit(max(1, min(limit, 1000)))
+        stmt = (
+            select(
+                audit_events,
+                users.c.display_name.label("actor_display_name"),
+                users.c.email.label("actor_email"),
+            )
+            .select_from(audit_events.outerjoin(users, audit_events.c.actor_user_id == users.c.id))
+            .order_by(audit_events.c.created_at.desc())
+            .limit(max(1, min(limit, 1000)))
+        )
         with self.engine.connect() as conn:
             rows = conn.execute(stmt).all()
         result = []
