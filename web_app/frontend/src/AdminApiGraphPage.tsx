@@ -40,6 +40,13 @@ const kindConfig = {
   worker: { label: 'CAD Worker', fill: '#422006', stroke: '#d97706', text: '#fde68a' },
 };
 
+const categoryLabels: Record<string, string> = {
+  admin: '管理員與治理', annotation: '智慧標註', auth: '登入與權限', drawings: '工程圖交換',
+  engineer: '工程師資料', features: '特徵提取', files: '檔案服務', health: '系統狀態',
+  integrations: '外部整合', model: '模型資料', models: '模型管理', tolerance: '公差系統',
+  upload: '模型上傳', compare: '模型比對', status: '工作狀態', results: '工作結果',
+};
+
 function routeCategory(path: string) {
   return path.replace(/^\/+/, '').split('/')[1] || 'system';
 }
@@ -103,7 +110,7 @@ export default function AdminApiGraphPage() {
   const [generatedAt, setGeneratedAt] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [category, setCategory] = useState('all');
+  const [category, setCategory] = useState('overview');
   const [query, setQuery] = useState('');
   const [showInternal, setShowInternal] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -148,12 +155,23 @@ export default function AdminApiGraphPage() {
   const categories = useMemo(() => graph
     ? Array.from(new Set(graph.routes.map(route => routeCategory(route.path)))).sort()
     : [], [graph]);
+  const moduleStats = useMemo(() => categories.map(name => {
+    const routes = graph?.routes.filter(route => routeCategory(route.path) === name) || [];
+    const routeIds = new Set(routes.map(route => route.id));
+    const callers = new Set(
+      graph?.edges.filter(edge => edge.type === 'calls_api' && routeIds.has(edge.to)).map(edge => edge.from) || [],
+    );
+    const handlers = new Set(
+      graph?.edges.filter(edge => edge.type === 'handled_by' && routeIds.has(edge.from)).map(edge => edge.to) || [],
+    );
+    return { name, routes: routes.length, callers: callers.size, handlers: handlers.size };
+  }), [categories, graph]);
 
   const visible = useMemo(() => {
     if (!graph) return { nodes: [] as GraphNode[], edges: [] as GraphEdge[] };
     const routeIds = new Set(
       graph.routes
-        .filter(route => category === 'all' || routeCategory(route.path) === category)
+        .filter(route => category !== 'overview' && routeCategory(route.path) === category)
         .map(route => route.id),
     );
     const ids = new Set(routeIds);
@@ -198,6 +216,25 @@ export default function AdminApiGraphPage() {
     return { nodes, edges };
   }, [category, graph, nodeMap, query, showInternal]);
 
+  const edgePorts = useMemo(() => {
+    const outgoing = new Map<string, GraphEdge[]>();
+    const incoming = new Map<string, GraphEdge[]>();
+    visible.edges.forEach(edge => {
+      outgoing.set(edge.from, [...(outgoing.get(edge.from) || []), edge]);
+      incoming.set(edge.to, [...(incoming.get(edge.to) || []), edge]);
+    });
+    const result = new Map<string, { source: number; target: number }>();
+    const offset = (index: number, count: number) => NODE_HEIGHT * (index + 1) / (count + 1);
+    outgoing.forEach(edges => edges.sort((a, b) => (positions[a.to]?.y || 0) - (positions[b.to]?.y || 0)).forEach((edge, index) => {
+      result.set(`${edge.from}|${edge.type}|${edge.to}`, { source: offset(index, edges.length), target: NODE_HEIGHT / 2 });
+    }));
+    incoming.forEach(edges => edges.sort((a, b) => (positions[a.from]?.y || 0) - (positions[b.from]?.y || 0)).forEach((edge, index) => {
+      const key = `${edge.from}|${edge.type}|${edge.to}`;
+      result.set(key, { source: result.get(key)?.source || NODE_HEIGHT / 2, target: offset(index, edges.length) });
+    }));
+    return result;
+  }, [positions, visible.edges]);
+
   const visibleSignature = visible.nodes.map(node => node.id).sort().join('|');
   useEffect(() => {
     const columns: GraphNode['kind'][] = ['frontend', 'api', 'backend', 'worker'];
@@ -207,7 +244,7 @@ export default function AdminApiGraphPage() {
       const group = visible.nodes.filter(node => node.kind === kind).sort((a, b) => a.label.localeCompare(b.label));
       maximumRows = Math.max(maximumRows, group.length);
       group.forEach((node, row) => {
-        next[node.id] = { x: 40 + column * 330, y: 42 + row * 66 };
+        next[node.id] = { x: 46 + column * 350, y: 76 + row * 72 };
       });
     });
     setPositions(current => {
@@ -216,8 +253,8 @@ export default function AdminApiGraphPage() {
     });
     const rect = canvasRef.current?.getBoundingClientRect();
     if (rect) {
-      const worldWidth = 40 + columns.length * 330;
-      const worldHeight = 80 + maximumRows * 66;
+      const worldWidth = 60 + columns.length * 350;
+      const worldHeight = 112 + maximumRows * 72;
       const scale = Math.max(0.08, Math.min(1, (rect.width - 32) / worldWidth, (rect.height - 32) / worldHeight));
       setViewport({ x: 16, y: 16, scale });
     }
@@ -308,9 +345,9 @@ export default function AdminApiGraphPage() {
         <Search size={15} style={{ position: 'absolute', left: 10, top: 10, color: '#737373' }} />
         <input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜尋 API、函數或來源檔案" style={{ ...fieldStyle, width: '100%', paddingLeft: 34 }} />
       </div>
-      <select value={category} onChange={event => setCategory(event.target.value)} style={{ ...fieldStyle, width: 180 }}>
-        <option value="all">全部 API 分類</option>
-        {categories.map(value => <option key={value} value={value}>{value}</option>)}
+      <select value={category} onChange={event => { setCategory(event.target.value); setSelectedId(null); }} style={{ ...fieldStyle, width: 200 }}>
+        <option value="overview">功能區塊總覽</option>
+        {categories.map(value => <option key={value} value={value}>{categoryLabels[value] || value} ({value})</option>)}
       </select>
       <label style={{ display: 'flex', alignItems: 'center', gap: 7, color: '#bdbdbd', fontSize: 13 }}>
         <input type="checkbox" checked={showInternal} onChange={event => setShowInternal(event.target.checked)} />顯示內部函數鏈
@@ -318,7 +355,7 @@ export default function AdminApiGraphPage() {
       <button onClick={() => loadGraph()} disabled={loading} style={buttonStyle}><RefreshCw size={15} />{loading ? '同步中' : '立即同步'}</button>
       <button onClick={() => setViewport({ x: 24, y: 24, scale: 0.75 })} style={{ ...buttonStyle, background: '#262626', borderColor: '#444' }}><Maximize2 size={15} />重設視圖</button>
       {graph && <span style={{ marginLeft: 'auto', color: '#888', fontSize: 12 }}>
-        {graph.summary.backend_routes} 路由 · {graph.summary.frontend_http_calls} 前端呼叫 · {visible.nodes.length} 顯示節點<br />
+        {graph.summary.backend_routes} 路由 · {graph.summary.frontend_http_calls} 前端呼叫{category !== 'overview' ? ` · ${visible.nodes.length} 顯示節點` : ''}<br />
         最後同步 {generatedAt ? new Date(generatedAt).toLocaleTimeString() : '—'}
       </span>}
     </div>
@@ -327,6 +364,31 @@ export default function AdminApiGraphPage() {
     <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: selected ? 'minmax(0, 1fr) 350px' : 'minmax(0, 1fr)' }}>
       <div style={{ position: 'relative', minWidth: 0, minHeight: 0 }}>
         {!graph && !loading && <div style={centerStyle}>尚未取得關係資料</div>}
+        {graph && category === 'overview' && <div style={{ height: '100%', overflowY: 'auto', padding: 24, boxSizing: 'border-box' }}>
+          <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+            <div style={{ marginBottom: 18 }}>
+              <h2 style={{ margin: '0 0 7px', fontSize: 20 }}>系統功能區塊</h2>
+              <div style={{ color: '#888', fontSize: 13 }}>先選擇功能區塊，再查看該區的前端、API、後端函數與 Worker 關係。</div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
+              {moduleStats
+                .filter(item => !query.trim() || `${item.name} ${categoryLabels[item.name] || ''}`.toLowerCase().includes(query.toLowerCase()))
+                .map(item => <button key={item.name} onClick={() => { setCategory(item.name); setQuery(''); }} style={{ padding: 0, textAlign: 'left', color: '#e5e5e5', background: '#171717', border: '1px solid #333', borderRadius: 6, overflow: 'hidden', cursor: 'pointer' }}>
+                  <div style={{ height: 4, background: item.name === 'annotation' ? '#2563eb' : item.name === 'tolerance' ? '#16a34a' : item.name === 'admin' ? '#d97706' : '#525252' }} />
+                  <div style={{ padding: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                      <strong>{categoryLabels[item.name] || item.name}</strong><ChevronRight size={16} color="#737373" />
+                    </div>
+                    <code style={{ display: 'block', marginTop: 5, color: '#737373', fontSize: 11 }}>/api/{item.name}</code>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 16 }}>
+                      {[['路由', item.routes], ['前端', item.callers], ['處理器', item.handlers]].map(([label, value]) => <div key={String(label)} style={{ padding: '9px 7px', textAlign: 'center', background: '#0f0f0f', border: '1px solid #292929', borderRadius: 4 }}><div style={{ color: '#f5f5f5', fontSize: 17, fontWeight: 700 }}>{value}</div><div style={{ color: '#737373', fontSize: 10 }}>{label}</div></div>)}
+                    </div>
+                  </div>
+                </button>)}
+            </div>
+          </div>
+        </div>}
+        {category !== 'overview' && <>
         <svg
           ref={canvasRef}
           width="100%" height="100%"
@@ -343,12 +405,23 @@ export default function AdminApiGraphPage() {
           </defs>
           <rect width="100%" height="100%" fill="url(#grid)" />
           <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
+            {(['frontend', 'api', 'backend', 'worker'] as GraphNode['kind'][]).map((kind, column) => <g key={`lane-${kind}`}>
+              <rect x={24 + column * 350} y="20" width="294" height={Math.max(180, 120 + Math.max(1, visible.nodes.filter(node => node.kind === kind).length) * 72)} rx="8" fill="#111" stroke="#292929" />
+              <text x={46 + column * 350} y="50" fill={kindConfig[kind].text} fontSize="13" fontWeight="700">{kindConfig[kind].label}</text>
+            </g>)}
             {visible.edges.map((edge, index) => {
               const from = positions[edge.from];
               const to = positions[edge.to];
               if (!from || !to) return null;
               const active = selectedId === edge.from || selectedId === edge.to;
-              return <line key={`${edge.from}-${edge.to}-${index}`} x1={from.x + NODE_WIDTH} y1={from.y + NODE_HEIGHT / 2} x2={to.x} y2={to.y + NODE_HEIGHT / 2} stroke={active ? '#60a5fa' : '#404040'} strokeWidth={active ? 2.2 : 1.1} markerEnd="url(#arrow)" />;
+              const ports = edgePorts.get(`${edge.from}|${edge.type}|${edge.to}`) || { source: NODE_HEIGHT / 2, target: NODE_HEIGHT / 2 };
+              const sourceX = from.x + NODE_WIDTH;
+              const sourceY = from.y + ports.source;
+              const targetX = to.x;
+              const targetY = to.y + ports.target;
+              const direction = targetX >= sourceX ? 1 : -1;
+              const bend = Math.max(42, Math.abs(targetX - sourceX) * 0.42);
+              return <path key={`${edge.from}-${edge.to}-${index}`} d={`M ${sourceX} ${sourceY} C ${sourceX + direction * bend} ${sourceY}, ${targetX - direction * bend} ${targetY}, ${targetX} ${targetY}`} fill="none" stroke={active ? '#60a5fa' : '#404040'} strokeWidth={active ? 2.2 : 1.1} opacity={selectedId && !active ? 0.28 : 0.82} markerEnd="url(#arrow)" />;
             })}
             {visible.nodes.map(node => {
               const point = positions[node.id];
@@ -367,6 +440,7 @@ export default function AdminApiGraphPage() {
           {(Object.keys(kindConfig) as GraphNode['kind'][]).map(kind => <span key={kind} style={{ color: kindConfig[kind].text }}>■ {kindConfig[kind].label}</span>)}
           <span style={{ color: '#737373' }}>拖曳節點 · 拖曳空白處平移 · 滾輪縮放</span>
         </div>
+        </>}
       </div>
 
       {selected && <aside style={{ minHeight: 0, overflowY: 'auto', padding: 18, background: '#171717', borderLeft: '1px solid #303030' }}>
