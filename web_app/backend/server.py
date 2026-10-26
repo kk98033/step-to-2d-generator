@@ -4518,6 +4518,14 @@ if os.path.exists(FRONTEND_DIR):
     def admin_accounts_page():
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"), media_type="text/html")
 
+    @app.get(
+        "/admin/api-graph",
+        include_in_schema=False,
+        dependencies=[Depends(require_admin)],
+    )
+    def admin_api_graph_page():
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"), media_type="text/html")
+
     @app.get("/admin/operations/{operation_id}", include_in_schema=False)
     def admin_operation_replay_page(operation_id: str):
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"), media_type="text/html")

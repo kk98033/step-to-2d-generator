@@ -3,7 +3,7 @@ import axios from 'axios';
 import {
   Activity, AlertCircle, ArchiveRestore, ArrowLeft, CheckCircle2, Clock3, Download,
   FileSpreadsheet, FileText, KeyRound, Pencil, Plus, RefreshCw, Save, Search,
-  ShieldCheck, Tags, Trash2, UserPlus, Users, X,
+  Network, ShieldCheck, Tags, Trash2, UserPlus, Users, X,
 } from 'lucide-react';
 import { LoginPage, apiErrorMessage, buttonStyle, fieldStyle, type AuthUser } from './AccountPortal';
 
@@ -336,7 +336,10 @@ export default function AdminAccountPage() {
     />}
     <header style={{ height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 22px', background: '#171717', borderBottom: '1px solid #303030' }}><div style={{ display: 'flex', alignItems: 'center', gap: 12 }}><ShieldCheck size={21} color="#60a5fa" /><strong>帳號與推薦資料管理</strong><span style={{ color: '#737373', fontSize: 12 }}>{user.email}</span></div><a href="/" style={{ ...buttonStyle, background: '#262626', borderColor: '#444', textDecoration: 'none' }}><ArrowLeft size={15} />返回主系統</a></header>
     <div style={{ display: 'grid', gridTemplateColumns: '230px minmax(0, 1fr)', height: 'calc(100vh - 58px)', minHeight: 0, overflow: 'hidden' }}>
-      <nav style={{ background: '#111', borderRight: '1px solid #2b2b2b', padding: 16, minHeight: 0, overflowY: 'auto' }}>{nav.map(([id, label, Icon]) => <button key={id} onClick={() => setTab(id)} style={{ ...buttonStyle, width: '100%', justifyContent: 'flex-start', marginBottom: 8, background: tab === id ? '#2563eb' : '#202020', borderColor: tab === id ? '#2563eb' : '#333' }}><Icon size={16} />{label}</button>)}</nav>
+      <nav style={{ background: '#111', borderRight: '1px solid #2b2b2b', padding: 16, minHeight: 0, overflowY: 'auto' }}>
+        {nav.map(([id, label, Icon]) => <button key={id} onClick={() => setTab(id)} style={{ ...buttonStyle, width: '100%', justifyContent: 'flex-start', marginBottom: 8, background: tab === id ? '#2563eb' : '#202020', borderColor: tab === id ? '#2563eb' : '#333' }}><Icon size={16} />{label}</button>)}
+        <a href="/admin/api-graph" style={{ ...buttonStyle, width: '100%', boxSizing: 'border-box', justifyContent: 'flex-start', marginTop: 12, background: '#202020', borderColor: '#333', textDecoration: 'none' }}><Network size={16} />系統 API 關係圖</a>
+      </nav>
       <main style={{ padding: 28, maxWidth: 1180, width: '100%', height: '100%', minHeight: 0, overflowY: 'auto', boxSizing: 'border-box' }}>
         {createdCredential && <CredentialPanel value={createdCredential} onClose={() => setCreatedCredential(null)} />}
 

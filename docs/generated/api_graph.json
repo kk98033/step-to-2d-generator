@@ -121,6 +121,11 @@
       "type": "handled_by"
     },
     {
+      "from": "api_3ab295bfe9",
+      "to": "backend:server:admin_api_graph_page",
+      "type": "handled_by"
+    },
+    {
       "from": "api_3ae04bfa01",
       "to": "backend:server:list_tolerance_cases",
       "type": "handled_by"
@@ -153,6 +158,11 @@
     {
       "from": "api_5459ae75a5",
       "to": "backend:server:upload_file",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_55b11e72e0",
+      "to": "backend:account_api:admin_system_api_graph",
       "type": "handled_by"
     },
     {
@@ -1551,6 +1561,16 @@
       "type": "calls_api"
     },
     {
+      "from": "frontend:web_app/frontend/src/AdminApiGraphPage.tsx:loadGraph",
+      "to": "api_4b1ecf7daa",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminApiGraphPage.tsx:loadGraph",
+      "to": "api_55b11e72e0",
+      "type": "calls_api"
+    },
+    {
       "from": "frontend:web_app/frontend/src/AdminOperationReplayPage.tsx:load",
       "to": "api_1d43ff639c",
       "type": "calls_api"
@@ -2116,6 +2136,28 @@
       }
     },
     {
+      "id": "frontend_738daff83f",
+      "method": "GET",
+      "path": "/api/admin/system-api-graph",
+      "raw_url": "${API_BASE}/api/admin/system-api-graph",
+      "source": {
+        "file": "web_app/frontend/src/AdminApiGraphPage.tsx",
+        "line": 123,
+        "symbol": "loadGraph"
+      }
+    },
+    {
+      "id": "frontend_738daff83f",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "raw_url": "${API_BASE}/api/auth/me",
+      "source": {
+        "file": "web_app/frontend/src/AdminApiGraphPage.tsx",
+        "line": 134,
+        "symbol": "loadGraph"
+      }
+    },
+    {
       "id": "frontend_11523fa31a",
       "method": "GET",
       "path": "/api/admin/operation-logs/{param}/reproduction",
@@ -2449,13 +2491,24 @@
       }
     },
     {
+      "handler": "admin_api_graph_page",
+      "id": "api_3ab295bfe9",
+      "method": "GET",
+      "path": "/admin/api-graph",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4526,
+        "symbol": "admin_api_graph_page"
+      }
+    },
+    {
       "handler": "admin_operation_replay_page",
       "id": "api_2256bfd456",
       "method": "GET",
       "path": "/admin/operations/{operation_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4522,
+        "line": 4530,
         "symbol": "admin_operation_replay_page"
       }
     },
@@ -2466,7 +2519,7 @@
       "path": "/api/admin/audit-events",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 724,
+        "line": 725,
         "symbol": "admin_audit_events"
       }
     },
@@ -2477,7 +2530,7 @@
       "path": "/api/admin/company-cases/tags",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 863,
+        "line": 876,
         "symbol": "admin_list_company_case_tags"
       }
     },
@@ -2488,7 +2541,7 @@
       "path": "/api/admin/company-cases/{case_id}/tags",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 868,
+        "line": 881,
         "symbol": "admin_assign_company_case_tags"
       }
     },
@@ -2499,7 +2552,7 @@
       "path": "/api/admin/company-email-domains",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 678,
+        "line": 679,
         "symbol": "admin_list_company_email_domains"
       }
     },
@@ -2510,7 +2563,7 @@
       "path": "/api/admin/company-email-domains",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 683,
+        "line": 684,
         "symbol": "admin_create_company_email_domain"
       }
     },
@@ -2521,7 +2574,7 @@
       "path": "/api/admin/company-email-domains/{domain}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 710,
+        "line": 711,
         "symbol": "admin_delete_company_email_domain"
       }
     },
@@ -2532,7 +2585,7 @@
       "path": "/api/admin/company-email-domains/{domain}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 695,
+        "line": 696,
         "symbol": "admin_update_company_email_domain"
       }
     },
@@ -2543,7 +2596,7 @@
       "path": "/api/admin/operation-logs",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 729,
+        "line": 742,
         "symbol": "admin_operation_logs"
       }
     },
@@ -2554,7 +2607,7 @@
       "path": "/api/admin/operation-logs/{operation_id}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 742,
+        "line": 755,
         "symbol": "admin_operation_log_detail"
       }
     },
@@ -2576,7 +2629,7 @@
       "path": "/api/admin/operation-logs/{operation_id}/reproduction",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 753,
+        "line": 766,
         "symbol": "admin_operation_reproduction"
       }
     },
@@ -2587,7 +2640,7 @@
       "path": "/api/admin/recommendation-tags",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 833,
+        "line": 846,
         "symbol": "admin_list_recommendation_tags"
       }
     },
@@ -2598,7 +2651,7 @@
       "path": "/api/admin/recommendation-tags",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 838,
+        "line": 851,
         "symbol": "admin_create_recommendation_tag"
       }
     },
@@ -2609,7 +2662,7 @@
       "path": "/api/admin/recommendation-tags/{tag_id}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 850,
+        "line": 863,
         "symbol": "admin_update_recommendation_tag"
       }
     },
@@ -2620,7 +2673,7 @@
       "path": "/api/admin/settings/cad-concurrency",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 807,
+        "line": 820,
         "symbol": "admin_get_cad_concurrency"
       }
     },
@@ -2631,7 +2684,7 @@
       "path": "/api/admin/settings/cad-concurrency",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 812,
+        "line": 825,
         "symbol": "admin_set_cad_concurrency"
       }
     },
@@ -2642,7 +2695,7 @@
       "path": "/api/admin/settings/trash-retention",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 794,
+        "line": 807,
         "symbol": "admin_get_trash_retention"
       }
     },
@@ -2653,8 +2706,19 @@
       "path": "/api/admin/settings/trash-retention",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 799,
+        "line": 812,
         "symbol": "admin_set_trash_retention"
+      }
+    },
+    {
+      "handler": "admin_system_api_graph",
+      "id": "api_55b11e72e0",
+      "method": "GET",
+      "path": "/api/admin/system-api-graph",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 730,
+        "symbol": "admin_system_api_graph"
       }
     },
     {
@@ -2664,7 +2728,7 @@
       "path": "/api/admin/trash",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 764,
+        "line": 777,
         "symbol": "admin_list_trash"
       }
     },
@@ -2675,7 +2739,7 @@
       "path": "/api/admin/trash/purge-expired",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 828,
+        "line": 841,
         "symbol": "admin_purge_expired_trash"
       }
     },
@@ -2686,7 +2750,7 @@
       "path": "/api/admin/trash/{trash_id}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 787,
+        "line": 800,
         "symbol": "admin_purge_trash"
       }
     },
@@ -2697,7 +2761,7 @@
       "path": "/api/admin/trash/{trash_id}/restore",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 776,
+        "line": 789,
         "symbol": "admin_restore_trash"
       }
     },
@@ -2708,7 +2772,7 @@
       "path": "/api/admin/users",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 385,
+        "line": 386,
         "symbol": "admin_list_users"
       }
     },
@@ -2719,7 +2783,7 @@
       "path": "/api/admin/users",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 390,
+        "line": 391,
         "symbol": "admin_create_user"
       }
     },
@@ -2730,7 +2794,7 @@
       "path": "/api/admin/users/bulk-delete",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 413,
+        "line": 414,
         "symbol": "admin_bulk_delete_users"
       }
     },
@@ -2741,7 +2805,7 @@
       "path": "/api/admin/users/import",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 527,
+        "line": 528,
         "symbol": "admin_import_users"
       }
     },
@@ -2752,7 +2816,7 @@
       "path": "/api/admin/users/import-template",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 637,
+        "line": 638,
         "symbol": "admin_download_user_import_template"
       }
     },
@@ -2763,7 +2827,7 @@
       "path": "/api/admin/users/import/resolve-domains",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 575,
+        "line": 576,
         "symbol": "admin_resolve_import_domains"
       }
     },
@@ -2774,7 +2838,7 @@
       "path": "/api/admin/users/{user_id}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 402,
+        "line": 403,
         "symbol": "admin_delete_user"
       }
     },
@@ -2785,7 +2849,7 @@
       "path": "/api/admin/users/{user_id}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 427,
+        "line": 428,
         "symbol": "admin_update_user"
       }
     },
@@ -2796,7 +2860,7 @@
       "path": "/api/admin/users/{user_id}/reset-password",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 444,
+        "line": 445,
         "symbol": "admin_reset_password"
       }
     },
@@ -2895,7 +2959,7 @@
       "path": "/api/auth/config",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 249,
+        "line": 250,
         "symbol": "auth_config"
       }
     },
@@ -2906,7 +2970,7 @@
       "path": "/api/auth/login",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 210,
+        "line": 211,
         "symbol": "login"
       }
     },
@@ -2917,7 +2981,7 @@
       "path": "/api/auth/logout",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 258,
+        "line": 259,
         "symbol": "logout"
       }
     },
@@ -2928,7 +2992,7 @@
       "path": "/api/auth/me",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 265,
+        "line": 266,
         "symbol": "me"
       }
     },
@@ -2939,7 +3003,7 @@
       "path": "/api/auth/password",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 270,
+        "line": 271,
         "symbol": "change_password"
       }
     },
@@ -3005,7 +3069,7 @@
       "path": "/api/engineer/artifacts",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 323,
+        "line": 324,
         "symbol": "list_artifacts"
       }
     },
@@ -3016,7 +3080,7 @@
       "path": "/api/engineer/artifacts/{artifact_id}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 331,
+        "line": 332,
         "symbol": "delete_artifact"
       }
     },
@@ -3027,7 +3091,7 @@
       "path": "/api/engineer/preferences",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 310,
+        "line": 311,
         "symbol": "reset_preferences"
       }
     },
@@ -3038,7 +3102,7 @@
       "path": "/api/engineer/preferences",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 293,
+        "line": 294,
         "symbol": "get_preferences"
       }
     },
@@ -3049,7 +3113,7 @@
       "path": "/api/engineer/preferences",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 298,
+        "line": 299,
         "symbol": "put_preferences"
       }
     },
@@ -3060,7 +3124,7 @@
       "path": "/api/engineer/tolerance-cases",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 347,
+        "line": 348,
         "symbol": "clear_personal_tolerance_cases"
       }
     },
@@ -3071,7 +3135,7 @@
       "path": "/api/engineer/tolerance-cases",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 342,
+        "line": 343,
         "symbol": "list_personal_tolerance_cases"
       }
     },
@@ -3082,7 +3146,7 @@
       "path": "/api/engineer/tolerance-cases/{case_record_id}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 353,
+        "line": 354,
         "symbol": "delete_personal_tolerance_case"
       }
     },
@@ -3093,7 +3157,7 @@
       "path": "/api/engineer/trash",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 363,
+        "line": 364,
         "symbol": "list_engineer_trash"
       }
     },
@@ -3104,7 +3168,7 @@
       "path": "/api/engineer/trash/{trash_id}/restore",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 372,
+        "line": 373,
         "symbol": "restore_engineer_trash"
       }
     },
@@ -3148,7 +3212,7 @@
       "path": "/api/integrations/email/credential-notifications",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 881,
+        "line": 894,
         "symbol": "integration_list_credential_notifications"
       }
     },
@@ -3159,7 +3223,7 @@
       "path": "/api/integrations/email/credential-notifications/{notification_id}/ack",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 892,
+        "line": 905,
         "symbol": "integration_ack_credential_notification"
       }
     },
@@ -3225,7 +3289,7 @@
       "path": "/api/recommendation-tags",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 318,
+        "line": 319,
         "symbol": "list_recommendation_tags"
       }
     },
@@ -3507,8 +3571,8 @@
   ],
   "schema_version": 1,
   "summary": {
-    "backend_routes": 97,
-    "frontend_http_calls": 67,
+    "backend_routes": 99,
+    "frontend_http_calls": 69,
     "unresolved_frontend_calls": 0,
     "worker_actions": 5
   },

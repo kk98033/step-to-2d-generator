@@ -6,6 +6,7 @@ import os
 import secrets
 import csv
 from io import BytesIO, StringIO
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Body, Depends, File, Header, HTTPException, Request, Response, UploadFile
@@ -723,6 +724,18 @@ def admin_delete_company_email_domain(
 @router.get("/admin/audit-events")
 def admin_audit_events(limit: int = 200, admin: CurrentUser = Depends(require_admin)):
     return {"status": "ok", "events": store.list_audit_events(limit)}
+
+
+@router.get("/admin/system-api-graph")
+def admin_system_api_graph(admin: CurrentUser = Depends(require_admin)):
+    """Build the current source-level API dependency graph for administrators."""
+    from tools.generate_system_api_graph import build_graph
+
+    return {
+        "status": "ok",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "graph": build_graph(),
+    }
 
 
 @router.get("/admin/operation-logs")
