@@ -1,0 +1,3563 @@
+{
+  "edges": [
+    {
+      "from": "api_05ca578439",
+      "to": "backend:server:save_tolerance_case",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_062ac606fb",
+      "to": "backend:account_api:admin_list_recommendation_tags",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_07204afd72",
+      "to": "backend:account_api:admin_delete_company_email_domain",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_083a730bfd",
+      "to": "backend:account_api:admin_bulk_delete_users",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_0efb42d753",
+      "to": "backend:account_api:delete_personal_tolerance_case",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_103692d5bc",
+      "to": "backend:account_api:admin_set_cad_concurrency",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_106db2fe5b",
+      "to": "backend:server:delete_external_tolerance_predictions",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_13e5582fe4",
+      "to": "backend:account_api:list_recommendation_tags",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_1783356baa",
+      "to": "backend:server:get_drawing_details",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_1d43ff639c",
+      "to": "backend:account_api:admin_operation_reproduction",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_1eec223a19",
+      "to": "backend:server:download_tolerance_audit_source_step",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_1f40d5b4a3",
+      "to": "backend:server:save_external_tolerance_predictions",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_210df5f2bc",
+      "to": "backend:server:confirm_feature_tolerance_case",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_2256bfd456",
+      "to": "backend:server:admin_operation_replay_page",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_2573f59606",
+      "to": "backend:server:admin_accounts_page",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_265a62585b",
+      "to": "backend:server:get_active_annotation_job",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_2770f3a162",
+      "to": "backend:account_api:admin_update_recommendation_tag",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_2b568c441b",
+      "to": "backend:server:get_drawing_pdf",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_320c83515b",
+      "to": "backend:account_api:admin_list_trash",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_331cca1ba7",
+      "to": "backend:account_api:admin_purge_expired_trash",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_347b144ca9",
+      "to": "backend:account_api:put_preferences",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_3520f7dda6",
+      "to": "backend:account_api:admin_import_users",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_37b9e05670",
+      "to": "backend:server:get_model",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_390482b507",
+      "to": "backend:account_api:clear_personal_tolerance_cases",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_3ae04bfa01",
+      "to": "backend:server:list_tolerance_cases",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_40f718de18",
+      "to": "backend:server:compare_files",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_472db4fd33",
+      "to": "backend:server:update_tolerances",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_49c71db6a1",
+      "to": "backend:server:tolerance_audit_v2_page",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_4b1ecf7daa",
+      "to": "backend:account_api:me",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_4e604319d3",
+      "to": "backend:server:download_drawing_file",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_5459ae75a5",
+      "to": "backend:server:upload_file",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_5864569b89",
+      "to": "backend:server:list_processed_fan_20260625",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_5ca8664a1a",
+      "to": "backend:server:get_annotation_job",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_5d7c347985",
+      "to": "backend:account_api:admin_list_company_case_tags",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_5d8c00a351",
+      "to": "backend:server:list_examples",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_5e083b57bf",
+      "to": "backend:account_api:admin_delete_user",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_62b736f244",
+      "to": "backend:account_api:admin_create_company_email_domain",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_68df0f34ec",
+      "to": "backend:account_api:admin_assign_company_case_tags",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_6d9323f0c2",
+      "to": "backend:server:replay_annotation_operation",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_6dc24427f2",
+      "to": "backend:server:get_annotation_templates",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_71aafea7bf",
+      "to": "backend:account_api:admin_create_user",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_74a67d91dc",
+      "to": "backend:server:submit_custom_annotation_drawing",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_74db88143f",
+      "to": "backend:account_api:auth_config",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_76b96cbc08",
+      "to": "backend:account_api:admin_update_company_email_domain",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_7865756443",
+      "to": "backend:account_api:integration_list_credential_notifications",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_7ac4f1527d",
+      "to": "backend:server:health_check",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_7c80b9c781",
+      "to": "backend:account_api:login",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_8290b24494",
+      "to": "backend:server:recommend_tolerances",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_83708bfd8b",
+      "to": "backend:account_api:admin_create_recommendation_tag",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_8b3f0d067e",
+      "to": "backend:server:apply_annotation_template",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_8b57a7977e",
+      "to": "backend:account_api:admin_update_user",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_8d4de9cd12",
+      "to": "backend:account_api:reset_preferences",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_8fb03bb6c4",
+      "to": "backend:account_api:delete_artifact",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_93d575c7c7",
+      "to": "backend:account_api:restore_engineer_trash",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_979db7672d",
+      "to": "backend:account_api:get_preferences",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_98d2617497",
+      "to": "backend:server:save_annotation_template",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_998593a2db",
+      "to": "backend:server:get_active_job",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_9b0ab6c1c1",
+      "to": "backend:server:delete_annotation_template",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_a023491930",
+      "to": "backend:server:get_tolerance_debug_component_details",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_a062530326",
+      "to": "backend:account_api:admin_resolve_import_domains",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_a1982fabdf",
+      "to": "backend:account_api:admin_operation_logs",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_a28ed5f13c",
+      "to": "backend:account_api:admin_restore_trash",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_a4e83714f0",
+      "to": "backend:server:get_tolerance_stats",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_a62f284a87",
+      "to": "backend:server:tolerance_inspector_page",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_a6c5ae5102",
+      "to": "backend:server:get_candidate_annotation_rules",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_a84a05d136",
+      "to": "backend:server:get_results",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_a894f8e610",
+      "to": "backend:server:list_tolerance_debug_cases",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_a9ca548bab",
+      "to": "backend:server:get_tolerances",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_afe13e5895",
+      "to": "backend:account_api:admin_list_company_email_domains",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_b22a9c56e3",
+      "to": "backend:account_api:admin_purge_trash",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_b32695c8d0",
+      "to": "backend:account_api:admin_get_cad_concurrency",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_b50c6c7d40",
+      "to": "backend:server:get_drawing_svg",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_bf0ac6bf96",
+      "to": "backend:account_api:list_personal_tolerance_cases",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_c9afb3fdbf",
+      "to": "backend:account_api:admin_list_users",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_c9de7d4d76",
+      "to": "backend:server:get_drawing_part_features",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_ca646904ec",
+      "to": "backend:account_api:logout",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_ce60dc9372",
+      "to": "backend:account_api:admin_reset_password",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_d752871c43",
+      "to": "backend:server:get_drawing_package",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_d8c2290a32",
+      "to": "backend:server:open_local_drawing",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_d9504a9166",
+      "to": "backend:server:list_models",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_dbc68176ec",
+      "to": "backend:account_api:admin_audit_events",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_de3ca6ad0c",
+      "to": "backend:server:get_tolerance_debug_component_asset",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_df516ab627",
+      "to": "backend:server:get_tolerance_audit_model_preview",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_e1f6590f51",
+      "to": "backend:account_api:admin_get_trash_retention",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_e244664bd1",
+      "to": "backend:account_api:admin_set_trash_retention",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_e2fdd0a3ea",
+      "to": "backend:server:get_part_annotations",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_e579b5aad5",
+      "to": "backend:server:save_part_annotations",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_e718327d99",
+      "to": "backend:server:get_part_features",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_e9250d668c",
+      "to": "backend:account_api:admin_operation_log_detail",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_f2c04c6f4b",
+      "to": "backend:account_api:list_engineer_trash",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_f8a4a78361",
+      "to": "backend:account_api:integration_ack_credential_notification",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_fbfc72bbf8",
+      "to": "backend:server:get_external_tolerance_predictions",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_fc200403a2",
+      "to": "backend:server:get_status",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_fdc28ad4c5",
+      "to": "backend:account_api:change_password",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_fdfdd2250a",
+      "to": "backend:server:reanalyze_model",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_fe30514773",
+      "to": "backend:account_api:list_artifacts",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_ffd7dc53c2",
+      "to": "backend:account_api:admin_download_user_import_template",
+      "type": "handled_by"
+    },
+    {
+      "from": "backend:account_api:admin_import_users",
+      "to": "backend:account_api:_import_rows_with_domain_review",
+      "type": "calls"
+    },
+    {
+      "from": "backend:account_api:admin_list_recommendation_tags",
+      "to": "backend:account_api:list_recommendation_tags",
+      "type": "calls"
+    },
+    {
+      "from": "backend:account_api:admin_resolve_import_domains",
+      "to": "backend:account_api:_import_rows_with_domain_review",
+      "type": "calls"
+    },
+    {
+      "from": "backend:account_api:change_password",
+      "to": "backend:account_api:_request_token",
+      "type": "calls"
+    },
+    {
+      "from": "backend:account_api:logout",
+      "to": "backend:account_api:_request_token",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_add_if_exists",
+      "to": "backend:server:_api_file_url",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_annotation_audit_payload",
+      "to": "backend:server:_compact_annotation_record_for_audit",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_annotation_job_status_payload",
+      "to": "backend:server:_annotation_capacity",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_annotation_job_status_payload",
+      "to": "backend:server:_annotation_queue_position",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_annotation_path",
+      "to": "backend:server:_user_workspace",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_annotation_worker_payload",
+      "to": "worker:experimental_render",
+      "type": "configures_worker_action"
+    },
+    {
+      "from": "backend:server:_annotation_worker_payload",
+      "to": "worker:render",
+      "type": "configures_worker_action"
+    },
+    {
+      "from": "backend:server:_build_drawing_package",
+      "to": "backend:server:_annotation_path",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_build_drawing_package",
+      "to": "backend:server:_api_file_url",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_build_drawing_package",
+      "to": "backend:server:_safe_output_dir",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_build_drawing_package",
+      "to": "backend:server:_view_urls",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_build_drawing_package",
+      "to": "backend:server:build_parts_map",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_build_output_entry",
+      "to": "backend:server:_add_if_exists",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_candidate_annotation_rules_impl",
+      "to": "backend:server:_experimental_candidate_cache_signature",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_candidate_annotation_rules_impl",
+      "to": "backend:server:_read_experimental_candidate_cache",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_candidate_annotation_rules_impl",
+      "to": "backend:server:_run_cad_annotation_worker",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_candidate_annotation_rules_impl",
+      "to": "backend:server:_safe_output_dir",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_candidate_annotation_rules_impl",
+      "to": "backend:server:_safe_part_id",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_candidate_annotation_rules_impl",
+      "to": "backend:server:_write_experimental_candidate_cache",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_candidate_annotation_rules_impl",
+      "to": "worker:candidates",
+      "type": "dispatches"
+    },
+    {
+      "from": "backend:server:_candidate_annotation_rules_impl",
+      "to": "worker:experimental_candidates",
+      "type": "dispatches"
+    },
+    {
+      "from": "backend:server:_find_tolerance_case",
+      "to": "backend:server:_load_tolerance_debug_snapshot",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_find_tolerance_debug_diagnostic",
+      "to": "backend:server:_find_tolerance_debug_run",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_find_tolerance_debug_run",
+      "to": "backend:server:_load_tolerance_debug_snapshot",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_job_status_payload",
+      "to": "backend:server:_analysis_capacity",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_job_status_payload",
+      "to": "backend:server:_queue_position",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_load_external_prediction_set",
+      "to": "backend:server:_external_prediction_path",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_load_tolerance_debug_snapshot",
+      "to": "backend:server:_resolve_latest_tolerance_debug_source",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_new_annotation_audit_location",
+      "to": "backend:server:_api_file_url",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_persist_annotation_audit",
+      "to": "backend:server:_annotation_audit_payload",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_persist_annotation_audit",
+      "to": "backend:server:_atomic_json_write",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_resolve_model_reanalysis_source",
+      "to": "backend:server:_safe_output_dir",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_run_annotation_job",
+      "to": "backend:server:_annotation_worker_payload",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_run_annotation_job",
+      "to": "backend:server:_api_file_url",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_run_annotation_job",
+      "to": "backend:server:_run_cad_annotation_worker",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_run_annotation_job",
+      "to": "backend:server:_set_annotation_job_state",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_run_annotation_job",
+      "to": "backend:server:_utc_iso",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_run_experimental_shadow_job",
+      "to": "backend:server:_api_file_url",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_run_experimental_shadow_job",
+      "to": "backend:server:_run_cad_annotation_worker",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_run_experimental_shadow_job",
+      "to": "backend:server:_set_experimental_shadow_state",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_run_experimental_shadow_job",
+      "to": "backend:server:_utc_iso",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_run_experimental_shadow_job",
+      "to": "worker:experimental_shadow_analysis",
+      "type": "dispatches"
+    },
+    {
+      "from": "backend:server:_schedule_experimental_shadow_analysis",
+      "to": "backend:server:_run_experimental_shadow_job",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_schedule_experimental_shadow_analysis",
+      "to": "backend:server:_set_experimental_shadow_state",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_set_annotation_job_state",
+      "to": "backend:server:_persist_annotation_audit",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_set_annotation_job_state",
+      "to": "backend:server:_utc_iso",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_set_experimental_shadow_state",
+      "to": "backend:server:_utc_iso",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_set_experimental_shadow_state",
+      "to": "backend:server:_write_experimental_shadow_status",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_set_job_state",
+      "to": "backend:server:_utc_iso",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_submit_custom_annotation_drawing",
+      "to": "backend:server:_active_annotation_job_for_user",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_submit_custom_annotation_drawing",
+      "to": "backend:server:_annotation_job_status_payload",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_submit_custom_annotation_drawing",
+      "to": "backend:server:_api_file_url",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_submit_custom_annotation_drawing",
+      "to": "backend:server:_new_annotation_audit_location",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_submit_custom_annotation_drawing",
+      "to": "backend:server:_persist_annotation_audit",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_submit_custom_annotation_drawing",
+      "to": "backend:server:_require_experimental_engine_admin",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_submit_custom_annotation_drawing",
+      "to": "backend:server:_run_annotation_job",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_submit_custom_annotation_drawing",
+      "to": "backend:server:_safe_output_dir",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_submit_custom_annotation_drawing",
+      "to": "backend:server:_safe_part_id",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_submit_custom_annotation_drawing",
+      "to": "backend:server:_user_workspace",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_submit_custom_annotation_drawing",
+      "to": "backend:server:_utc_iso",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_submit_custom_annotation_drawing",
+      "to": "backend:server:_write_annotation_replay_snapshot",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_write_annotation_replay_snapshot",
+      "to": "backend:server:_annotation_worker_payload",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_write_annotation_replay_snapshot",
+      "to": "backend:server:_file_sha256",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_write_annotation_replay_snapshot",
+      "to": "backend:server:_runtime_fingerprint",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_write_annotation_replay_snapshot",
+      "to": "backend:server:_utc_iso",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:build_file_tree",
+      "to": "backend:server:clean_example_filename",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:build_grouped_processed_tree",
+      "to": "backend:server:split_generated_view_name",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:build_parts_map",
+      "to": "backend:server:_build_output_entry",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:compare_files",
+      "to": "backend:server:_active_job_for_user",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:compare_files",
+      "to": "backend:server:_job_status_payload",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:compare_files",
+      "to": "backend:server:_queue_position",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:compare_files",
+      "to": "backend:server:_set_job_state",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:compare_files",
+      "to": "backend:server:_utc_iso",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:compare_files",
+      "to": "backend:server:run_compare_job",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:confirm_feature_tolerance_case",
+      "to": "backend:server:_safe_output_dir",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:confirm_feature_tolerance_case",
+      "to": "backend:server:_safe_part_id",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:delete_external_tolerance_predictions",
+      "to": "backend:server:_authorize_external_prediction_api",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:delete_external_tolerance_predictions",
+      "to": "backend:server:_external_prediction_path",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:delete_external_tolerance_predictions",
+      "to": "backend:server:_safe_output_dir",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:delete_external_tolerance_predictions",
+      "to": "backend:server:_safe_part_id",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:download_drawing_file",
+      "to": "backend:server:lookup_drawing_paths",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:download_tolerance_audit_source_step",
+      "to": "backend:server:_find_tolerance_case",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_active_annotation_job",
+      "to": "backend:server:_active_annotation_job_for_user",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_active_annotation_job",
+      "to": "backend:server:_annotation_job_status_payload",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_active_job",
+      "to": "backend:server:_active_job_for_user",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_active_job",
+      "to": "backend:server:_job_status_payload",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_annotation_job",
+      "to": "backend:server:_annotation_job_status_payload",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_candidate_annotation_rules",
+      "to": "backend:server:_candidate_annotation_rules_impl",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_candidate_annotation_rules",
+      "to": "backend:server:_require_experimental_engine_admin",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_drawing_details",
+      "to": "backend:server:_audit_model_links",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_drawing_details",
+      "to": "backend:server:_load_tolerance_debug_snapshot",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_drawing_details",
+      "to": "backend:server:lookup_drawing_paths",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_drawing_package",
+      "to": "backend:server:_build_drawing_package",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_drawing_part_features",
+      "to": "backend:server:_safe_output_dir",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_drawing_part_features",
+      "to": "backend:server:_safe_part_id",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_drawing_part_features",
+      "to": "backend:server:build_parts_map",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_drawing_pdf",
+      "to": "backend:server:lookup_drawing_paths",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_drawing_pdf",
+      "to": "backend:server:render_dxf_to_pdf_cached",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_drawing_svg",
+      "to": "backend:server:_find_tolerance_case",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_drawing_svg",
+      "to": "backend:server:_find_tolerance_debug_diagnostic",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_drawing_svg",
+      "to": "backend:server:lookup_drawing_paths",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_drawing_svg",
+      "to": "backend:server:render_dxf_to_svg_cached",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_external_tolerance_predictions",
+      "to": "backend:server:_authorize_external_prediction_api",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_external_tolerance_predictions",
+      "to": "backend:server:_load_external_prediction_set",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_external_tolerance_predictions",
+      "to": "backend:server:_safe_output_dir",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_external_tolerance_predictions",
+      "to": "backend:server:_safe_part_id",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_model",
+      "to": "backend:server:build_parts_map",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_part_annotations",
+      "to": "backend:server:_annotation_path",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_part_annotations",
+      "to": "backend:server:_safe_output_dir",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_part_annotations",
+      "to": "backend:server:_safe_part_id",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_part_features",
+      "to": "backend:server:_api_file_url",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_part_features",
+      "to": "backend:server:_safe_output_dir",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_part_features",
+      "to": "backend:server:_safe_part_id",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_part_features",
+      "to": "backend:server:build_parts_map",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_status",
+      "to": "backend:server:_job_status_payload",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_tolerance_audit_model_preview",
+      "to": "backend:server:_find_tolerance_case",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_tolerance_debug_component_asset",
+      "to": "backend:server:_find_tolerance_debug_run",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_tolerance_debug_component_details",
+      "to": "backend:server:_find_tolerance_debug_diagnostic",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_tolerance_debug_component_details",
+      "to": "backend:server:_find_tolerance_debug_run",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_tolerance_debug_component_details",
+      "to": "backend:server:get_drawing_details",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:list_examples",
+      "to": "backend:server:build_file_tree",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:list_processed_fan_20260625",
+      "to": "backend:server:build_grouped_processed_tree",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:list_tolerance_cases",
+      "to": "backend:server:lookup_drawing_paths",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:list_tolerance_debug_cases",
+      "to": "backend:server:_load_tolerance_debug_snapshot",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:open_local_drawing",
+      "to": "backend:server:lookup_drawing_paths",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:reanalyze_model",
+      "to": "backend:server:_active_job_for_user",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:reanalyze_model",
+      "to": "backend:server:_active_reanalysis_for_model",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:reanalyze_model",
+      "to": "backend:server:_job_status_payload",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:reanalyze_model",
+      "to": "backend:server:_resolve_model_reanalysis_source",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:reanalyze_model",
+      "to": "backend:server:_utc_iso",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:reanalyze_model",
+      "to": "backend:server:run_model_reanalysis_job",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:recommend_tolerances",
+      "to": "backend:server:_load_external_prediction_set",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:recommend_tolerances",
+      "to": "backend:server:_safe_output_dir",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:recommend_tolerances",
+      "to": "backend:server:_safe_part_id",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:recommend_tolerances",
+      "to": "backend:server:lookup_drawing_paths",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:render_dxf_to_pdf_cached",
+      "to": "backend:server:render_dxf_to_svg_cached",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:render_dxf_to_svg_cached",
+      "to": "backend:server:_add_tolerance_highlight",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:render_dxf_to_svg_cached",
+      "to": "backend:server:_add_uncertainty_overlay",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:render_dxf_to_svg_cached",
+      "to": "backend:server:_focus_box_for_highlight",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:render_dxf_to_svg_cached",
+      "to": "backend:server:_modelspace_render_box",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:replay_annotation_operation",
+      "to": "backend:server:_submit_custom_annotation_drawing",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:run_compare_job",
+      "to": "backend:server:_set_job_state",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:run_compare_job",
+      "to": "backend:server:_utc_iso",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:run_job",
+      "to": "backend:server:_schedule_experimental_shadow_analysis",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:run_job",
+      "to": "backend:server:_set_job_state",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:run_job",
+      "to": "backend:server:_utc_iso",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:run_job",
+      "to": "backend:server:build_parts_map",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:run_model_reanalysis_job",
+      "to": "backend:server:_safe_output_dir",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:run_model_reanalysis_job",
+      "to": "backend:server:_schedule_experimental_shadow_analysis",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:run_model_reanalysis_job",
+      "to": "backend:server:_set_job_state",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:run_model_reanalysis_job",
+      "to": "backend:server:_utc_iso",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:run_model_reanalysis_job",
+      "to": "backend:server:build_parts_map",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:save_external_tolerance_predictions",
+      "to": "backend:server:_authorize_external_prediction_api",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:save_external_tolerance_predictions",
+      "to": "backend:server:_candidate_annotation_rules_impl",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:save_external_tolerance_predictions",
+      "to": "backend:server:_external_prediction_path",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:save_external_tolerance_predictions",
+      "to": "backend:server:_safe_output_dir",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:save_external_tolerance_predictions",
+      "to": "backend:server:_safe_part_id",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:save_part_annotations",
+      "to": "backend:server:_annotation_path",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:save_part_annotations",
+      "to": "backend:server:_api_file_url",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:save_part_annotations",
+      "to": "backend:server:_safe_output_dir",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:save_part_annotations",
+      "to": "backend:server:_safe_part_id",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:save_part_annotations",
+      "to": "backend:server:_user_workspace",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:save_part_annotations",
+      "to": "backend:server:build_parts_map",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:submit_custom_annotation_drawing",
+      "to": "backend:server:_submit_custom_annotation_drawing",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:upload_file",
+      "to": "backend:server:_active_job_for_user",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:upload_file",
+      "to": "backend:server:_job_status_payload",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:upload_file",
+      "to": "backend:server:_queue_position",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:upload_file",
+      "to": "backend:server:_set_job_state",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:upload_file",
+      "to": "backend:server:_utc_iso",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:upload_file",
+      "to": "backend:server:run_job",
+      "type": "calls"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AccountPortal.tsx:LoginPage",
+      "to": "api_74db88143f",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AccountPortal.tsx:changePassword",
+      "to": "api_fdc28ad4c5",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AccountPortal.tsx:deleteArtifact",
+      "to": "api_8fb03bb6c4",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AccountPortal.tsx:deleteCase",
+      "to": "api_0efb42d753",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AccountPortal.tsx:load",
+      "to": "api_979db7672d",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AccountPortal.tsx:load",
+      "to": "api_bf0ac6bf96",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AccountPortal.tsx:load",
+      "to": "api_f2c04c6f4b",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AccountPortal.tsx:load",
+      "to": "api_fe30514773",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AccountPortal.tsx:resetPreferences",
+      "to": "api_8d4de9cd12",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AccountPortal.tsx:restore",
+      "to": "api_93d575c7c7",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AccountPortal.tsx:savePreferences",
+      "to": "api_347b144ca9",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AccountPortal.tsx:submit",
+      "to": "api_7c80b9c781",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:addDomain",
+      "to": "api_62b736f244",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:createAccount",
+      "to": "api_71aafea7bf",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:createTag",
+      "to": "api_83708bfd8b",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:deleteDomain",
+      "to": "api_07204afd72",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:deleteSelectedUsers",
+      "to": "api_083a730bfd",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:deleteUser",
+      "to": "api_5e083b57bf",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:importAccounts",
+      "to": "api_3520f7dda6",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:load",
+      "to": "api_062ac606fb",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:load",
+      "to": "api_320c83515b",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:load",
+      "to": "api_4b1ecf7daa",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:load",
+      "to": "api_afe13e5895",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:load",
+      "to": "api_b32695c8d0",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:load",
+      "to": "api_c9afb3fdbf",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:load",
+      "to": "api_e1f6590f51",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:loadLogs",
+      "to": "api_a1982fabdf",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:loadLogs",
+      "to": "api_dbc68176ec",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:openOperationLog",
+      "to": "api_e9250d668c",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:purgeTrash",
+      "to": "api_b22a9c56e3",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:resetPassword",
+      "to": "api_ce60dc9372",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:resolveImportDomains",
+      "to": "api_a062530326",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:restoreTrash",
+      "to": "api_a28ed5f13c",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:saveCadConcurrency",
+      "to": "api_103692d5bc",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:saveDomain",
+      "to": "api_76b96cbc08",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:saveRetention",
+      "to": "api_e244664bd1",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:toggleTag",
+      "to": "api_2770f3a162",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminAccountPage.tsx:toggleUser",
+      "to": "api_8b57a7977e",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminOperationReplayPage.tsx:load",
+      "to": "api_1d43ff639c",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminOperationReplayPage.tsx:load",
+      "to": "api_4b1ecf7daa",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminOperationReplayPage.tsx:load",
+      "to": "api_5ca8664a1a",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminOperationReplayPage.tsx:startReplay",
+      "to": "api_6d9323f0c2",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:App",
+      "to": "api_4b1ecf7daa",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:WorkspaceApp",
+      "to": "api_265a62585b",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:fetchResults",
+      "to": "api_a84a05d136",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:handleAiRecommendTolerances",
+      "to": "api_8290b24494",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:handleApplyTemplate",
+      "to": "api_8b3f0d067e",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:handleDeleteTemplate",
+      "to": "api_9b0ab6c1c1",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:handleDiffUpload",
+      "to": "api_40f718de18",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:handleRenderCustomDrawing",
+      "to": "api_74a67d91dc",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:handleSaveAsHistoricalCase",
+      "to": "api_05ca578439",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:handleSaveNewTemplate",
+      "to": "api_98d2617497",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:handleTreeNewScroll",
+      "to": "api_5864569b89",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:handleTreeNewScroll",
+      "to": "api_5d8c00a351",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:handleTreeNewScroll",
+      "to": "api_d9504a9166",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:handleTreeNewScroll",
+      "to": "api_fc200403a2",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:handleUpload",
+      "to": "api_5459ae75a5",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:loadExistingModel",
+      "to": "api_37b9e05670",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:logout",
+      "to": "api_ca646904ec",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:poll",
+      "to": "api_13e5582fe4",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:poll",
+      "to": "api_5ca8664a1a",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:poll",
+      "to": "api_6dc24427f2",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:poll",
+      "to": "api_998593a2db",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:poll",
+      "to": "api_a4e83714f0",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:poll",
+      "to": "api_a6c5ae5102",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:poll",
+      "to": "api_e718327d99",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:reanalyzeWholeModel",
+      "to": "api_fdfdd2250a",
+      "type": "calls_api"
+    }
+  ],
+  "frontend_calls": [
+    {
+      "id": "frontend_7e555d5ff0",
+      "method": "GET",
+      "path": "/api/auth/config",
+      "raw_url": "${API_BASE}/api/auth/config",
+      "source": {
+        "file": "web_app/frontend/src/AccountPortal.tsx",
+        "line": 53,
+        "symbol": "LoginPage"
+      }
+    },
+    {
+      "id": "frontend_cf62eabf5c",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "raw_url": "${API_BASE}/api/auth/login",
+      "source": {
+        "file": "web_app/frontend/src/AccountPortal.tsx",
+        "line": 66,
+        "symbol": "submit"
+      }
+    },
+    {
+      "id": "frontend_a3ceb49a15",
+      "method": "GET",
+      "path": "/api/engineer/preferences",
+      "raw_url": "${API_BASE}/api/engineer/preferences",
+      "source": {
+        "file": "web_app/frontend/src/AccountPortal.tsx",
+        "line": 122,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_a3ceb49a15",
+      "method": "GET",
+      "path": "/api/engineer/artifacts",
+      "raw_url": "${API_BASE}/api/engineer/artifacts",
+      "source": {
+        "file": "web_app/frontend/src/AccountPortal.tsx",
+        "line": 123,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_a3ceb49a15",
+      "method": "GET",
+      "path": "/api/engineer/tolerance-cases",
+      "raw_url": "${API_BASE}/api/engineer/tolerance-cases",
+      "source": {
+        "file": "web_app/frontend/src/AccountPortal.tsx",
+        "line": 124,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_a3ceb49a15",
+      "method": "GET",
+      "path": "/api/engineer/trash",
+      "raw_url": "${API_BASE}/api/engineer/trash",
+      "source": {
+        "file": "web_app/frontend/src/AccountPortal.tsx",
+        "line": 125,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_bf7da80d1e",
+      "method": "PUT",
+      "path": "/api/engineer/preferences",
+      "raw_url": "${API_BASE}/api/engineer/preferences",
+      "source": {
+        "file": "web_app/frontend/src/AccountPortal.tsx",
+        "line": 140,
+        "symbol": "savePreferences"
+      }
+    },
+    {
+      "id": "frontend_466568bce1",
+      "method": "DELETE",
+      "path": "/api/engineer/preferences",
+      "raw_url": "${API_BASE}/api/engineer/preferences",
+      "source": {
+        "file": "web_app/frontend/src/AccountPortal.tsx",
+        "line": 146,
+        "symbol": "resetPreferences"
+      }
+    },
+    {
+      "id": "frontend_8a60835bef",
+      "method": "DELETE",
+      "path": "/api/engineer/tolerance-cases/{param}",
+      "raw_url": "${API_BASE}/api/engineer/tolerance-cases/${id}",
+      "source": {
+        "file": "web_app/frontend/src/AccountPortal.tsx",
+        "line": 152,
+        "symbol": "deleteCase"
+      }
+    },
+    {
+      "id": "frontend_943d4597c9",
+      "method": "DELETE",
+      "path": "/api/engineer/artifacts/{param}",
+      "raw_url": "${API_BASE}/api/engineer/artifacts/${id}",
+      "source": {
+        "file": "web_app/frontend/src/AccountPortal.tsx",
+        "line": 156,
+        "symbol": "deleteArtifact"
+      }
+    },
+    {
+      "id": "frontend_bac680cb60",
+      "method": "POST",
+      "path": "/api/engineer/trash/{param}/restore",
+      "raw_url": "${API_BASE}/api/engineer/trash/${id}/restore",
+      "source": {
+        "file": "web_app/frontend/src/AccountPortal.tsx",
+        "line": 159,
+        "symbol": "restore"
+      }
+    },
+    {
+      "id": "frontend_8d513f0e0c",
+      "method": "PUT",
+      "path": "/api/auth/password",
+      "raw_url": "${API_BASE}/api/auth/password",
+      "source": {
+        "file": "web_app/frontend/src/AccountPortal.tsx",
+        "line": 168,
+        "symbol": "changePassword"
+      }
+    },
+    {
+      "id": "frontend_a982b9342d",
+      "method": "GET",
+      "path": "/api/admin/users",
+      "raw_url": "${API_BASE}/api/admin/users",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 44,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_a982b9342d",
+      "method": "GET",
+      "path": "/api/admin/recommendation-tags",
+      "raw_url": "${API_BASE}/api/admin/recommendation-tags",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 45,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_a982b9342d",
+      "method": "GET",
+      "path": "/api/admin/trash",
+      "raw_url": "${API_BASE}/api/admin/trash",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 46,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_a982b9342d",
+      "method": "GET",
+      "path": "/api/admin/settings/trash-retention",
+      "raw_url": "${API_BASE}/api/admin/settings/trash-retention",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 47,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_a982b9342d",
+      "method": "GET",
+      "path": "/api/admin/company-email-domains",
+      "raw_url": "${API_BASE}/api/admin/company-email-domains",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 48,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_a982b9342d",
+      "method": "GET",
+      "path": "/api/admin/settings/cad-concurrency",
+      "raw_url": "${API_BASE}/api/admin/settings/cad-concurrency",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 49,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_a982b9342d",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "raw_url": "${API_BASE}/api/auth/me",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 68,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_bb19347687",
+      "method": "GET",
+      "path": "/api/admin/operation-logs",
+      "raw_url": "${API_BASE}/api/admin/operation-logs?limit=300",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 78,
+        "symbol": "loadLogs"
+      }
+    },
+    {
+      "id": "frontend_bb19347687",
+      "method": "GET",
+      "path": "/api/admin/audit-events",
+      "raw_url": "${API_BASE}/api/admin/audit-events?limit=300",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 79,
+        "symbol": "loadLogs"
+      }
+    },
+    {
+      "id": "frontend_cc156a858b",
+      "method": "GET",
+      "path": "/api/admin/operation-logs/{param}",
+      "raw_url": "${API_BASE}/api/admin/operation-logs/${operationId}",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 131,
+        "symbol": "openOperationLog"
+      }
+    },
+    {
+      "id": "frontend_4ce14830b1",
+      "method": "POST",
+      "path": "/api/admin/users",
+      "raw_url": "${API_BASE}/api/admin/users",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 140,
+        "symbol": "createAccount"
+      }
+    },
+    {
+      "id": "frontend_d51496ce18",
+      "method": "POST",
+      "path": "/api/admin/users/import",
+      "raw_url": "${API_BASE}/api/admin/users/import",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 153,
+        "symbol": "importAccounts"
+      }
+    },
+    {
+      "id": "frontend_b760743f4c",
+      "method": "POST",
+      "path": "/api/admin/users/import/resolve-domains",
+      "raw_url": "${API_BASE}/api/admin/users/import/resolve-domains",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 175,
+        "symbol": "resolveImportDomains"
+      }
+    },
+    {
+      "id": "frontend_a22f5da165",
+      "method": "POST",
+      "path": "/api/admin/users/{param}/reset-password",
+      "raw_url": "${API_BASE}/api/admin/users/${target.id}/reset-password",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 196,
+        "symbol": "resetPassword"
+      }
+    },
+    {
+      "id": "frontend_e0a78bd361",
+      "method": "PATCH",
+      "path": "/api/admin/users/{param}",
+      "raw_url": "${API_BASE}/api/admin/users/${target.id}",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 207,
+        "symbol": "toggleUser"
+      }
+    },
+    {
+      "id": "frontend_fa68d6d93d",
+      "method": "DELETE",
+      "path": "/api/admin/users/{param}",
+      "raw_url": "${API_BASE}/api/admin/users/${target.id}",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 216,
+        "symbol": "deleteUser"
+      }
+    },
+    {
+      "id": "frontend_9d54769171",
+      "method": "POST",
+      "path": "/api/admin/users/bulk-delete",
+      "raw_url": "${API_BASE}/api/admin/users/bulk-delete",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 235,
+        "symbol": "deleteSelectedUsers"
+      }
+    },
+    {
+      "id": "frontend_3fac00a2df",
+      "method": "POST",
+      "path": "/api/admin/recommendation-tags",
+      "raw_url": "${API_BASE}/api/admin/recommendation-tags",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 245,
+        "symbol": "createTag"
+      }
+    },
+    {
+      "id": "frontend_cf0d3a4373",
+      "method": "PATCH",
+      "path": "/api/admin/recommendation-tags/{param}",
+      "raw_url": "${API_BASE}/api/admin/recommendation-tags/${tag.id}",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 256,
+        "symbol": "toggleTag"
+      }
+    },
+    {
+      "id": "frontend_c612dd54b3",
+      "method": "POST",
+      "path": "/api/admin/trash/{param}/restore",
+      "raw_url": "${API_BASE}/api/admin/trash/${item.id}/restore",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 264,
+        "symbol": "restoreTrash"
+      }
+    },
+    {
+      "id": "frontend_273ff909f6",
+      "method": "DELETE",
+      "path": "/api/admin/trash/{param}",
+      "raw_url": "${API_BASE}/api/admin/trash/${item.id}",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 269,
+        "symbol": "purgeTrash"
+      }
+    },
+    {
+      "id": "frontend_1d4edfe4f1",
+      "method": "PUT",
+      "path": "/api/admin/settings/trash-retention",
+      "raw_url": "${API_BASE}/api/admin/settings/trash-retention",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 274,
+        "symbol": "saveRetention"
+      }
+    },
+    {
+      "id": "frontend_6afc5b177f",
+      "method": "PUT",
+      "path": "/api/admin/settings/cad-concurrency",
+      "raw_url": "${API_BASE}/api/admin/settings/cad-concurrency",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 286,
+        "symbol": "saveCadConcurrency"
+      }
+    },
+    {
+      "id": "frontend_3c0584dff7",
+      "method": "POST",
+      "path": "/api/admin/company-email-domains",
+      "raw_url": "${API_BASE}/api/admin/company-email-domains",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 298,
+        "symbol": "addDomain"
+      }
+    },
+    {
+      "id": "frontend_ae966cd7e7",
+      "method": "PUT",
+      "path": "/api/admin/company-email-domains/{param}",
+      "raw_url": "${API_BASE}/api/admin/company-email-domains/${encodeURIComponent(domain)}",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 305,
+        "symbol": "saveDomain"
+      }
+    },
+    {
+      "id": "frontend_1b0766c41a",
+      "method": "DELETE",
+      "path": "/api/admin/company-email-domains/{param}",
+      "raw_url": "${API_BASE}/api/admin/company-email-domains/${encodeURIComponent(domain)}",
+      "source": {
+        "file": "web_app/frontend/src/AdminAccountPage.tsx",
+        "line": 311,
+        "symbol": "deleteDomain"
+      }
+    },
+    {
+      "id": "frontend_11523fa31a",
+      "method": "GET",
+      "path": "/api/admin/operation-logs/{param}/reproduction",
+      "raw_url": "${API_BASE}/api/admin/operation-logs/${encodeURIComponent(operationId)}/reproduction",
+      "source": {
+        "file": "web_app/frontend/src/AdminOperationReplayPage.tsx",
+        "line": 83,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_11523fa31a",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "raw_url": "${API_BASE}/api/auth/me",
+      "source": {
+        "file": "web_app/frontend/src/AdminOperationReplayPage.tsx",
+        "line": 92,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_11523fa31a",
+      "method": "GET",
+      "path": "/api/annotation/jobs/{param}",
+      "raw_url": "${API_BASE}/api/annotation/jobs/${job.job_id}",
+      "source": {
+        "file": "web_app/frontend/src/AdminOperationReplayPage.tsx",
+        "line": 102,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_378a99acb9",
+      "method": "POST",
+      "path": "/api/admin/operation-logs/{param}/replay",
+      "raw_url": "${API_BASE}/api/admin/operation-logs/${encodeURIComponent(operationId)}/replay",
+      "source": {
+        "file": "web_app/frontend/src/AdminOperationReplayPage.tsx",
+        "line": 128,
+        "symbol": "startReplay"
+      }
+    },
+    {
+      "id": "frontend_fb524e9fd7",
+      "method": "GET",
+      "path": "/api/annotation/jobs/active",
+      "raw_url": "${API_BASE}/api/annotation/jobs/active",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 837,
+        "symbol": "WorkspaceApp"
+      }
+    },
+    {
+      "id": "frontend_1324bfd000",
+      "method": "GET",
+      "path": "/api/annotation/jobs/{param}",
+      "raw_url": "${API_BASE}/api/annotation/jobs/${annotationJobId}",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 854,
+        "symbol": "poll"
+      }
+    },
+    {
+      "id": "frontend_1324bfd000",
+      "method": "GET",
+      "path": "/api/jobs/active",
+      "raw_url": "${API_BASE}/api/jobs/active",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 922,
+        "symbol": "poll"
+      }
+    },
+    {
+      "id": "frontend_1324bfd000",
+      "method": "GET",
+      "path": "/api/annotation/templates",
+      "raw_url": "${API_BASE}/api/annotation/templates",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 941,
+        "symbol": "poll"
+      }
+    },
+    {
+      "id": "frontend_1324bfd000",
+      "method": "GET",
+      "path": "/api/tolerance/stats",
+      "raw_url": "${API_BASE}/api/tolerance/stats",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 952,
+        "symbol": "poll"
+      }
+    },
+    {
+      "id": "frontend_1324bfd000",
+      "method": "GET",
+      "path": "/api/recommendation-tags",
+      "raw_url": "${API_BASE}/api/recommendation-tags",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 960,
+        "symbol": "poll"
+      }
+    },
+    {
+      "id": "frontend_1324bfd000",
+      "method": "GET",
+      "path": "/api/features/{param}/{param}",
+      "raw_url": "${API_BASE}/api/features/${modelId}/${selectedPart}?t=${Date.now()}${refreshParam}",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1040,
+        "symbol": "poll"
+      }
+    },
+    {
+      "id": "frontend_1324bfd000",
+      "method": "GET",
+      "path": "/api/annotation/candidate-rules/{param}/{param}",
+      "raw_url": "${API_BASE}/api/annotation/candidate-rules/${modelId}/${selectedPart}?engine=${candidateEngine}&t=${Date.now()}${refreshParam}",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1105,
+        "symbol": "poll"
+      }
+    },
+    {
+      "id": "frontend_7ef0a34ebe",
+      "method": "POST",
+      "path": "/api/models/{param}/reanalyze",
+      "raw_url": "${API_BASE}/api/models/${modelId}/reanalyze",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1195,
+        "symbol": "reanalyzeWholeModel"
+      }
+    },
+    {
+      "id": "frontend_e840d60173",
+      "method": "POST",
+      "path": "/api/tolerance/recommend",
+      "raw_url": "${API_BASE}/api/tolerance/recommend",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1392,
+        "symbol": "handleAiRecommendTolerances"
+      }
+    },
+    {
+      "id": "frontend_3e7ad41796",
+      "method": "POST",
+      "path": "/api/tolerance/save-case",
+      "raw_url": "${API_BASE}/api/tolerance/save-case",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1486,
+        "symbol": "handleSaveAsHistoricalCase"
+      }
+    },
+    {
+      "id": "frontend_faf7b7b578",
+      "method": "POST",
+      "path": "/api/annotation/apply-template",
+      "raw_url": "${API_BASE}/api/annotation/apply-template",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1519,
+        "symbol": "handleApplyTemplate"
+      }
+    },
+    {
+      "id": "frontend_6bceb369f2",
+      "method": "POST",
+      "path": "/api/annotation/render",
+      "raw_url": "${API_BASE}/api/annotation/render",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1601,
+        "symbol": "handleRenderCustomDrawing"
+      }
+    },
+    {
+      "id": "frontend_e370b8b7ff",
+      "method": "POST",
+      "path": "/api/annotation/templates",
+      "raw_url": "${API_BASE}/api/annotation/templates",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1679,
+        "symbol": "handleSaveNewTemplate"
+      }
+    },
+    {
+      "id": "frontend_e6fce89e9f",
+      "method": "DELETE",
+      "path": "/api/annotation/templates/{param}",
+      "raw_url": "${API_BASE}/api/annotation/templates/${templateId}",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1704,
+        "symbol": "handleDeleteTemplate"
+      }
+    },
+    {
+      "id": "frontend_54d550639e",
+      "method": "GET",
+      "path": "/api/models",
+      "raw_url": "${API_BASE}/api/models",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1772,
+        "symbol": "handleTreeNewScroll"
+      }
+    },
+    {
+      "id": "frontend_54d550639e",
+      "method": "GET",
+      "path": "/api/examples",
+      "raw_url": "${API_BASE}/api/examples",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1776,
+        "symbol": "handleTreeNewScroll"
+      }
+    },
+    {
+      "id": "frontend_54d550639e",
+      "method": "GET",
+      "path": "/api/processed/fan-20260625",
+      "raw_url": "${API_BASE}/api/processed/fan-20260625",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1779,
+        "symbol": "handleTreeNewScroll"
+      }
+    },
+    {
+      "id": "frontend_54d550639e",
+      "method": "GET",
+      "path": "/api/status/{param}",
+      "raw_url": "${API_BASE}/api/status/${jobId}",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1795,
+        "symbol": "handleTreeNewScroll"
+      }
+    },
+    {
+      "id": "frontend_2ad82041c6",
+      "method": "GET",
+      "path": "/api/results/{param}",
+      "raw_url": "${API_BASE}/api/results/${id}",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1828,
+        "symbol": "fetchResults"
+      }
+    },
+    {
+      "id": "frontend_8321ec4429",
+      "method": "GET",
+      "path": "/api/model/{param}",
+      "raw_url": "${API_BASE}/api/model/${modelId}",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1845,
+        "symbol": "loadExistingModel"
+      }
+    },
+    {
+      "id": "frontend_2d54755b46",
+      "method": "POST",
+      "path": "/api/upload",
+      "raw_url": "${API_BASE}/api/upload",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1863,
+        "symbol": "handleUpload"
+      }
+    },
+    {
+      "id": "frontend_1764e96957",
+      "method": "POST",
+      "path": "/api/compare",
+      "raw_url": "${API_BASE}/api/compare",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 1894,
+        "symbol": "handleDiffUpload"
+      }
+    },
+    {
+      "id": "frontend_32f4ed5967",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "raw_url": "${API_BASE}/api/auth/me",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 4410,
+        "symbol": "App"
+      }
+    },
+    {
+      "id": "frontend_0563bcb12b",
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "raw_url": "${API_BASE}/api/auth/logout",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 4425,
+        "symbol": "logout"
+      }
+    }
+  ],
+  "generator": "tools/generate_system_api_graph.py",
+  "routes": [
+    {
+      "handler": "admin_accounts_page",
+      "id": "api_2573f59606",
+      "method": "GET",
+      "path": "/admin/accounts",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4518,
+        "symbol": "admin_accounts_page"
+      }
+    },
+    {
+      "handler": "admin_operation_replay_page",
+      "id": "api_2256bfd456",
+      "method": "GET",
+      "path": "/admin/operations/{operation_id}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4522,
+        "symbol": "admin_operation_replay_page"
+      }
+    },
+    {
+      "handler": "admin_audit_events",
+      "id": "api_dbc68176ec",
+      "method": "GET",
+      "path": "/api/admin/audit-events",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 724,
+        "symbol": "admin_audit_events"
+      }
+    },
+    {
+      "handler": "admin_list_company_case_tags",
+      "id": "api_5d7c347985",
+      "method": "GET",
+      "path": "/api/admin/company-cases/tags",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 863,
+        "symbol": "admin_list_company_case_tags"
+      }
+    },
+    {
+      "handler": "admin_assign_company_case_tags",
+      "id": "api_68df0f34ec",
+      "method": "PUT",
+      "path": "/api/admin/company-cases/{case_id}/tags",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 868,
+        "symbol": "admin_assign_company_case_tags"
+      }
+    },
+    {
+      "handler": "admin_list_company_email_domains",
+      "id": "api_afe13e5895",
+      "method": "GET",
+      "path": "/api/admin/company-email-domains",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 678,
+        "symbol": "admin_list_company_email_domains"
+      }
+    },
+    {
+      "handler": "admin_create_company_email_domain",
+      "id": "api_62b736f244",
+      "method": "POST",
+      "path": "/api/admin/company-email-domains",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 683,
+        "symbol": "admin_create_company_email_domain"
+      }
+    },
+    {
+      "handler": "admin_delete_company_email_domain",
+      "id": "api_07204afd72",
+      "method": "DELETE",
+      "path": "/api/admin/company-email-domains/{domain}",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 710,
+        "symbol": "admin_delete_company_email_domain"
+      }
+    },
+    {
+      "handler": "admin_update_company_email_domain",
+      "id": "api_76b96cbc08",
+      "method": "PUT",
+      "path": "/api/admin/company-email-domains/{domain}",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 695,
+        "symbol": "admin_update_company_email_domain"
+      }
+    },
+    {
+      "handler": "admin_operation_logs",
+      "id": "api_a1982fabdf",
+      "method": "GET",
+      "path": "/api/admin/operation-logs",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 729,
+        "symbol": "admin_operation_logs"
+      }
+    },
+    {
+      "handler": "admin_operation_log_detail",
+      "id": "api_e9250d668c",
+      "method": "GET",
+      "path": "/api/admin/operation-logs/{operation_id}",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 742,
+        "symbol": "admin_operation_log_detail"
+      }
+    },
+    {
+      "handler": "replay_annotation_operation",
+      "id": "api_6d9323f0c2",
+      "method": "POST",
+      "path": "/api/admin/operation-logs/{operation_id}/replay",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3299,
+        "symbol": "replay_annotation_operation"
+      }
+    },
+    {
+      "handler": "admin_operation_reproduction",
+      "id": "api_1d43ff639c",
+      "method": "GET",
+      "path": "/api/admin/operation-logs/{operation_id}/reproduction",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 753,
+        "symbol": "admin_operation_reproduction"
+      }
+    },
+    {
+      "handler": "admin_list_recommendation_tags",
+      "id": "api_062ac606fb",
+      "method": "GET",
+      "path": "/api/admin/recommendation-tags",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 833,
+        "symbol": "admin_list_recommendation_tags"
+      }
+    },
+    {
+      "handler": "admin_create_recommendation_tag",
+      "id": "api_83708bfd8b",
+      "method": "POST",
+      "path": "/api/admin/recommendation-tags",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 838,
+        "symbol": "admin_create_recommendation_tag"
+      }
+    },
+    {
+      "handler": "admin_update_recommendation_tag",
+      "id": "api_2770f3a162",
+      "method": "PATCH",
+      "path": "/api/admin/recommendation-tags/{tag_id}",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 850,
+        "symbol": "admin_update_recommendation_tag"
+      }
+    },
+    {
+      "handler": "admin_get_cad_concurrency",
+      "id": "api_b32695c8d0",
+      "method": "GET",
+      "path": "/api/admin/settings/cad-concurrency",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 807,
+        "symbol": "admin_get_cad_concurrency"
+      }
+    },
+    {
+      "handler": "admin_set_cad_concurrency",
+      "id": "api_103692d5bc",
+      "method": "PUT",
+      "path": "/api/admin/settings/cad-concurrency",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 812,
+        "symbol": "admin_set_cad_concurrency"
+      }
+    },
+    {
+      "handler": "admin_get_trash_retention",
+      "id": "api_e1f6590f51",
+      "method": "GET",
+      "path": "/api/admin/settings/trash-retention",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 794,
+        "symbol": "admin_get_trash_retention"
+      }
+    },
+    {
+      "handler": "admin_set_trash_retention",
+      "id": "api_e244664bd1",
+      "method": "PUT",
+      "path": "/api/admin/settings/trash-retention",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 799,
+        "symbol": "admin_set_trash_retention"
+      }
+    },
+    {
+      "handler": "admin_list_trash",
+      "id": "api_320c83515b",
+      "method": "GET",
+      "path": "/api/admin/trash",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 764,
+        "symbol": "admin_list_trash"
+      }
+    },
+    {
+      "handler": "admin_purge_expired_trash",
+      "id": "api_331cca1ba7",
+      "method": "POST",
+      "path": "/api/admin/trash/purge-expired",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 828,
+        "symbol": "admin_purge_expired_trash"
+      }
+    },
+    {
+      "handler": "admin_purge_trash",
+      "id": "api_b22a9c56e3",
+      "method": "DELETE",
+      "path": "/api/admin/trash/{trash_id}",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 787,
+        "symbol": "admin_purge_trash"
+      }
+    },
+    {
+      "handler": "admin_restore_trash",
+      "id": "api_a28ed5f13c",
+      "method": "POST",
+      "path": "/api/admin/trash/{trash_id}/restore",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 776,
+        "symbol": "admin_restore_trash"
+      }
+    },
+    {
+      "handler": "admin_list_users",
+      "id": "api_c9afb3fdbf",
+      "method": "GET",
+      "path": "/api/admin/users",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 385,
+        "symbol": "admin_list_users"
+      }
+    },
+    {
+      "handler": "admin_create_user",
+      "id": "api_71aafea7bf",
+      "method": "POST",
+      "path": "/api/admin/users",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 390,
+        "symbol": "admin_create_user"
+      }
+    },
+    {
+      "handler": "admin_bulk_delete_users",
+      "id": "api_083a730bfd",
+      "method": "POST",
+      "path": "/api/admin/users/bulk-delete",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 413,
+        "symbol": "admin_bulk_delete_users"
+      }
+    },
+    {
+      "handler": "admin_import_users",
+      "id": "api_3520f7dda6",
+      "method": "POST",
+      "path": "/api/admin/users/import",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 527,
+        "symbol": "admin_import_users"
+      }
+    },
+    {
+      "handler": "admin_download_user_import_template",
+      "id": "api_ffd7dc53c2",
+      "method": "GET",
+      "path": "/api/admin/users/import-template",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 637,
+        "symbol": "admin_download_user_import_template"
+      }
+    },
+    {
+      "handler": "admin_resolve_import_domains",
+      "id": "api_a062530326",
+      "method": "POST",
+      "path": "/api/admin/users/import/resolve-domains",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 575,
+        "symbol": "admin_resolve_import_domains"
+      }
+    },
+    {
+      "handler": "admin_delete_user",
+      "id": "api_5e083b57bf",
+      "method": "DELETE",
+      "path": "/api/admin/users/{user_id}",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 402,
+        "symbol": "admin_delete_user"
+      }
+    },
+    {
+      "handler": "admin_update_user",
+      "id": "api_8b57a7977e",
+      "method": "PATCH",
+      "path": "/api/admin/users/{user_id}",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 427,
+        "symbol": "admin_update_user"
+      }
+    },
+    {
+      "handler": "admin_reset_password",
+      "id": "api_ce60dc9372",
+      "method": "POST",
+      "path": "/api/admin/users/{user_id}/reset-password",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 444,
+        "symbol": "admin_reset_password"
+      }
+    },
+    {
+      "handler": "apply_annotation_template",
+      "id": "api_8b3f0d067e",
+      "method": "POST",
+      "path": "/api/annotation/apply-template",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2776,
+        "symbol": "apply_annotation_template"
+      }
+    },
+    {
+      "handler": "get_candidate_annotation_rules",
+      "id": "api_a6c5ae5102",
+      "method": "GET",
+      "path": "/api/annotation/candidate-rules/{model_id}/{part_id}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3477,
+        "symbol": "get_candidate_annotation_rules"
+      }
+    },
+    {
+      "handler": "get_active_annotation_job",
+      "id": "api_265a62585b",
+      "method": "GET",
+      "path": "/api/annotation/jobs/active",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3281,
+        "symbol": "get_active_annotation_job"
+      }
+    },
+    {
+      "handler": "get_annotation_job",
+      "id": "api_5ca8664a1a",
+      "method": "GET",
+      "path": "/api/annotation/jobs/{job_id}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3290,
+        "symbol": "get_annotation_job"
+      }
+    },
+    {
+      "handler": "submit_custom_annotation_drawing",
+      "id": "api_74a67d91dc",
+      "method": "POST",
+      "path": "/api/annotation/render",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2975,
+        "symbol": "submit_custom_annotation_drawing"
+      }
+    },
+    {
+      "handler": "get_annotation_templates",
+      "id": "api_6dc24427f2",
+      "method": "GET",
+      "path": "/api/annotation/templates",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2739,
+        "symbol": "get_annotation_templates"
+      }
+    },
+    {
+      "handler": "save_annotation_template",
+      "id": "api_98d2617497",
+      "method": "POST",
+      "path": "/api/annotation/templates",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2746,
+        "symbol": "save_annotation_template"
+      }
+    },
+    {
+      "handler": "delete_annotation_template",
+      "id": "api_9b0ab6c1c1",
+      "method": "DELETE",
+      "path": "/api/annotation/templates/{template_id}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2759,
+        "symbol": "delete_annotation_template"
+      }
+    },
+    {
+      "handler": "auth_config",
+      "id": "api_74db88143f",
+      "method": "GET",
+      "path": "/api/auth/config",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 249,
+        "symbol": "auth_config"
+      }
+    },
+    {
+      "handler": "login",
+      "id": "api_7c80b9c781",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 210,
+        "symbol": "login"
+      }
+    },
+    {
+      "handler": "logout",
+      "id": "api_ca646904ec",
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 258,
+        "symbol": "logout"
+      }
+    },
+    {
+      "handler": "me",
+      "id": "api_4b1ecf7daa",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 265,
+        "symbol": "me"
+      }
+    },
+    {
+      "handler": "change_password",
+      "id": "api_fdc28ad4c5",
+      "method": "PUT",
+      "path": "/api/auth/password",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 270,
+        "symbol": "change_password"
+      }
+    },
+    {
+      "handler": "compare_files",
+      "id": "api_40f718de18",
+      "method": "POST",
+      "path": "/api/compare",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4062,
+        "symbol": "compare_files"
+      }
+    },
+    {
+      "handler": "get_drawing_package",
+      "id": "api_d752871c43",
+      "method": "GET",
+      "path": "/api/drawings/{model_id}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4164,
+        "symbol": "get_drawing_package"
+      }
+    },
+    {
+      "handler": "get_part_annotations",
+      "id": "api_e2fdd0a3ea",
+      "method": "GET",
+      "path": "/api/drawings/{model_id}/parts/{part_id}/annotations",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4207,
+        "symbol": "get_part_annotations"
+      }
+    },
+    {
+      "handler": "save_part_annotations",
+      "id": "api_e579b5aad5",
+      "method": "POST",
+      "path": "/api/drawings/{model_id}/parts/{part_id}/annotations",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4231,
+        "symbol": "save_part_annotations"
+      }
+    },
+    {
+      "handler": "get_drawing_part_features",
+      "id": "api_c9de7d4d76",
+      "method": "GET",
+      "path": "/api/drawings/{model_id}/parts/{part_id}/features",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4174,
+        "symbol": "get_drawing_part_features"
+      }
+    },
+    {
+      "handler": "list_artifacts",
+      "id": "api_fe30514773",
+      "method": "GET",
+      "path": "/api/engineer/artifacts",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 323,
+        "symbol": "list_artifacts"
+      }
+    },
+    {
+      "handler": "delete_artifact",
+      "id": "api_8fb03bb6c4",
+      "method": "DELETE",
+      "path": "/api/engineer/artifacts/{artifact_id}",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 331,
+        "symbol": "delete_artifact"
+      }
+    },
+    {
+      "handler": "reset_preferences",
+      "id": "api_8d4de9cd12",
+      "method": "DELETE",
+      "path": "/api/engineer/preferences",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 310,
+        "symbol": "reset_preferences"
+      }
+    },
+    {
+      "handler": "get_preferences",
+      "id": "api_979db7672d",
+      "method": "GET",
+      "path": "/api/engineer/preferences",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 293,
+        "symbol": "get_preferences"
+      }
+    },
+    {
+      "handler": "put_preferences",
+      "id": "api_347b144ca9",
+      "method": "PUT",
+      "path": "/api/engineer/preferences",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 298,
+        "symbol": "put_preferences"
+      }
+    },
+    {
+      "handler": "clear_personal_tolerance_cases",
+      "id": "api_390482b507",
+      "method": "DELETE",
+      "path": "/api/engineer/tolerance-cases",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 347,
+        "symbol": "clear_personal_tolerance_cases"
+      }
+    },
+    {
+      "handler": "list_personal_tolerance_cases",
+      "id": "api_bf0ac6bf96",
+      "method": "GET",
+      "path": "/api/engineer/tolerance-cases",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 342,
+        "symbol": "list_personal_tolerance_cases"
+      }
+    },
+    {
+      "handler": "delete_personal_tolerance_case",
+      "id": "api_0efb42d753",
+      "method": "DELETE",
+      "path": "/api/engineer/tolerance-cases/{case_record_id}",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 353,
+        "symbol": "delete_personal_tolerance_case"
+      }
+    },
+    {
+      "handler": "list_engineer_trash",
+      "id": "api_f2c04c6f4b",
+      "method": "GET",
+      "path": "/api/engineer/trash",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 363,
+        "symbol": "list_engineer_trash"
+      }
+    },
+    {
+      "handler": "restore_engineer_trash",
+      "id": "api_93d575c7c7",
+      "method": "POST",
+      "path": "/api/engineer/trash/{trash_id}/restore",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 372,
+        "symbol": "restore_engineer_trash"
+      }
+    },
+    {
+      "handler": "list_examples",
+      "id": "api_5d8c00a351",
+      "method": "GET",
+      "path": "/api/examples",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4387,
+        "symbol": "list_examples"
+      }
+    },
+    {
+      "handler": "get_part_features",
+      "id": "api_e718327d99",
+      "method": "GET",
+      "path": "/api/features/{model_id}/{part_id}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3498,
+        "symbol": "get_part_features"
+      }
+    },
+    {
+      "handler": "health_check",
+      "id": "api_7ac4f1527d",
+      "method": "GET",
+      "path": "/api/health",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4433,
+        "symbol": "health_check"
+      }
+    },
+    {
+      "handler": "integration_list_credential_notifications",
+      "id": "api_7865756443",
+      "method": "GET",
+      "path": "/api/integrations/email/credential-notifications",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 881,
+        "symbol": "integration_list_credential_notifications"
+      }
+    },
+    {
+      "handler": "integration_ack_credential_notification",
+      "id": "api_f8a4a78361",
+      "method": "POST",
+      "path": "/api/integrations/email/credential-notifications/{notification_id}/ack",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 892,
+        "symbol": "integration_ack_credential_notification"
+      }
+    },
+    {
+      "handler": "get_active_job",
+      "id": "api_998593a2db",
+      "method": "GET",
+      "path": "/api/jobs/active",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3978,
+        "symbol": "get_active_job"
+      }
+    },
+    {
+      "handler": "get_model",
+      "id": "api_37b9e05670",
+      "method": "GET",
+      "path": "/api/model/{model_id}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4140,
+        "symbol": "get_model"
+      }
+    },
+    {
+      "handler": "list_models",
+      "id": "api_d9504a9166",
+      "method": "GET",
+      "path": "/api/models",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4120,
+        "symbol": "list_models"
+      }
+    },
+    {
+      "handler": "reanalyze_model",
+      "id": "api_fdfdd2250a",
+      "method": "POST",
+      "path": "/api/models/{model_id}/reanalyze",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3914,
+        "symbol": "reanalyze_model"
+      }
+    },
+    {
+      "handler": "list_processed_fan_20260625",
+      "id": "api_5864569b89",
+      "method": "GET",
+      "path": "/api/processed/fan-20260625",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4413,
+        "symbol": "list_processed_fan_20260625"
+      }
+    },
+    {
+      "handler": "list_recommendation_tags",
+      "id": "api_13e5582fe4",
+      "method": "GET",
+      "path": "/api/recommendation-tags",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 318,
+        "symbol": "list_recommendation_tags"
+      }
+    },
+    {
+      "handler": "get_results",
+      "id": "api_a84a05d136",
+      "method": "GET",
+      "path": "/api/results/{job_id}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3987,
+        "symbol": "get_results"
+      }
+    },
+    {
+      "handler": "get_status",
+      "id": "api_fc200403a2",
+      "method": "GET",
+      "path": "/api/status/{job_id}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3968,
+        "symbol": "get_status"
+      }
+    },
+    {
+      "handler": "get_tolerance_audit_model_preview",
+      "id": "api_df516ab627",
+      "method": "GET",
+      "path": "/api/tolerance/audit/model-preview/{case_id}.png",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2137,
+        "symbol": "get_tolerance_audit_model_preview"
+      }
+    },
+    {
+      "handler": "download_tolerance_audit_source_step",
+      "id": "api_1eec223a19",
+      "method": "GET",
+      "path": "/api/tolerance/audit/source-step/{case_id}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2158,
+        "symbol": "download_tolerance_audit_source_step"
+      }
+    },
+    {
+      "handler": "list_tolerance_cases",
+      "id": "api_3ae04bfa01",
+      "method": "GET",
+      "path": "/api/tolerance/cases",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 1559,
+        "symbol": "list_tolerance_cases"
+      }
+    },
+    {
+      "handler": "confirm_feature_tolerance_case",
+      "id": "api_210df5f2bc",
+      "method": "POST",
+      "path": "/api/tolerance/confirm-feature-case",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2651,
+        "symbol": "confirm_feature_tolerance_case"
+      }
+    },
+    {
+      "handler": "list_tolerance_debug_cases",
+      "id": "api_a894f8e610",
+      "method": "GET",
+      "path": "/api/tolerance/debug/cases",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 1791,
+        "symbol": "list_tolerance_debug_cases"
+      }
+    },
+    {
+      "handler": "get_tolerance_debug_component_asset",
+      "id": "api_de3ca6ad0c",
+      "method": "GET",
+      "path": "/api/tolerance/debug/component-asset/{component_name}/{asset_name}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2010,
+        "symbol": "get_tolerance_debug_component_asset"
+      }
+    },
+    {
+      "handler": "get_tolerance_debug_component_details",
+      "id": "api_a023491930",
+      "method": "GET",
+      "path": "/api/tolerance/debug/component-details/{component_name}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 1946,
+        "symbol": "get_tolerance_debug_component_details"
+      }
+    },
+    {
+      "handler": "download_drawing_file",
+      "id": "api_4e604319d3",
+      "method": "GET",
+      "path": "/api/tolerance/download/{model_name}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2377,
+        "symbol": "download_drawing_file"
+      }
+    },
+    {
+      "handler": "get_drawing_details",
+      "id": "api_1783356baa",
+      "method": "GET",
+      "path": "/api/tolerance/drawing-details/{model_name}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2197,
+        "symbol": "get_drawing_details"
+      }
+    },
+    {
+      "handler": "get_drawing_pdf",
+      "id": "api_2b568c441b",
+      "method": "GET",
+      "path": "/api/tolerance/drawing-pdf/{model_name}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2173,
+        "symbol": "get_drawing_pdf"
+      }
+    },
+    {
+      "handler": "get_drawing_svg",
+      "id": "api_b50c6c7d40",
+      "method": "GET",
+      "path": "/api/tolerance/drawing-svg/{model_name}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2058,
+        "symbol": "get_drawing_svg"
+      }
+    },
+    {
+      "handler": "delete_external_tolerance_predictions",
+      "id": "api_106db2fe5b",
+      "method": "DELETE",
+      "path": "/api/tolerance/external-predictions/{model_id}/{part_id}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2497,
+        "symbol": "delete_external_tolerance_predictions"
+      }
+    },
+    {
+      "handler": "get_external_tolerance_predictions",
+      "id": "api_fbfc72bbf8",
+      "method": "GET",
+      "path": "/api/tolerance/external-predictions/{model_id}/{part_id}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2478,
+        "symbol": "get_external_tolerance_predictions"
+      }
+    },
+    {
+      "handler": "save_external_tolerance_predictions",
+      "id": "api_1f40d5b4a3",
+      "method": "POST",
+      "path": "/api/tolerance/external-predictions/{model_id}/{part_id}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2408,
+        "symbol": "save_external_tolerance_predictions"
+      }
+    },
+    {
+      "handler": "open_local_drawing",
+      "id": "api_d8c2290a32",
+      "method": "POST",
+      "path": "/api/tolerance/open-local",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2340,
+        "symbol": "open_local_drawing"
+      }
+    },
+    {
+      "handler": "recommend_tolerances",
+      "id": "api_8290b24494",
+      "method": "POST",
+      "path": "/api/tolerance/recommend",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2514,
+        "symbol": "recommend_tolerances"
+      }
+    },
+    {
+      "handler": "save_tolerance_case",
+      "id": "api_05ca578439",
+      "method": "POST",
+      "path": "/api/tolerance/save-case",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 2710,
+        "symbol": "save_tolerance_case"
+      }
+    },
+    {
+      "handler": "get_tolerance_stats",
+      "id": "api_a4e83714f0",
+      "method": "GET",
+      "path": "/api/tolerance/stats",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 1515,
+        "symbol": "get_tolerance_stats"
+      }
+    },
+    {
+      "handler": "get_tolerances",
+      "id": "api_a9ca548bab",
+      "method": "GET",
+      "path": "/api/tolerances",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4459,
+        "symbol": "get_tolerances"
+      }
+    },
+    {
+      "handler": "update_tolerances",
+      "id": "api_472db4fd33",
+      "method": "POST",
+      "path": "/api/tolerances",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4465,
+        "symbol": "update_tolerances"
+      }
+    },
+    {
+      "handler": "upload_file",
+      "id": "api_5459ae75a5",
+      "method": "POST",
+      "path": "/api/upload",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3859,
+        "symbol": "upload_file"
+      }
+    },
+    {
+      "handler": "tolerance_audit_v2_page",
+      "id": "api_49c71db6a1",
+      "method": "GET",
+      "path": "/tolerance-audit-v2.html",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4502,
+        "symbol": "tolerance_audit_v2_page"
+      }
+    },
+    {
+      "handler": "tolerance_inspector_page",
+      "id": "api_a62f284a87",
+      "method": "GET",
+      "path": "/tolerance-inspector.html",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 4484,
+        "symbol": "tolerance_inspector_page"
+      }
+    }
+  ],
+  "schema_version": 1,
+  "summary": {
+    "backend_routes": 97,
+    "frontend_http_calls": 67,
+    "unresolved_frontend_calls": 0,
+    "worker_actions": 5
+  },
+  "unresolved_frontend_calls": [],
+  "worker_actions": [
+    {
+      "action": "candidates",
+      "handler": "run_job",
+      "source": {
+        "file": "tools/cad_annotation_worker.py",
+        "line": 287,
+        "symbol": "run_job"
+      }
+    },
+    {
+      "action": "experimental_candidates",
+      "handler": "run_job",
+      "source": {
+        "file": "tools/cad_annotation_worker.py",
+        "line": 277,
+        "symbol": "run_job"
+      }
+    },
+    {
+      "action": "experimental_render",
+      "handler": "run_job",
+      "source": {
+        "file": "tools/cad_annotation_worker.py",
+        "line": 279,
+        "symbol": "run_job"
+      }
+    },
+    {
+      "action": "experimental_shadow_analysis",
+      "handler": "run_job",
+      "source": {
+        "file": "tools/cad_annotation_worker.py",
+        "line": 275,
+        "symbol": "run_job"
+      }
+    },
+    {
+      "action": "render",
+      "handler": "run_job",
+      "source": {
+        "file": "tools/cad_annotation_worker.py",
+        "line": 274,
+        "symbol": "run_job"
+      }
+    }
+  ]
+}
