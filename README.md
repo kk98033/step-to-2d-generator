@@ -1,5 +1,22 @@
 # FORCECON STEP-to-2D 智慧工程圖系統
 
+## 目前正式狀態（2026-10-26）
+
+- 正式分支：`main`，GitHub 與本地目前同步於 `1964c95`。
+- Experimental Main `drawing-experimental-v0.26.0` 已接入網頁智慧標註流程，可產生 front/top/right 與自適應合併多視圖。
+- CAD 分析與標註重工作業由隔離 Worker 執行，支援佇列、管理員可調並行上限、同一使用者工作保護與錯誤稽核。
+- 管理員介面包含帳號、公司 Email 網域、批次匯入、推薦標籤、回收桶、操作紀錄與錯誤重現。
+- 管理員可於 `/admin/api-graph` 查看可拖曳、搜尋、分功能區塊的即時 API 關係圖。
+- API 程式碼實況由 `tools/generate_system_api_graph.py` 自動產生並由 GitHub Actions 檢查漂移。
+
+新 Agent 請先讀：
+
+1. [`AGENTS.md`](AGENTS.md)
+2. [`docs/agent/agent_bootstrap.md`](docs/agent/agent_bootstrap.md)
+3. [`docs/agent/CURRENT_HANDOFF.md`](docs/agent/CURRENT_HANDOFF.md)
+4. [`docs/generated/api_relationships.md`](docs/generated/api_relationships.md)
+
+
 將 STEP/STP 3D CAD 模型轉換成可檢視、可編輯、可交換的 2D 工程圖，並提供 3D 特徵查找、智慧標註、歷史公差案例檢索及公差推薦實驗平台。
 
 > 專案狀態：工程原型持續開發中。STEP 解析、投影、DXF/PDF/PNG 輸出與智慧標註可使用；CAD-RAG 公差推薦仍在驗證資料品質與擴大可用案例覆蓋率，不應視為可直接取代工程師簽核的生產系統。
