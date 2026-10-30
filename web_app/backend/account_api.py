@@ -24,6 +24,7 @@ from web_app.backend.admin_log_service import (
     get_operation_reproduction,
     list_operation_logs,
 )
+from web_app.backend.presence_service import presence_service
 
 
 SESSION_COOKIE = "cad_session"
@@ -142,7 +143,29 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             if model_id and not store.can_access_model(user, model_id):
                 return JSONResponse({"detail": "File not found"}, status_code=404)
 
-        return await call_next(request)
+        response = await call_next(request)
+        should_record = (
+            user is not None
+            and path != "/api/presence/heartbeat"
+            and (
+                request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
+                or "/download" in path
+                or path.startswith("/api/files/")
+            )
+        )
+        if should_record:
+            action = {
+                "/api/auth/logout": "LOGOUT",
+                "/api/upload": "MODEL_UPLOAD",
+            }.get(path, "FILE_DOWNLOAD" if request.method.upper() == "GET" else "API_OPERATION")
+            presence_service.record_activity(
+                user,
+                action=action,
+                method=request.method,
+                path=path,
+                status_code=response.status_code,
+            )
+        return response
 
 
 class LoginRequest(BaseModel):
@@ -150,6 +173,11 @@ class LoginRequest(BaseModel):
     email_domain: Optional[str] = Field(default=None, max_length=120)
     username: Optional[str] = Field(default=None, min_length=1, max_length=80)
     password: str = Field(min_length=1, max_length=256)
+
+
+class PresenceHeartbeatRequest(BaseModel):
+    page: str = Field(default="/", max_length=240)
+    idle: bool = False
 
 
 class PasswordChangeRequest(BaseModel):
@@ -183,8 +211,8 @@ class RetentionRequest(BaseModel):
 
 
 class CadConcurrencyRequest(BaseModel):
-    analysis_max_concurrency: int = Field(ge=1, le=8)
-    annotation_max_concurrency: int = Field(ge=1, le=8)
+    analysis_max_concurrency: int = Field(ge=1, le=32)
+    annotation_max_concurrency: int = Field(ge=1, le=32)
 
 
 class CompanyEmailDomainRequest(BaseModel):
@@ -243,6 +271,9 @@ def login(payload: LoginRequest, request: Request, response: Response):
         max_age=365 * 24 * 60 * 60,
         path="/",
     )
+    presence_service.record_activity(
+        user, action="LOGIN", method="POST", path="/api/auth/login", status_code=200
+    )
     return {"status": "ok", "user": user.as_dict(), "expires_at": expires_at.isoformat()}
 
 
@@ -257,7 +288,9 @@ def auth_config():
 
 @router.post("/auth/logout")
 def logout(request: Request, response: Response, user: CurrentUser = Depends(require_user)):
-    store.revoke_session(_request_token(request))
+    token = _request_token(request)
+    presence_service.remove(token, user.id)
+    store.revoke_session(token)
     response.delete_cookie(SESSION_COOKIE, path="/")
     return {"status": "ok"}
 
@@ -265,6 +298,22 @@ def logout(request: Request, response: Response, user: CurrentUser = Depends(req
 @router.get("/auth/me")
 def me(user: CurrentUser = Depends(require_user)):
     return {"status": "ok", "user": user.as_dict()}
+
+
+@router.post("/presence/heartbeat")
+def presence_heartbeat(
+    payload: PresenceHeartbeatRequest,
+    request: Request,
+    user: CurrentUser = Depends(require_user),
+):
+    presence = presence_service.heartbeat(
+        user,
+        _request_token(request),
+        page=payload.page,
+        idle=payload.idle,
+        user_agent=request.headers.get("user-agent"),
+    )
+    return {"status": "ok", "presence": presence}
 
 
 @router.put("/auth/password")

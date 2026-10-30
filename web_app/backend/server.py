@@ -36,6 +36,9 @@ from web_app.backend.account_api import (
 from web_app.backend.engineer_personalization import personalize_recommendations
 from web_app.backend.identity_store import CurrentUser
 from web_app.backend.admin_log_service import load_operation_replay_source
+from web_app.backend.presence_service import presence_service
+from web_app.backend.stress_test_service import StressTestService
+from web_app.backend.runtime_control_service import RuntimeControlService
 
 app = FastAPI(
     title="FORCECON STEP-to-2D API",
@@ -169,8 +172,39 @@ annotation_jobs: Dict[str, Dict[str, Any]] = {}
 ANNOTATION_ACTIVE_STATUSES = {"queued", "processing", "finalizing"}
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CAD_ANNOTATION_WORKER = os.path.join(REPO_ROOT, "tools", "cad_annotation_worker.py")
+MODEL_OUTPUT_SWAP_WORKER = os.path.join(REPO_ROOT, "tools", "model_output_swap_worker.py")
+MODEL_REANALYSIS_WORKER = os.path.join(REPO_ROOT, "tools", "model_reanalysis_worker.py")
 CAD_ANNOTATION_TIMEOUT_SECONDS = max(30, int(os.environ.get("CAD_ANNOTATION_TIMEOUT_SECONDS", "900")))
+MODEL_REANALYSIS_TIMEOUT_SECONDS = max(
+    60, int(os.environ.get("MODEL_REANALYSIS_TIMEOUT_SECONDS", "3600"))
+)
 _runtime_fingerprint_cache: Optional[Dict[str, Any]] = None
+stress_test_service = StressTestService(REPO_ROOT, OUTPUT_DIR, MODELS_DIR)
+runtime_control_service = RuntimeControlService(OUTPUT_DIR)
+try:
+    STRESS_TEST_PROBE_LIMIT = max(1, min(32, int(os.environ.get("CAD_STRESS_TEST_PROBE_LIMIT", "32"))))
+except ValueError:
+    STRESS_TEST_PROBE_LIMIT = 32
+
+
+def _reject_heavy_work_during_exclusive_stress_test() -> None:
+    if runtime_control_service.maintenance_mode:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "CAD_MAINTENANCE_MODE",
+                "message": "系統目前處於維護模式，暫停接受新的分析與標註工作",
+            },
+        )
+    if stress_test_service.exclusive_mode:
+        raise HTTPException(
+            status_code=423,
+            detail={
+                "code": "STRESS_TEST_EXCLUSIVE_MODE",
+                "message": "管理員正在執行獨占式 CAD 壓力測試，暫停接受新的重型工作",
+                "run_id": stress_test_service.active_run_id,
+            },
+        )
 
 
 def _utc_iso() -> str:
@@ -541,10 +575,15 @@ def _queue_position(job_id: str) -> int:
 
 
 def _set_job_state(job_id: str, **updates: Any) -> None:
+    reanalysis_snapshot = None
     with jobs_lock:
         if job_id in jobs:
             jobs[job_id].update(updates)
             jobs[job_id]["updated_at"] = _utc_iso()
+            if jobs[job_id].get("job_type") == "model_reanalysis":
+                reanalysis_snapshot = dict(jobs[job_id])
+    if reanalysis_snapshot is not None:
+        _persist_reanalysis_status(job_id, reanalysis_snapshot)
 
 
 def _job_status_payload(job_id: str, job: Dict[str, Any]) -> Dict[str, Any]:
@@ -2986,6 +3025,7 @@ def _submit_custom_annotation_drawing(
     source_operation_id: Optional[str] = None,
     force_render: bool = False,
 ):
+    _reject_heavy_work_during_exclusive_stress_test()
     model_id = body.get("model_id")
     part_id = body.get("part_id")
     feature_records = body.get("feature_records") or []
@@ -3295,6 +3335,403 @@ def get_annotation_job(job_id: str, current_user: CurrentUser = Depends(require_
     return _annotation_job_status_payload(job_id, job)
 
 
+class AdminStressTestRequest(BaseModel):
+    fixture_id: str
+    engine: Literal["legacy_smart", "experimental_v026"] = "legacy_smart"
+    test_mode: Literal["annotation_capacity", "auto_dual_capacity"] = "annotation_capacity"
+    max_concurrency: int = Field(default=16, ge=1, le=32)
+    rounds: int = Field(default=2, ge=1, le=5)
+    job_timeout_seconds: int = Field(default=900, ge=30, le=3600)
+    exclusive: bool = True
+
+
+class AdminMaintenanceRequest(BaseModel):
+    enabled: bool
+    reason: str = Field(default="", max_length=500)
+
+
+class AdminRestartRequest(BaseModel):
+    force: bool = False
+
+
+def _active_heavy_job_summary() -> Dict[str, int]:
+    with jobs_lock:
+        analysis_count = sum(job.get("status") in ACTIVE_JOB_STATUSES for job in jobs.values())
+    with annotation_state_lock:
+        annotation_count = sum(
+            job.get("status") in ANNOTATION_ACTIVE_STATUSES for job in annotation_jobs.values()
+        )
+    return {"analysis": int(analysis_count), "annotation": int(annotation_count)}
+
+
+def _interrupt_active_jobs_for_forced_restart() -> None:
+    completed_at = _utc_iso()
+    with jobs_lock:
+        analysis_ids = [
+            job_id for job_id, job in jobs.items()
+            if job.get("status") in ACTIVE_JOB_STATUSES
+        ]
+    for job_id in analysis_ids:
+        _set_job_state(
+            job_id,
+            status="error",
+            message="工作已由管理員強制重新啟動後端而中斷；原模型與暫存輸出均未刪除。",
+            completed_at=completed_at,
+        )
+
+    with annotation_state_lock:
+        annotation_ids = [
+            job_id for job_id, job in annotation_jobs.items()
+            if job.get("status") in ANNOTATION_ACTIVE_STATUSES
+        ]
+    for job_id in annotation_ids:
+        _set_annotation_job_state(
+            job_id,
+            status="error",
+            error="工作已由管理員強制重新啟動後端而中斷。",
+            message="工作已由管理員強制重新啟動後端而中斷。",
+            completed_at=completed_at,
+        )
+
+
+@app.get("/api/admin/runtime")
+def admin_runtime_status(admin: CurrentUser = Depends(require_admin)):
+    active = _active_heavy_job_summary()
+    with jobs_lock:
+        analysis_queued = sum(job.get("status") == "queued" for job in jobs.values())
+    with annotation_state_lock:
+        annotation_queued = sum(job.get("status") == "queued" for job in annotation_jobs.values())
+    return {
+        "status": "ok",
+        "runtime": runtime_control_service.snapshot(),
+        "concurrency": identity_store.cad_concurrency_limits(),
+        "active_heavy_jobs": active,
+        "queued_jobs": {"analysis": analysis_queued, "annotation": annotation_queued},
+        "active_slots": {
+            "analysis": analysis_slots.active,
+            "annotation": annotation_slots.active,
+            "experimental_shadow": shadow_analysis_slots.active,
+        },
+        "stress_test": {
+            "active_run_id": stress_test_service.active_run_id,
+            "exclusive_mode": stress_test_service.exclusive_mode,
+        },
+    }
+
+
+@app.get("/api/admin/workforce")
+def admin_workforce_dashboard(admin: CurrentUser = Depends(require_admin)):
+    presence = presence_service.snapshot()
+    with jobs_lock:
+        analysis_items = [
+            (job_id, dict(job)) for job_id, job in jobs.items()
+            if job.get("status") in ACTIVE_JOB_STATUSES
+        ]
+    with annotation_state_lock:
+        annotation_items = [
+            (job_id, dict(job)) for job_id, job in annotation_jobs.items()
+            if job.get("status") in ANNOTATION_ACTIVE_STATUSES
+        ]
+
+    analysis_queue = {
+        job_id: index for index, (job_id, _) in enumerate(
+            sorted(
+                ((job_id, job) for job_id, job in analysis_items if job.get("status") == "queued"),
+                key=lambda item: item[1].get("created_at", ""),
+            ),
+            start=1,
+        )
+    }
+    annotation_queue = {
+        job_id: index for index, (job_id, _) in enumerate(
+            sorted(
+                ((job_id, job) for job_id, job in annotation_items if job.get("status") == "queued"),
+                key=lambda item: item[1].get("created_at", ""),
+            ),
+            start=1,
+        )
+    }
+
+    capacity: dict[str, Any] = {}
+    latest_runs = stress_test_service.list_runs(limit=1)
+    if latest_runs:
+        capacity = dict((latest_runs[0].get("report") or {}).get("capacity_planning") or {})
+    pool_capacity = {
+        str(item.get("workload")): item for item in (capacity.get("pools") or [])
+    }
+
+    job_rows = []
+    for workload, items, positions in (
+        ("analysis", analysis_items, analysis_queue),
+        ("annotation", annotation_items, annotation_queue),
+    ):
+        pool = pool_capacity.get(workload) or {}
+        slots = int(
+            pool.get("recommended_active_slots")
+            or (_analysis_capacity() if workload == "analysis" else _annotation_capacity())
+        )
+        average_seconds = float(pool.get("measured_average_job_seconds") or 0.0)
+        for job_id, job in items:
+            position = int(positions.get(job_id) or 0)
+            estimated_wait = (
+                ((position + max(1, slots) - 1) // max(1, slots)) * average_seconds
+                if position else 0.0
+            )
+            job_rows.append({
+                "job_id": job_id,
+                "user_id": job.get("owner_user_id"),
+                "workload": workload,
+                "status": job.get("status"),
+                "message": job.get("message"),
+                "model_id": job.get("model_id") or job.get("requested_model_id"),
+                "part_id": job.get("part_id"),
+                "filename": job.get("filename"),
+                "created_at": job.get("created_at"),
+                "started_at": job.get("started_at"),
+                "queue_position": position,
+                "estimated_wait_seconds": round(estimated_wait, 3),
+            })
+
+    jobs_by_user: dict[str, list[dict[str, Any]]] = {}
+    for row in job_rows:
+        jobs_by_user.setdefault(str(row.get("user_id") or ""), []).append(row)
+    users = []
+    for user in presence["users"]:
+        user_jobs = jobs_by_user.get(user["user_id"], [])
+        users.append({**user, "jobs": user_jobs})
+
+    runtime = runtime_control_service.snapshot()
+    resources = runtime.get("resources") or {}
+    queue_counts = {
+        "analysis": len(analysis_queue),
+        "annotation": len(annotation_queue),
+    }
+    alerts = []
+    for code, value, threshold, message in (
+        ("CPU_HIGH", resources.get("cpu_percent"), 85.0, "CPU 使用率已超過 85%"),
+        ("MEMORY_HIGH", resources.get("memory_percent"), 90.0, "記憶體使用率已超過 90%"),
+        ("DISK_HIGH", resources.get("disk_percent"), 90.0, "磁碟使用率已超過 90%"),
+    ):
+        if value is not None and float(value) >= threshold:
+            alerts.append({"code": code, "severity": "warning", "message": message, "value": value})
+    for workload in ("analysis", "annotation"):
+        pool = pool_capacity.get(workload) or {}
+        slots = int(pool.get("recommended_active_slots") or 0)
+        if slots and queue_counts[workload] >= slots * 2:
+            alerts.append({
+                "code": f"{workload.upper()}_QUEUE_HIGH",
+                "severity": "warning",
+                "message": f"{workload} 排隊已達建議同時容量的兩倍",
+                "value": queue_counts[workload],
+            })
+    if not runtime["process_control"]["supervisor_available"]:
+        alerts.append({
+            "code": "SUPERVISOR_UNAVAILABLE",
+            "severity": "error",
+            "message": "後端未受 supervisor 管理，無法安全遠端重啟",
+        })
+
+    return {
+        "status": "ok",
+        "sampled_at": presence["sampled_at"],
+        "summary": {
+            **presence["summary"],
+            "active_cad_users": len({row["user_id"] for row in job_rows if row["status"] != "queued"}),
+            "queued_cad_users": len({row["user_id"] for row in job_rows if row["status"] == "queued"}),
+            "active_jobs": sum(row["status"] != "queued" for row in job_rows),
+            "queued_jobs": sum(row["status"] == "queued" for row in job_rows),
+        },
+        "users": users,
+        "jobs": sorted(job_rows, key=lambda item: item.get("created_at") or "", reverse=True),
+        "trend": presence["trend"],
+        "live_activities": presence_service.activities(limit=300),
+        "capacity": capacity,
+        "alerts": alerts,
+    }
+
+
+@app.post("/api/admin/runtime/maintenance")
+def admin_set_runtime_maintenance(
+    payload: AdminMaintenanceRequest,
+    admin: CurrentUser = Depends(require_admin),
+):
+    active = _active_heavy_job_summary()
+    if payload.enabled and any(active.values()):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "HEAVY_JOBS_ACTIVE",
+                "message": "仍有重型工作執行中；請等待完成後再停止接單",
+                "active_heavy_jobs": active,
+            },
+        )
+    state = runtime_control_service.set_maintenance(payload.enabled, admin.id, payload.reason)
+    return {"status": "ok", "runtime": state}
+
+
+@app.post("/api/admin/runtime/restart")
+def admin_restart_runtime(
+    payload: Optional[AdminRestartRequest] = Body(default=None),
+    admin: CurrentUser = Depends(require_admin),
+):
+    active = _active_heavy_job_summary()
+    force = bool(payload and payload.force)
+    if stress_test_service.active_run_id or (any(active.values()) and not force):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "SYSTEM_BUSY",
+                "message": "仍有 CAD 工作或壓力測試執行中，不能重新啟動後端",
+                "active_heavy_jobs": active,
+                "stress_test_run_id": stress_test_service.active_run_id,
+            },
+        )
+    if force and any(active.values()):
+        _interrupt_active_jobs_for_forced_restart()
+    try:
+        result = runtime_control_service.request_restart()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"status": "accepted", "supervisor": result}
+
+
+@app.get("/api/admin/stress-tests/config")
+def admin_stress_test_config(admin: CurrentUser = Depends(require_admin)):
+    settings = identity_store.cad_concurrency_limits()
+    return {
+        "status": "ok",
+        "fixtures": stress_test_service.fixture_catalog(),
+        "concurrency": settings,
+        "probe_max_concurrency": STRESS_TEST_PROBE_LIMIT,
+        "active_run_id": stress_test_service.active_run_id,
+        "exclusive_mode": stress_test_service.exclusive_mode,
+        "active_heavy_jobs": _active_heavy_job_summary(),
+    }
+
+
+@app.get("/api/admin/stress-tests")
+def admin_list_stress_tests(admin: CurrentUser = Depends(require_admin)):
+    return {"status": "ok", "runs": stress_test_service.list_runs()}
+
+
+@app.post("/api/admin/stress-tests")
+def admin_start_stress_test(
+    payload: AdminStressTestRequest,
+    request: Request,
+    admin: CurrentUser = Depends(require_admin),
+):
+    settings = identity_store.cad_concurrency_limits()
+    if payload.max_concurrency > STRESS_TEST_PROBE_LIMIT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"max_concurrency cannot exceed stress-test probe limit {STRESS_TEST_PROBE_LIMIT}",
+        )
+    active = _active_heavy_job_summary()
+    if payload.exclusive and any(active.values()):
+        raise HTTPException(status_code=409, detail={
+            "code": "HEAVY_JOBS_ACTIVE",
+            "message": "請等待現有模型分析與智慧標註工作完成後再執行獨占壓測",
+            "active_heavy_jobs": active,
+        })
+    health_url = f"{str(request.base_url).rstrip('/')}/api/health"
+    try:
+        run = stress_test_service.start(
+            fixture_id=payload.fixture_id,
+            engine=payload.engine,
+            test_mode=payload.test_mode,
+            max_concurrency=payload.max_concurrency,
+            rounds=payload.rounds,
+            job_timeout_seconds=payload.job_timeout_seconds,
+            health_url=health_url,
+            settings_before=settings,
+            exclusive=payload.exclusive,
+            requested_by=admin.id,
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"status": "ok", "run": run}
+
+
+@app.get("/api/admin/stress-tests/{run_id}")
+def admin_get_stress_test(run_id: str, admin: CurrentUser = Depends(require_admin)):
+    try:
+        return {"status": "ok", "run": stress_test_service.get(run_id)}
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.delete("/api/admin/stress-tests/{run_id}")
+def admin_delete_stress_test(run_id: str, admin: CurrentUser = Depends(require_admin)):
+    try:
+        deleted = stress_test_service.delete(run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (ValueError, RuntimeError, OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"status": "ok", **deleted}
+
+
+@app.post("/api/admin/stress-tests/{run_id}/stop")
+def admin_stop_stress_test(run_id: str, admin: CurrentUser = Depends(require_admin)):
+    try:
+        return {"status": "ok", "run": stress_test_service.request_stop(run_id)}
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/admin/stress-tests/{run_id}/apply-recommendation")
+def admin_apply_stress_recommendation(
+    run_id: str,
+    admin: CurrentUser = Depends(require_admin),
+):
+    try:
+        recommendation = stress_test_service.recommendation(run_id)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    current = identity_store.cad_concurrency_limits()
+    recommended_analysis = int(recommendation.get("recommended_analysis_concurrency") or 0)
+    recommended_annotation = int(
+        recommendation.get("recommended_annotation_concurrency")
+        or recommendation.get("recommended_active_heavy_users")
+        or 0
+    )
+    if recommended_analysis <= 0:
+        recommended_analysis = current["analysis_max_concurrency"]
+    if not (
+        1 <= recommended_analysis <= current["hard_limit"]
+        and 1 <= recommended_annotation <= current["hard_limit"]
+    ):
+        raise HTTPException(status_code=409, detail="Stress-test recommendation is outside the deployment limit")
+    settings = identity_store.set_cad_concurrency_limits(
+        recommended_analysis,
+        recommended_annotation,
+        admin.id,
+    )
+    return {
+        "status": "ok",
+        "applied_from_run_id": run_id,
+        "settings": settings,
+        "scope": "analysis_and_annotation" if recommendation.get("recommended_analysis_concurrency") else "annotation_max_concurrency",
+    }
+
+
+@app.post("/api/admin/stress-tests/{run_id}/restore-settings")
+def admin_restore_stress_settings(
+    run_id: str,
+    admin: CurrentUser = Depends(require_admin),
+):
+    try:
+        previous = stress_test_service.settings_before(run_id)
+        settings = identity_store.set_cad_concurrency_limits(
+            int(previous["analysis_max_concurrency"]),
+            int(previous["annotation_max_concurrency"]),
+            admin.id,
+        )
+    except (KeyError, TypeError, ValueError, OSError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=409, detail=f"Cannot restore settings: {exc}") from exc
+    return {"status": "ok", "restored_from_run_id": run_id, "settings": settings}
+
+
 @app.post("/api/admin/operation-logs/{operation_id}/replay")
 def replay_annotation_operation(
     operation_id: str,
@@ -3396,6 +3833,7 @@ def _candidate_annotation_rules_impl(
     """
     為指定零件動態掃描並產出所有候選標註規則 (Candidate Dimension Rules)
     """
+    _reject_heavy_work_during_exclusive_stress_test()
     output_dir = _safe_output_dir(model_id)
     _safe_part_id(part_id)
 
@@ -3703,16 +4141,213 @@ def _active_reanalysis_for_model(model_id: str) -> Optional[tuple[str, Dict[str,
     return min(active, key=lambda item: item[1].get("created_at", "")) if active else None
 
 
+def _reanalysis_status_path(job_id: str) -> str:
+    safe_job_id = str(uuid.UUID(job_id))
+    return os.path.join(OUTPUT_DIR, "_system", "reanalysis_jobs", f"{safe_job_id}.json")
+
+
+def _persist_reanalysis_status(job_id: str, job: Dict[str, Any]) -> None:
+    payload = {
+        key: job.get(key)
+        for key in (
+            "job_type", "status", "message", "total", "current", "filename",
+            "owner_user_id", "requested_model_id", "output_dir", "created_at",
+            "updated_at", "started_at", "completed_at",
+        )
+    }
+    payload["job_id"] = job_id
+    _atomic_json_write(_reanalysis_status_path(job_id), payload)
+
+
+def _load_reanalysis_status(job_id: str) -> Optional[Dict[str, Any]]:
+    try:
+        path = _reanalysis_status_path(job_id)
+    except ValueError:
+        return None
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as status_file:
+            payload = json.load(status_file)
+        return payload if isinstance(payload, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _replace_model_output_directory(
+    source: str,
+    destination: str,
+    *,
+    timeout_seconds: int = 30,
+) -> None:
+    """Run a potentially blocking Windows directory rename outside the API process."""
+    parent = os.path.dirname(os.path.abspath(source))
+    result_path = os.path.join(parent, f"._swap_result_{uuid.uuid4().hex}.json")
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                MODEL_OUTPUT_SWAP_WORKER,
+                "--source", source,
+                "--destination", destination,
+                "--result", result_path,
+            ],
+            cwd=REPO_ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=max(5, timeout_seconds),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError(
+            f"模型輸出目錄切換超過 {timeout_seconds} 秒；可能仍有 Windows 檔案鎖"
+        ) from exc
+    try:
+        with open(result_path, "r", encoding="utf-8") as result_file:
+            payload = json.load(result_file)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"模型輸出目錄切換程序未回傳有效結果（exit={completed.returncode}）"
+        ) from exc
+    finally:
+        try:
+            os.remove(result_path)
+        except OSError:
+            pass
+    if completed.returncode != 0 or payload.get("status") != "ok":
+        raise RuntimeError(
+            f"模型輸出目錄切換失敗：{payload.get('error_type') or 'UNKNOWN'}: "
+            f"{payload.get('error') or 'no detail'}"
+        )
+
+
+def _run_model_output_operation(
+    arguments: List[str],
+    result_parent: str,
+    *,
+    timeout_seconds: int,
+) -> Dict[str, Any]:
+    """Run a blocking model-output operation behind a killable process boundary."""
+    result_path = os.path.join(result_parent, f"._swap_result_{uuid.uuid4().hex}.json")
+    try:
+        completed = subprocess.run(
+            [sys.executable, MODEL_OUTPUT_SWAP_WORKER, *arguments, "--result", result_path],
+            cwd=REPO_ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=max(5, timeout_seconds),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise TimeoutError(
+            f"Model output operation exceeded {timeout_seconds} seconds and was terminated."
+        ) from exc
+    try:
+        with open(result_path, "r", encoding="utf-8") as result_file:
+            payload = json.load(result_file)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"Model output worker returned no valid result (exit={completed.returncode})."
+        ) from exc
+    finally:
+        try:
+            os.remove(result_path)
+        except OSError:
+            pass
+    if completed.returncode != 0 or payload.get("status") != "ok":
+        raise RuntimeError(
+            f"Model output operation failed ({payload.get('error_type') or 'UNKNOWN'}): "
+            f"{payload.get('error') or 'no detail'}"
+        )
+    return payload
+
+
+def _promote_model_reanalysis_output(
+    staging: str,
+    current: str,
+    backup: str,
+    *,
+    timeout_seconds: int = 120,
+) -> None:
+    _run_model_output_operation(
+        [
+            "--operation", "promote",
+            "--staging", staging,
+            "--current", current,
+            "--backup", backup,
+        ],
+        os.path.dirname(os.path.abspath(current)),
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def _remove_model_output_directory(target: str, *, timeout_seconds: int = 30) -> None:
+    _run_model_output_operation(
+        ["--operation", "remove", "--target", target],
+        os.path.dirname(os.path.abspath(target)),
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def _run_model_reanalysis_generation(job_id: str, source: str, staging: str) -> None:
+    """Run OpenCASCADE generation in a child so all native handles die before promotion."""
+    state_dir = os.path.dirname(_reanalysis_status_path(job_id))
+    result_path = os.path.join(state_dir, f"{job_id}.worker-result.json")
+    progress_path = os.path.join(state_dir, f"{job_id}.worker-progress.json")
+    log_path = os.path.join(state_dir, f"{job_id}.worker.log")
+    os.makedirs(state_dir, exist_ok=True)
+    with open(log_path, "w", encoding="utf-8") as log_file:
+        try:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    MODEL_REANALYSIS_WORKER,
+                    "--source", source,
+                    "--staging", staging,
+                    "--progress", progress_path,
+                    "--result", result_path,
+                ],
+                cwd=REPO_ROOT,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                check=False,
+                timeout=MODEL_REANALYSIS_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise TimeoutError(
+                f"Model reanalysis exceeded {MODEL_REANALYSIS_TIMEOUT_SECONDS} seconds; log: {log_path}"
+            ) from exc
+    try:
+        with open(result_path, "r", encoding="utf-8") as result_file:
+            payload = json.load(result_file)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"Model reanalysis worker returned no valid result (exit={completed.returncode}); log: {log_path}"
+        ) from exc
+    if completed.returncode != 0 or payload.get("status") != "ok":
+        raise RuntimeError(
+            f"Model reanalysis worker failed ({payload.get('error_type') or 'UNKNOWN'}): "
+            f"{payload.get('error') or 'no detail'}; log: {log_path}"
+        )
+    try:
+        with open(progress_path, "r", encoding="utf-8") as progress_file:
+            progress = json.load(progress_file)
+        _set_job_state(
+            job_id,
+            total=progress.get("total", 0),
+            current=progress.get("current", 0),
+            message=progress.get("message", "模型解析完成，準備安全切換。"),
+        )
+    except (OSError, json.JSONDecodeError):
+        pass
+
+
 def run_model_reanalysis_job(job_id: str, file_path: str):
     """Replay the full import pipeline in staging, preserving user-authored artifacts."""
-    def progress_callback(total, current, message):
-        _set_job_state(job_id, total=total, current=current, message=message)
-
     acquired = False
     staging_dir = os.path.join(OUTPUT_DIR, f"._reanalyze_{job_id}")
     backup_dir = os.path.join(OUTPUT_DIR, f"._reanalyze_backup_{job_id}")
     output_dir = ""
-    swapped = False
     try:
         analysis_slots.acquire(_analysis_capacity, blocking=True)
         acquired = True
@@ -3733,24 +4368,10 @@ def run_model_reanalysis_job(job_id: str, file_path: str):
                 "model_code": "---",
             }
         }
-        batch_generate(file_path, staging_dir, assembly_info, progress_cb=progress_callback)
+        _run_model_reanalysis_generation(job_id, file_path, staging_dir)
         _set_job_state(job_id, status="finalizing", message="正在安全切換重新解析結果…")
 
-        preserved_users = os.path.join(output_dir, "_users")
-        if os.path.isdir(preserved_users):
-            shutil.copytree(
-                preserved_users,
-                os.path.join(staging_dir, "_users"),
-                dirs_exist_ok=True,
-            )
-
-        os.replace(output_dir, backup_dir)
-        try:
-            os.replace(staging_dir, output_dir)
-            swapped = True
-        except BaseException:
-            os.replace(backup_dir, output_dir)
-            raise
+        _promote_model_reanalysis_output(staging_dir, output_dir, backup_dir)
 
         tree_path = os.path.join(output_dir, "_parts", "assembly_tree.json")
         tree_data = None
@@ -3766,7 +4387,10 @@ def run_model_reanalysis_job(job_id: str, file_path: str):
             jobs[job_id]["parts_map"] = parts_map
             jobs[job_id]["output_dir"] = model_id
         _schedule_experimental_shadow_analysis(job_id, file_path, output_dir, model_id)
-        shutil.rmtree(backup_dir)
+        try:
+            _remove_model_output_directory(backup_dir)
+        except Exception as cleanup_error:
+            print(f"Model reanalysis backup cleanup deferred: {cleanup_error}")
         _set_job_state(
             job_id,
             status="completed",
@@ -3774,18 +4398,11 @@ def run_model_reanalysis_job(job_id: str, file_path: str):
             completed_at=_utc_iso(),
         )
     except Exception as exc:
-        if swapped and backup_dir and os.path.isdir(backup_dir):
-            failed_dir = f"{staging_dir}_failed"
+        if backup_dir and os.path.isdir(backup_dir) and output_dir and not os.path.exists(output_dir):
             try:
-                if output_dir and os.path.isdir(output_dir):
-                    os.replace(output_dir, failed_dir)
-                os.replace(backup_dir, output_dir)
-                if os.path.isdir(failed_dir):
-                    shutil.rmtree(failed_dir)
+                _replace_model_output_directory(backup_dir, output_dir)
             except Exception as rollback_error:
                 print(f"Model reanalysis rollback failed: {rollback_error}")
-        if os.path.isdir(staging_dir):
-            shutil.rmtree(staging_dir)
         _set_job_state(
             job_id,
             status="error",
@@ -3860,6 +4477,7 @@ def upload_file(
     file: UploadFile = File(...),
     current_user: CurrentUser = Depends(require_user),
 ):
+    _reject_heavy_work_during_exclusive_stress_test()
     job_id = str(uuid.uuid4())
 
     safe_filename = os.path.basename(file.filename or "")
@@ -3916,6 +4534,7 @@ def reanalyze_model(
     current_user: CurrentUser = Depends(require_user),
 ):
     """Queue a full replay of the original model import for an authorized user."""
+    _reject_heavy_work_during_exclusive_stress_test()
     assert_model_access(current_user, model_id)
     source_path, _registration = _resolve_model_reanalysis_source(model_id)
     job_id = str(uuid.uuid4())
@@ -3960,6 +4579,7 @@ def reanalyze_model(
             "started_at": None,
         }
 
+    _persist_reanalysis_status(job_id, jobs[job_id])
     executor.submit(run_model_reanalysis_job, job_id, source_path)
     return _job_status_payload(job_id, jobs[job_id])
 
@@ -3967,7 +4587,12 @@ def reanalyze_model(
 @app.get("/api/status/{job_id}")
 async def get_status(job_id: str, current_user: CurrentUser = Depends(require_user)):
     if job_id not in jobs:
-        raise HTTPException(status_code=404, detail="Job not found")
+        recovered = _load_reanalysis_status(job_id)
+        if not recovered:
+            raise HTTPException(status_code=404, detail="Job not found")
+        model_id = str(recovered.get("requested_model_id") or "")
+        assert_model_access(current_user, model_id)
+        return _job_status_payload(job_id, recovered)
     job = jobs[job_id]
     if not current_user.is_admin and job.get("owner_user_id") != current_user.id:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -3986,7 +4611,25 @@ async def get_active_job(current_user: CurrentUser = Depends(require_user)):
 @app.get("/api/results/{job_id}")
 async def get_results(job_id: str, current_user: CurrentUser = Depends(require_user)):
     if job_id not in jobs:
-        raise HTTPException(status_code=404, detail="Job not found")
+        recovered = _load_reanalysis_status(job_id)
+        if not recovered:
+            raise HTTPException(status_code=404, detail="Job not found")
+        model_id = str(recovered.get("requested_model_id") or "")
+        assert_model_access(current_user, model_id)
+        if recovered.get("status") != "completed":
+            raise HTTPException(status_code=400, detail="Job not completed yet")
+        output_dir = _safe_output_dir(model_id)
+        tree_path = os.path.join(output_dir, "_parts", "assembly_tree.json")
+        if not os.path.isfile(tree_path):
+            raise HTTPException(status_code=500, detail="Recovered model tree is missing")
+        with open(tree_path, "r", encoding="utf-8") as tree_file:
+            tree_data = json.load(tree_file)
+        return {
+            "tree": tree_data,
+            "parts_map": build_parts_map(output_dir, model_id),
+            "output_dir": model_id,
+            "recovered_after_restart": True,
+        }
     
     job = jobs[job_id]
     if not current_user.is_admin and job.get("owner_user_id") != current_user.id:
@@ -4064,6 +4707,7 @@ def compare_files(
     file_new: UploadFile = File(...),
     current_user: CurrentUser = Depends(require_user),
 ):
+    _reject_heavy_work_during_exclusive_stress_test()
     job_id = str(uuid.uuid4())
     old_name = os.path.basename(file_old.filename or "old.step")
     new_name = os.path.basename(file_new.filename or "new.step")
@@ -4438,6 +5082,7 @@ def health_check():
         "version": app.version,
         "models_dir": MODELS_DIR,
         "output_dir": OUTPUT_DIR,
+        "maintenance_mode": runtime_control_service.maintenance_mode,
     }
 
 
@@ -4524,6 +5169,14 @@ if os.path.exists(FRONTEND_DIR):
         dependencies=[Depends(require_admin)],
     )
     def admin_api_graph_page():
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"), media_type="text/html")
+
+    @app.get("/admin/stress-test", include_in_schema=False)
+    def admin_stress_test_page():
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"), media_type="text/html")
+
+    @app.get("/admin/system", include_in_schema=False)
+    def admin_system_page():
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"), media_type="text/html")
 
     @app.get("/admin/operations/{operation_id}", include_in_schema=False)

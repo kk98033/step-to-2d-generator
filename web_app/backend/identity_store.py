@@ -1432,9 +1432,9 @@ class IdentityStore:
     def cad_concurrency_limits(self) -> Dict[str, int]:
         """Return persistent heavy-work limits bounded by the deployment hard cap."""
         try:
-            hard_limit = max(1, min(8, int(os.environ.get("CAD_CONCURRENCY_HARD_LIMIT", "4"))))
+            hard_limit = max(1, min(32, int(os.environ.get("CAD_CONCURRENCY_HARD_LIMIT", "8"))))
         except ValueError:
-            hard_limit = 4
+            hard_limit = 8
         def environment_default(name: str) -> int:
             try:
                 return max(1, min(hard_limit, int(os.environ.get(name, "1"))))

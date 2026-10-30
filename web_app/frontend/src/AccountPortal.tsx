@@ -31,6 +31,7 @@ export const buttonStyle: CSSProperties = {
 export function apiErrorMessage(reason: any, fallback: string): string {
   const detail = reason?.response?.data?.detail;
   if (typeof detail === 'string') return detail;
+  if (detail && typeof detail === 'object' && typeof detail.message === 'string') return detail.message;
   if (Array.isArray(detail)) return detail.map(item => item?.msg || String(item)).join('；');
   return fallback;
 }
@@ -67,6 +68,11 @@ export function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => void }) {
         email_local: emailLocal.trim(), email_domain: domain, password,
       }, { withCredentials: true });
       document.cookie = `cad_email_domain=${encodeURIComponent(domain)}; Max-Age=31536000; Path=/; SameSite=Strict`;
+      const currentUrl = new URL(window.location.href);
+      if (currentUrl.searchParams.has('session')) {
+        window.history.replaceState({}, '', currentUrl.pathname);
+      }
+      window.sessionStorage.removeItem('cad-session-expired');
       onLogin(response.data.user);
     } catch (reason: any) {
       setError(apiErrorMessage(reason, '登入失敗，請確認公司 Email 與密碼'));

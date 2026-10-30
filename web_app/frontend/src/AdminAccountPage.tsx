@@ -3,7 +3,7 @@ import axios from 'axios';
 import {
   Activity, AlertCircle, ArchiveRestore, ArrowLeft, CheckCircle2, Clock3, Download,
   FileSpreadsheet, FileText, KeyRound, Pencil, Plus, RefreshCw, Save, Search,
-  Network, ShieldCheck, Tags, Trash2, UserPlus, Users, X,
+  Gauge, Network, Server, ShieldCheck, Tags, Trash2, UserPlus, Users, X,
 } from 'lucide-react';
 import { LoginPage, apiErrorMessage, buttonStyle, fieldStyle, type AuthUser } from './AccountPortal';
 
@@ -338,6 +338,8 @@ export default function AdminAccountPage() {
     <div style={{ display: 'grid', gridTemplateColumns: '230px minmax(0, 1fr)', height: 'calc(100vh - 58px)', minHeight: 0, overflow: 'hidden' }}>
       <nav style={{ background: '#111', borderRight: '1px solid #2b2b2b', padding: 16, minHeight: 0, overflowY: 'auto' }}>
         {nav.map(([id, label, Icon]) => <button key={id} onClick={() => setTab(id)} style={{ ...buttonStyle, width: '100%', justifyContent: 'flex-start', marginBottom: 8, background: tab === id ? '#2563eb' : '#202020', borderColor: tab === id ? '#2563eb' : '#333' }}><Icon size={16} />{label}</button>)}
+        <a href="/admin/stress-test" style={{ ...buttonStyle, width: '100%', boxSizing: 'border-box', justifyContent: 'flex-start', marginTop: 12, background: '#202020', borderColor: '#333', textDecoration: 'none' }}><Gauge size={16} />CAD 壓力測試</a>
+        <a href="/admin/system" style={{ ...buttonStyle, width: '100%', boxSizing: 'border-box', justifyContent: 'flex-start', marginTop: 8, background: '#202020', borderColor: '#333', textDecoration: 'none' }}><Server size={16} />後端監控與控制</a>
         <a href="/admin/api-graph" style={{ ...buttonStyle, width: '100%', boxSizing: 'border-box', justifyContent: 'flex-start', marginTop: 12, background: '#202020', borderColor: '#333', textDecoration: 'none' }}><Network size={16} />系統 API 關係圖</a>
       </nav>
       <main style={{ padding: 28, maxWidth: 1180, width: '100%', height: '100%', minHeight: 0, overflowY: 'auto', boxSizing: 'border-box' }}>

@@ -47,9 +47,9 @@ class JobConcurrencyControlTests(unittest.TestCase):
 
     def test_default_worker_limits_are_bounded(self):
         self.assertGreaterEqual(server.ANALYSIS_MAX_WORKERS, 1)
-        self.assertLessEqual(server.ANALYSIS_MAX_WORKERS, 8)
+        self.assertLessEqual(server.ANALYSIS_MAX_WORKERS, 32)
         self.assertGreaterEqual(server.ANNOTATION_MAX_CONCURRENCY, 1)
-        self.assertLessEqual(server.ANNOTATION_MAX_CONCURRENCY, 8)
+        self.assertLessEqual(server.ANNOTATION_MAX_CONCURRENCY, 32)
         self.assertGreaterEqual(server.EXPERIMENTAL_SHADOW_MAX_WORKERS, 1)
         self.assertLessEqual(server.EXPERIMENTAL_SHADOW_MAX_WORKERS, 2)
 

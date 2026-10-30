@@ -42,6 +42,11 @@ def _project(step_path: Path):
     from auto_2d_drawing.view_projector import ViewProjector
 
     shape = load_step(str(step_path))
+    if shape is None or shape.IsNull():
+        raise RuntimeError(
+            f"STEP 無可轉換幾何（OpenCASCADE TransferRoots=0）：{step_path.name}。"
+            "請改選原始模型或重新產生此拆件檔。"
+        )
     views = ViewProjector().project_all_views(
         shape,
         view_names=["front", "top", "right", "left"],
@@ -52,7 +57,13 @@ def _project(step_path: Path):
 def _load_shape(step_path: Path):
     from auto_2d_drawing.step_reader import load_step
 
-    return load_step(str(step_path))
+    shape = load_step(str(step_path))
+    if shape is None or shape.IsNull():
+        raise RuntimeError(
+            f"STEP 無可轉換幾何（OpenCASCADE TransferRoots=0）：{step_path.name}。"
+            "請改選原始模型或重新產生此拆件檔。"
+        )
+    return shape
 
 
 def _load_experimental_main_module():
@@ -278,6 +289,27 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
         return _run_experimental_candidates(step_path, started)
     if action == "experimental_render":
         return _run_experimental_render(job, step_path, started)
+    if action == "analysis":
+        from auto_2d_drawing.batch_generate import batch_generate
+
+        output_dir = Path(job["output_dir"]).resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        assembly_info = {
+            "_assembly": {
+                "name": "壓力測試模型",
+                "drawing_no": step_path.stem,
+                "revision": "R00",
+                "material": "---",
+                "model_code": "---",
+            }
+        }
+        batch_generate(str(step_path), str(output_dir), assembly_info)
+        generated_files = sum(1 for item in output_dir.rglob("*") if item.is_file())
+        return {
+            "status": "ok", "action": action, "pid": os.getpid(),
+            "elapsed_seconds": time.perf_counter() - started,
+            "generated_files": generated_files,
+        }
 
     from auto_2d_drawing.smart_annotation_engine import SmartAnnotationEngine
 

@@ -1815,13 +1815,25 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
             window.localStorage.removeItem(`cad-active-job:${user.id}`);
             setStatus('error');
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error(err);
+          if (err?.response?.status === 404) {
+            clearInterval(interval);
+            window.localStorage.removeItem(`cad-active-job:${user.id}`);
+            const fallbackModelId = results?.model_id || results?.output_dir;
+            if (fallbackModelId) {
+              setAnalysisLoadError('重新解析工作狀態已因後端重啟失效，已回復載入原模型。');
+              await loadExistingModel(fallbackModelId);
+            } else {
+              setStatus('error');
+              setProgressMsg('重新解析工作已失效，請重新開啟模型。');
+            }
+          }
         }
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [status, jobId]);
+  }, [status, jobId, user.id, results?.model_id, results?.output_dir]);
 
   const fetchResults = async (id: string) => {
     try {
@@ -4425,6 +4437,7 @@ function App() {
       await axios.post(`${API_BASE}/api/auth/logout`, {}, { withCredentials: true });
     } finally {
       setAccountOpen(false);
+      window.sessionStorage.removeItem('cad-authenticated-session');
       setUser(null);
     }
   };

@@ -46,6 +46,11 @@
       "type": "handled_by"
     },
     {
+      "from": "api_1c55d5e3d7",
+      "to": "backend:server:admin_apply_stress_recommendation",
+      "type": "handled_by"
+    },
+    {
       "from": "api_1d43ff639c",
       "to": "backend:account_api:admin_operation_reproduction",
       "type": "handled_by"
@@ -58,6 +63,11 @@
     {
       "from": "api_1f40d5b4a3",
       "to": "backend:server:save_external_tolerance_predictions",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_1fa9ad2e0f",
+      "to": "backend:server:admin_stop_stress_test",
       "type": "handled_by"
     },
     {
@@ -136,6 +146,16 @@
       "type": "handled_by"
     },
     {
+      "from": "api_42a9c94a13",
+      "to": "backend:server:admin_start_stress_test",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_435b4d39d8",
+      "to": "backend:server:admin_get_stress_test",
+      "type": "handled_by"
+    },
+    {
       "from": "api_472db4fd33",
       "to": "backend:server:update_tolerances",
       "type": "handled_by"
@@ -168,6 +188,16 @@
     {
       "from": "api_5864569b89",
       "to": "backend:server:list_processed_fan_20260625",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_5bd71fcade",
+      "to": "backend:server:admin_stress_test_page",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_5bf64c0c4d",
+      "to": "backend:server:admin_set_runtime_maintenance",
       "type": "handled_by"
     },
     {
@@ -208,6 +238,11 @@
     {
       "from": "api_6dc24427f2",
       "to": "backend:server:get_annotation_templates",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_7178519d9a",
+      "to": "backend:server:admin_restart_runtime",
       "type": "handled_by"
     },
     {
@@ -321,6 +356,11 @@
       "type": "handled_by"
     },
     {
+      "from": "api_a368f556d8",
+      "to": "backend:account_api:presence_heartbeat",
+      "type": "handled_by"
+    },
+    {
       "from": "api_a4e83714f0",
       "to": "backend:server:get_tolerance_stats",
       "type": "handled_by"
@@ -371,6 +411,11 @@
       "type": "handled_by"
     },
     {
+      "from": "api_bc8142994f",
+      "to": "backend:server:admin_stress_test_config",
+      "type": "handled_by"
+    },
+    {
       "from": "api_bf0ac6bf96",
       "to": "backend:account_api:list_personal_tolerance_cases",
       "type": "handled_by"
@@ -391,8 +436,18 @@
       "type": "handled_by"
     },
     {
+      "from": "api_cc99451e92",
+      "to": "backend:server:admin_restore_stress_settings",
+      "type": "handled_by"
+    },
+    {
       "from": "api_ce60dc9372",
       "to": "backend:account_api:admin_reset_password",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_ce9c310320",
+      "to": "backend:server:admin_system_page",
       "type": "handled_by"
     },
     {
@@ -408,6 +463,11 @@
     {
       "from": "api_d9504a9166",
       "to": "backend:server:list_models",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_dac1bf0451",
+      "to": "backend:server:admin_delete_stress_test",
       "type": "handled_by"
     },
     {
@@ -456,6 +516,16 @@
       "type": "handled_by"
     },
     {
+      "from": "api_ea1d38d400",
+      "to": "backend:server:admin_workforce_dashboard",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_ea548970ac",
+      "to": "backend:server:admin_runtime_status",
+      "type": "handled_by"
+    },
+    {
       "from": "api_f2c04c6f4b",
       "to": "backend:account_api:list_engineer_trash",
       "type": "handled_by"
@@ -473,6 +543,11 @@
     {
       "from": "api_fc200403a2",
       "to": "backend:server:get_status",
+      "type": "handled_by"
+    },
+    {
+      "from": "api_fd7b80e6e8",
+      "to": "backend:server:admin_list_stress_tests",
       "type": "handled_by"
     },
     {
@@ -517,6 +592,11 @@
     },
     {
       "from": "backend:account_api:logout",
+      "to": "backend:account_api:_request_token",
+      "type": "calls"
+    },
+    {
+      "from": "backend:account_api:presence_heartbeat",
       "to": "backend:account_api:_request_token",
       "type": "calls"
     },
@@ -597,6 +677,11 @@
     },
     {
       "from": "backend:server:_candidate_annotation_rules_impl",
+      "to": "backend:server:_reject_heavy_work_during_exclusive_stress_test",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_candidate_annotation_rules_impl",
       "to": "backend:server:_run_cad_annotation_worker",
       "type": "calls"
     },
@@ -641,6 +726,21 @@
       "type": "calls"
     },
     {
+      "from": "backend:server:_interrupt_active_jobs_for_forced_restart",
+      "to": "backend:server:_set_annotation_job_state",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_interrupt_active_jobs_for_forced_restart",
+      "to": "backend:server:_set_job_state",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_interrupt_active_jobs_for_forced_restart",
+      "to": "backend:server:_utc_iso",
+      "type": "calls"
+    },
+    {
       "from": "backend:server:_job_status_payload",
       "to": "backend:server:_analysis_capacity",
       "type": "calls"
@@ -653,6 +753,11 @@
     {
       "from": "backend:server:_load_external_prediction_set",
       "to": "backend:server:_external_prediction_path",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_load_reanalysis_status",
+      "to": "backend:server:_reanalysis_status_path",
       "type": "calls"
     },
     {
@@ -673,6 +778,26 @@
     {
       "from": "backend:server:_persist_annotation_audit",
       "to": "backend:server:_atomic_json_write",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_persist_reanalysis_status",
+      "to": "backend:server:_atomic_json_write",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_persist_reanalysis_status",
+      "to": "backend:server:_reanalysis_status_path",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_promote_model_reanalysis_output",
+      "to": "backend:server:_run_model_output_operation",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_remove_model_output_directory",
+      "to": "backend:server:_run_model_output_operation",
       "type": "calls"
     },
     {
@@ -731,6 +856,16 @@
       "type": "dispatches"
     },
     {
+      "from": "backend:server:_run_model_reanalysis_generation",
+      "to": "backend:server:_reanalysis_status_path",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_run_model_reanalysis_generation",
+      "to": "backend:server:_set_job_state",
+      "type": "calls"
+    },
+    {
       "from": "backend:server:_schedule_experimental_shadow_analysis",
       "to": "backend:server:_run_experimental_shadow_job",
       "type": "calls"
@@ -762,6 +897,11 @@
     },
     {
       "from": "backend:server:_set_job_state",
+      "to": "backend:server:_persist_reanalysis_status",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_set_job_state",
       "to": "backend:server:_utc_iso",
       "type": "calls"
     },
@@ -788,6 +928,11 @@
     {
       "from": "backend:server:_submit_custom_annotation_drawing",
       "to": "backend:server:_persist_annotation_audit",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_submit_custom_annotation_drawing",
+      "to": "backend:server:_reject_heavy_work_during_exclusive_stress_test",
       "type": "calls"
     },
     {
@@ -846,6 +991,46 @@
       "type": "calls"
     },
     {
+      "from": "backend:server:admin_restart_runtime",
+      "to": "backend:server:_active_heavy_job_summary",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:admin_restart_runtime",
+      "to": "backend:server:_interrupt_active_jobs_for_forced_restart",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:admin_runtime_status",
+      "to": "backend:server:_active_heavy_job_summary",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:admin_set_runtime_maintenance",
+      "to": "backend:server:_active_heavy_job_summary",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:admin_start_stress_test",
+      "to": "backend:server:_active_heavy_job_summary",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:admin_stress_test_config",
+      "to": "backend:server:_active_heavy_job_summary",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:admin_workforce_dashboard",
+      "to": "backend:server:_analysis_capacity",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:admin_workforce_dashboard",
+      "to": "backend:server:_annotation_capacity",
+      "type": "calls"
+    },
+    {
       "from": "backend:server:build_file_tree",
       "to": "backend:server:clean_example_filename",
       "type": "calls"
@@ -873,6 +1058,11 @@
     {
       "from": "backend:server:compare_files",
       "to": "backend:server:_queue_position",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:compare_files",
+      "to": "backend:server:_reject_heavy_work_during_exclusive_stress_test",
       "type": "calls"
     },
     {
@@ -1091,8 +1281,28 @@
       "type": "calls"
     },
     {
+      "from": "backend:server:get_results",
+      "to": "backend:server:_load_reanalysis_status",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_results",
+      "to": "backend:server:_safe_output_dir",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_results",
+      "to": "backend:server:build_parts_map",
+      "type": "calls"
+    },
+    {
       "from": "backend:server:get_status",
       "to": "backend:server:_job_status_payload",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_status",
+      "to": "backend:server:_load_reanalysis_status",
       "type": "calls"
     },
     {
@@ -1158,6 +1368,16 @@
     {
       "from": "backend:server:reanalyze_model",
       "to": "backend:server:_job_status_payload",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:reanalyze_model",
+      "to": "backend:server:_persist_reanalysis_status",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:reanalyze_model",
+      "to": "backend:server:_reject_heavy_work_during_exclusive_stress_test",
       "type": "calls"
     },
     {
@@ -1253,6 +1473,26 @@
     {
       "from": "backend:server:run_job",
       "to": "backend:server:build_parts_map",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:run_model_reanalysis_job",
+      "to": "backend:server:_promote_model_reanalysis_output",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:run_model_reanalysis_job",
+      "to": "backend:server:_remove_model_output_directory",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:run_model_reanalysis_job",
+      "to": "backend:server:_replace_model_output_directory",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:run_model_reanalysis_job",
+      "to": "backend:server:_run_model_reanalysis_generation",
       "type": "calls"
     },
     {
@@ -1353,6 +1593,11 @@
     {
       "from": "backend:server:upload_file",
       "to": "backend:server:_queue_position",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:upload_file",
+      "to": "backend:server:_reject_heavy_work_during_exclusive_stress_test",
       "type": "calls"
     },
     {
@@ -1591,6 +1836,91 @@
       "type": "calls_api"
     },
     {
+      "from": "frontend:web_app/frontend/src/AdminStressTestPage.tsx:applyRecommendation",
+      "to": "api_1c55d5e3d7",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminStressTestPage.tsx:deleteHistory",
+      "to": "api_dac1bf0451",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminStressTestPage.tsx:load",
+      "to": "api_435b4d39d8",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminStressTestPage.tsx:load",
+      "to": "api_4b1ecf7daa",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminStressTestPage.tsx:load",
+      "to": "api_bc8142994f",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminStressTestPage.tsx:load",
+      "to": "api_fd7b80e6e8",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminStressTestPage.tsx:openHistory",
+      "to": "api_435b4d39d8",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminStressTestPage.tsx:restoreSettings",
+      "to": "api_cc99451e92",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminStressTestPage.tsx:start",
+      "to": "api_42a9c94a13",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminStressTestPage.tsx:stop",
+      "to": "api_1fa9ad2e0f",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminSystemPage.tsx:load",
+      "to": "api_4b1ecf7daa",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminSystemPage.tsx:load",
+      "to": "api_ea548970ac",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminSystemPage.tsx:restartBackend",
+      "to": "api_7178519d9a",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminSystemPage.tsx:setMaintenance",
+      "to": "api_5bf64c0c4d",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminWorkforceDashboard.tsx:loadLogs",
+      "to": "api_a1982fabdf",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminWorkforceDashboard.tsx:loadLogs",
+      "to": "api_dbc68176ec",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/AdminWorkforceDashboard.tsx:loadWorkforce",
+      "to": "api_ea1d38d400",
+      "type": "calls_api"
+    },
+    {
       "from": "frontend:web_app/frontend/src/App.tsx:App",
       "to": "api_4b1ecf7daa",
       "type": "calls_api"
@@ -1724,7 +2054,7 @@
       "raw_url": "${API_BASE}/api/auth/config",
       "source": {
         "file": "web_app/frontend/src/AccountPortal.tsx",
-        "line": 53,
+        "line": 54,
         "symbol": "LoginPage"
       }
     },
@@ -1735,7 +2065,7 @@
       "raw_url": "${API_BASE}/api/auth/login",
       "source": {
         "file": "web_app/frontend/src/AccountPortal.tsx",
-        "line": 66,
+        "line": 67,
         "symbol": "submit"
       }
     },
@@ -1746,7 +2076,7 @@
       "raw_url": "${API_BASE}/api/engineer/preferences",
       "source": {
         "file": "web_app/frontend/src/AccountPortal.tsx",
-        "line": 122,
+        "line": 128,
         "symbol": "load"
       }
     },
@@ -1757,7 +2087,7 @@
       "raw_url": "${API_BASE}/api/engineer/artifacts",
       "source": {
         "file": "web_app/frontend/src/AccountPortal.tsx",
-        "line": 123,
+        "line": 129,
         "symbol": "load"
       }
     },
@@ -1768,7 +2098,7 @@
       "raw_url": "${API_BASE}/api/engineer/tolerance-cases",
       "source": {
         "file": "web_app/frontend/src/AccountPortal.tsx",
-        "line": 124,
+        "line": 130,
         "symbol": "load"
       }
     },
@@ -1779,7 +2109,7 @@
       "raw_url": "${API_BASE}/api/engineer/trash",
       "source": {
         "file": "web_app/frontend/src/AccountPortal.tsx",
-        "line": 125,
+        "line": 131,
         "symbol": "load"
       }
     },
@@ -1790,7 +2120,7 @@
       "raw_url": "${API_BASE}/api/engineer/preferences",
       "source": {
         "file": "web_app/frontend/src/AccountPortal.tsx",
-        "line": 140,
+        "line": 146,
         "symbol": "savePreferences"
       }
     },
@@ -1801,7 +2131,7 @@
       "raw_url": "${API_BASE}/api/engineer/preferences",
       "source": {
         "file": "web_app/frontend/src/AccountPortal.tsx",
-        "line": 146,
+        "line": 152,
         "symbol": "resetPreferences"
       }
     },
@@ -1812,7 +2142,7 @@
       "raw_url": "${API_BASE}/api/engineer/tolerance-cases/${id}",
       "source": {
         "file": "web_app/frontend/src/AccountPortal.tsx",
-        "line": 152,
+        "line": 158,
         "symbol": "deleteCase"
       }
     },
@@ -1823,7 +2153,7 @@
       "raw_url": "${API_BASE}/api/engineer/artifacts/${id}",
       "source": {
         "file": "web_app/frontend/src/AccountPortal.tsx",
-        "line": 156,
+        "line": 162,
         "symbol": "deleteArtifact"
       }
     },
@@ -1834,7 +2164,7 @@
       "raw_url": "${API_BASE}/api/engineer/trash/${id}/restore",
       "source": {
         "file": "web_app/frontend/src/AccountPortal.tsx",
-        "line": 159,
+        "line": 165,
         "symbol": "restore"
       }
     },
@@ -1845,7 +2175,7 @@
       "raw_url": "${API_BASE}/api/auth/password",
       "source": {
         "file": "web_app/frontend/src/AccountPortal.tsx",
-        "line": 168,
+        "line": 174,
         "symbol": "changePassword"
       }
     },
@@ -2202,6 +2532,215 @@
       }
     },
     {
+      "id": "frontend_4b4c382d20",
+      "method": "GET",
+      "path": "/api/admin/stress-tests/config",
+      "raw_url": "${API_BASE}/api/admin/stress-tests/config",
+      "source": {
+        "file": "web_app/frontend/src/AdminStressTestPage.tsx",
+        "line": 190,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_4b4c382d20",
+      "method": "GET",
+      "path": "/api/admin/stress-tests",
+      "raw_url": "${API_BASE}/api/admin/stress-tests",
+      "source": {
+        "file": "web_app/frontend/src/AdminStressTestPage.tsx",
+        "line": 191,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_4b4c382d20",
+      "method": "GET",
+      "path": "/api/admin/stress-tests/{param}",
+      "raw_url": "${API_BASE}/api/admin/stress-tests/${preferredId}",
+      "source": {
+        "file": "web_app/frontend/src/AdminStressTestPage.tsx",
+        "line": 208,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_4b4c382d20",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "raw_url": "${API_BASE}/api/auth/me",
+      "source": {
+        "file": "web_app/frontend/src/AdminStressTestPage.tsx",
+        "line": 216,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_4b4c382d20",
+      "method": "GET",
+      "path": "/api/admin/stress-tests/{param}",
+      "raw_url": "${API_BASE}/api/admin/stress-tests/${current.run_id}",
+      "source": {
+        "file": "web_app/frontend/src/AdminStressTestPage.tsx",
+        "line": 231,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_2642cfefff",
+      "method": "POST",
+      "path": "/api/admin/stress-tests",
+      "raw_url": "${API_BASE}/api/admin/stress-tests",
+      "source": {
+        "file": "web_app/frontend/src/AdminStressTestPage.tsx",
+        "line": 256,
+        "symbol": "start"
+      }
+    },
+    {
+      "id": "frontend_6dcb276b88",
+      "method": "POST",
+      "path": "/api/admin/stress-tests/{param}/stop",
+      "raw_url": "${API_BASE}/api/admin/stress-tests/${current.run_id}/stop",
+      "source": {
+        "file": "web_app/frontend/src/AdminStressTestPage.tsx",
+        "line": 276,
+        "symbol": "stop"
+      }
+    },
+    {
+      "id": "frontend_3625b68dc1",
+      "method": "POST",
+      "path": "/api/admin/stress-tests/{param}/apply-recommendation",
+      "raw_url": "${API_BASE}/api/admin/stress-tests/${current.run_id}/apply-recommendation",
+      "source": {
+        "file": "web_app/frontend/src/AdminStressTestPage.tsx",
+        "line": 284,
+        "symbol": "applyRecommendation"
+      }
+    },
+    {
+      "id": "frontend_188473a4dd",
+      "method": "POST",
+      "path": "/api/admin/stress-tests/{param}/restore-settings",
+      "raw_url": "${API_BASE}/api/admin/stress-tests/${current.run_id}/restore-settings",
+      "source": {
+        "file": "web_app/frontend/src/AdminStressTestPage.tsx",
+        "line": 298,
+        "symbol": "restoreSettings"
+      }
+    },
+    {
+      "id": "frontend_8ed1535885",
+      "method": "GET",
+      "path": "/api/admin/stress-tests/{param}",
+      "raw_url": "${API_BASE}/api/admin/stress-tests/${runId}",
+      "source": {
+        "file": "web_app/frontend/src/AdminStressTestPage.tsx",
+        "line": 312,
+        "symbol": "openHistory"
+      }
+    },
+    {
+      "id": "frontend_0fdc9a79ff",
+      "method": "DELETE",
+      "path": "/api/admin/stress-tests/{param}",
+      "raw_url": "${API_BASE}/api/admin/stress-tests/${run.run_id}",
+      "source": {
+        "file": "web_app/frontend/src/AdminStressTestPage.tsx",
+        "line": 325,
+        "symbol": "deleteHistory"
+      }
+    },
+    {
+      "id": "frontend_bfe1d6e948",
+      "method": "GET",
+      "path": "/api/admin/runtime",
+      "raw_url": "${API_BASE}/api/admin/runtime",
+      "source": {
+        "file": "web_app/frontend/src/AdminSystemPage.tsx",
+        "line": 66,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_bfe1d6e948",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "raw_url": "${API_BASE}/api/auth/me",
+      "source": {
+        "file": "web_app/frontend/src/AdminSystemPage.tsx",
+        "line": 79,
+        "symbol": "load"
+      }
+    },
+    {
+      "id": "frontend_f133f5181f",
+      "method": "POST",
+      "path": "/api/admin/runtime/maintenance",
+      "raw_url": "${API_BASE}/api/admin/runtime/maintenance",
+      "source": {
+        "file": "web_app/frontend/src/AdminSystemPage.tsx",
+        "line": 93,
+        "symbol": "setMaintenance"
+      }
+    },
+    {
+      "id": "frontend_d81eac3c60",
+      "method": "POST",
+      "path": "/api/admin/runtime/restart",
+      "raw_url": "${API_BASE}/api/admin/runtime/restart",
+      "source": {
+        "file": "web_app/frontend/src/AdminSystemPage.tsx",
+        "line": 103,
+        "symbol": "restartBackend"
+      }
+    },
+    {
+      "id": "frontend_d81eac3c60",
+      "method": "POST",
+      "path": "/api/admin/runtime/restart",
+      "raw_url": "${API_BASE}/api/admin/runtime/restart",
+      "source": {
+        "file": "web_app/frontend/src/AdminSystemPage.tsx",
+        "line": 115,
+        "symbol": "restartBackend"
+      }
+    },
+    {
+      "id": "frontend_26582eb713",
+      "method": "GET",
+      "path": "/api/admin/workforce",
+      "raw_url": "${API_BASE}/api/admin/workforce",
+      "source": {
+        "file": "web_app/frontend/src/AdminWorkforceDashboard.tsx",
+        "line": 72,
+        "symbol": "loadWorkforce"
+      }
+    },
+    {
+      "id": "frontend_92c9a9d0b6",
+      "method": "GET",
+      "path": "/api/admin/operation-logs",
+      "raw_url": "${API_BASE}/api/admin/operation-logs?limit=300",
+      "source": {
+        "file": "web_app/frontend/src/AdminWorkforceDashboard.tsx",
+        "line": 77,
+        "symbol": "loadLogs"
+      }
+    },
+    {
+      "id": "frontend_92c9a9d0b6",
+      "method": "GET",
+      "path": "/api/admin/audit-events",
+      "raw_url": "${API_BASE}/api/admin/audit-events?limit=300",
+      "source": {
+        "file": "web_app/frontend/src/AdminWorkforceDashboard.tsx",
+        "line": 78,
+        "symbol": "loadLogs"
+      }
+    },
+    {
       "id": "frontend_fb524e9fd7",
       "method": "GET",
       "path": "/api/annotation/jobs/active",
@@ -2417,7 +2956,7 @@
       "raw_url": "${API_BASE}/api/results/${id}",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1828,
+        "line": 1840,
         "symbol": "fetchResults"
       }
     },
@@ -2428,7 +2967,7 @@
       "raw_url": "${API_BASE}/api/model/${modelId}",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1845,
+        "line": 1857,
         "symbol": "loadExistingModel"
       }
     },
@@ -2439,7 +2978,7 @@
       "raw_url": "${API_BASE}/api/upload",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1863,
+        "line": 1875,
         "symbol": "handleUpload"
       }
     },
@@ -2450,7 +2989,7 @@
       "raw_url": "${API_BASE}/api/compare",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1894,
+        "line": 1906,
         "symbol": "handleDiffUpload"
       }
     },
@@ -2461,7 +3000,7 @@
       "raw_url": "${API_BASE}/api/auth/me",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 4410,
+        "line": 4422,
         "symbol": "App"
       }
     },
@@ -2472,7 +3011,7 @@
       "raw_url": "${API_BASE}/api/auth/logout",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 4425,
+        "line": 4437,
         "symbol": "logout"
       }
     }
@@ -2486,7 +3025,7 @@
       "path": "/admin/accounts",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4518,
+        "line": 5163,
         "symbol": "admin_accounts_page"
       }
     },
@@ -2497,7 +3036,7 @@
       "path": "/admin/api-graph",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4526,
+        "line": 5171,
         "symbol": "admin_api_graph_page"
       }
     },
@@ -2508,8 +3047,30 @@
       "path": "/admin/operations/{operation_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4530,
+        "line": 5183,
         "symbol": "admin_operation_replay_page"
+      }
+    },
+    {
+      "handler": "admin_stress_test_page",
+      "id": "api_5bd71fcade",
+      "method": "GET",
+      "path": "/admin/stress-test",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 5175,
+        "symbol": "admin_stress_test_page"
+      }
+    },
+    {
+      "handler": "admin_system_page",
+      "id": "api_ce9c310320",
+      "method": "GET",
+      "path": "/admin/system",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 5179,
+        "symbol": "admin_system_page"
       }
     },
     {
@@ -2519,7 +3080,7 @@
       "path": "/api/admin/audit-events",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 725,
+        "line": 774,
         "symbol": "admin_audit_events"
       }
     },
@@ -2530,7 +3091,7 @@
       "path": "/api/admin/company-cases/tags",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 876,
+        "line": 925,
         "symbol": "admin_list_company_case_tags"
       }
     },
@@ -2541,7 +3102,7 @@
       "path": "/api/admin/company-cases/{case_id}/tags",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 881,
+        "line": 930,
         "symbol": "admin_assign_company_case_tags"
       }
     },
@@ -2552,7 +3113,7 @@
       "path": "/api/admin/company-email-domains",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 679,
+        "line": 728,
         "symbol": "admin_list_company_email_domains"
       }
     },
@@ -2563,7 +3124,7 @@
       "path": "/api/admin/company-email-domains",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 684,
+        "line": 733,
         "symbol": "admin_create_company_email_domain"
       }
     },
@@ -2574,7 +3135,7 @@
       "path": "/api/admin/company-email-domains/{domain}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 711,
+        "line": 760,
         "symbol": "admin_delete_company_email_domain"
       }
     },
@@ -2585,7 +3146,7 @@
       "path": "/api/admin/company-email-domains/{domain}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 696,
+        "line": 745,
         "symbol": "admin_update_company_email_domain"
       }
     },
@@ -2596,7 +3157,7 @@
       "path": "/api/admin/operation-logs",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 742,
+        "line": 791,
         "symbol": "admin_operation_logs"
       }
     },
@@ -2607,7 +3168,7 @@
       "path": "/api/admin/operation-logs/{operation_id}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 755,
+        "line": 804,
         "symbol": "admin_operation_log_detail"
       }
     },
@@ -2618,7 +3179,7 @@
       "path": "/api/admin/operation-logs/{operation_id}/replay",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3299,
+        "line": 3736,
         "symbol": "replay_annotation_operation"
       }
     },
@@ -2629,7 +3190,7 @@
       "path": "/api/admin/operation-logs/{operation_id}/reproduction",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 766,
+        "line": 815,
         "symbol": "admin_operation_reproduction"
       }
     },
@@ -2640,7 +3201,7 @@
       "path": "/api/admin/recommendation-tags",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 846,
+        "line": 895,
         "symbol": "admin_list_recommendation_tags"
       }
     },
@@ -2651,7 +3212,7 @@
       "path": "/api/admin/recommendation-tags",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 851,
+        "line": 900,
         "symbol": "admin_create_recommendation_tag"
       }
     },
@@ -2662,8 +3223,41 @@
       "path": "/api/admin/recommendation-tags/{tag_id}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 863,
+        "line": 912,
         "symbol": "admin_update_recommendation_tag"
+      }
+    },
+    {
+      "handler": "admin_runtime_status",
+      "id": "api_ea548970ac",
+      "method": "GET",
+      "path": "/api/admin/runtime",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3398,
+        "symbol": "admin_runtime_status"
+      }
+    },
+    {
+      "handler": "admin_set_runtime_maintenance",
+      "id": "api_5bf64c0c4d",
+      "method": "POST",
+      "path": "/api/admin/runtime/maintenance",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3554,
+        "symbol": "admin_set_runtime_maintenance"
+      }
+    },
+    {
+      "handler": "admin_restart_runtime",
+      "id": "api_7178519d9a",
+      "method": "POST",
+      "path": "/api/admin/runtime/restart",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3573,
+        "symbol": "admin_restart_runtime"
       }
     },
     {
@@ -2673,7 +3267,7 @@
       "path": "/api/admin/settings/cad-concurrency",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 820,
+        "line": 869,
         "symbol": "admin_get_cad_concurrency"
       }
     },
@@ -2684,7 +3278,7 @@
       "path": "/api/admin/settings/cad-concurrency",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 825,
+        "line": 874,
         "symbol": "admin_set_cad_concurrency"
       }
     },
@@ -2695,7 +3289,7 @@
       "path": "/api/admin/settings/trash-retention",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 807,
+        "line": 856,
         "symbol": "admin_get_trash_retention"
       }
     },
@@ -2706,8 +3300,96 @@
       "path": "/api/admin/settings/trash-retention",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 812,
+        "line": 861,
         "symbol": "admin_set_trash_retention"
+      }
+    },
+    {
+      "handler": "admin_list_stress_tests",
+      "id": "api_fd7b80e6e8",
+      "method": "GET",
+      "path": "/api/admin/stress-tests",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3613,
+        "symbol": "admin_list_stress_tests"
+      }
+    },
+    {
+      "handler": "admin_start_stress_test",
+      "id": "api_42a9c94a13",
+      "method": "POST",
+      "path": "/api/admin/stress-tests",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3618,
+        "symbol": "admin_start_stress_test"
+      }
+    },
+    {
+      "handler": "admin_stress_test_config",
+      "id": "api_bc8142994f",
+      "method": "GET",
+      "path": "/api/admin/stress-tests/config",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3599,
+        "symbol": "admin_stress_test_config"
+      }
+    },
+    {
+      "handler": "admin_delete_stress_test",
+      "id": "api_dac1bf0451",
+      "method": "DELETE",
+      "path": "/api/admin/stress-tests/{run_id}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3664,
+        "symbol": "admin_delete_stress_test"
+      }
+    },
+    {
+      "handler": "admin_get_stress_test",
+      "id": "api_435b4d39d8",
+      "method": "GET",
+      "path": "/api/admin/stress-tests/{run_id}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3656,
+        "symbol": "admin_get_stress_test"
+      }
+    },
+    {
+      "handler": "admin_apply_stress_recommendation",
+      "id": "api_1c55d5e3d7",
+      "method": "POST",
+      "path": "/api/admin/stress-tests/{run_id}/apply-recommendation",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3683,
+        "symbol": "admin_apply_stress_recommendation"
+      }
+    },
+    {
+      "handler": "admin_restore_stress_settings",
+      "id": "api_cc99451e92",
+      "method": "POST",
+      "path": "/api/admin/stress-tests/{run_id}/restore-settings",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3719,
+        "symbol": "admin_restore_stress_settings"
+      }
+    },
+    {
+      "handler": "admin_stop_stress_test",
+      "id": "api_1fa9ad2e0f",
+      "method": "POST",
+      "path": "/api/admin/stress-tests/{run_id}/stop",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3675,
+        "symbol": "admin_stop_stress_test"
       }
     },
     {
@@ -2717,7 +3399,7 @@
       "path": "/api/admin/system-api-graph",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 730,
+        "line": 779,
         "symbol": "admin_system_api_graph"
       }
     },
@@ -2728,7 +3410,7 @@
       "path": "/api/admin/trash",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 777,
+        "line": 826,
         "symbol": "admin_list_trash"
       }
     },
@@ -2739,7 +3421,7 @@
       "path": "/api/admin/trash/purge-expired",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 841,
+        "line": 890,
         "symbol": "admin_purge_expired_trash"
       }
     },
@@ -2750,7 +3432,7 @@
       "path": "/api/admin/trash/{trash_id}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 800,
+        "line": 849,
         "symbol": "admin_purge_trash"
       }
     },
@@ -2761,7 +3443,7 @@
       "path": "/api/admin/trash/{trash_id}/restore",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 789,
+        "line": 838,
         "symbol": "admin_restore_trash"
       }
     },
@@ -2772,7 +3454,7 @@
       "path": "/api/admin/users",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 386,
+        "line": 435,
         "symbol": "admin_list_users"
       }
     },
@@ -2783,7 +3465,7 @@
       "path": "/api/admin/users",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 391,
+        "line": 440,
         "symbol": "admin_create_user"
       }
     },
@@ -2794,7 +3476,7 @@
       "path": "/api/admin/users/bulk-delete",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 414,
+        "line": 463,
         "symbol": "admin_bulk_delete_users"
       }
     },
@@ -2805,7 +3487,7 @@
       "path": "/api/admin/users/import",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 528,
+        "line": 577,
         "symbol": "admin_import_users"
       }
     },
@@ -2816,7 +3498,7 @@
       "path": "/api/admin/users/import-template",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 638,
+        "line": 687,
         "symbol": "admin_download_user_import_template"
       }
     },
@@ -2827,7 +3509,7 @@
       "path": "/api/admin/users/import/resolve-domains",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 576,
+        "line": 625,
         "symbol": "admin_resolve_import_domains"
       }
     },
@@ -2838,7 +3520,7 @@
       "path": "/api/admin/users/{user_id}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 403,
+        "line": 452,
         "symbol": "admin_delete_user"
       }
     },
@@ -2849,7 +3531,7 @@
       "path": "/api/admin/users/{user_id}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 428,
+        "line": 477,
         "symbol": "admin_update_user"
       }
     },
@@ -2860,8 +3542,19 @@
       "path": "/api/admin/users/{user_id}/reset-password",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 445,
+        "line": 494,
         "symbol": "admin_reset_password"
+      }
+    },
+    {
+      "handler": "admin_workforce_dashboard",
+      "id": "api_ea1d38d400",
+      "method": "GET",
+      "path": "/api/admin/workforce",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3423,
+        "symbol": "admin_workforce_dashboard"
       }
     },
     {
@@ -2871,7 +3564,7 @@
       "path": "/api/annotation/apply-template",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2776,
+        "line": 2815,
         "symbol": "apply_annotation_template"
       }
     },
@@ -2882,7 +3575,7 @@
       "path": "/api/annotation/candidate-rules/{model_id}/{part_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3477,
+        "line": 3915,
         "symbol": "get_candidate_annotation_rules"
       }
     },
@@ -2893,7 +3586,7 @@
       "path": "/api/annotation/jobs/active",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3281,
+        "line": 3321,
         "symbol": "get_active_annotation_job"
       }
     },
@@ -2904,7 +3597,7 @@
       "path": "/api/annotation/jobs/{job_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3290,
+        "line": 3330,
         "symbol": "get_annotation_job"
       }
     },
@@ -2915,7 +3608,7 @@
       "path": "/api/annotation/render",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2975,
+        "line": 3014,
         "symbol": "submit_custom_annotation_drawing"
       }
     },
@@ -2926,7 +3619,7 @@
       "path": "/api/annotation/templates",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2739,
+        "line": 2778,
         "symbol": "get_annotation_templates"
       }
     },
@@ -2937,7 +3630,7 @@
       "path": "/api/annotation/templates",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2746,
+        "line": 2785,
         "symbol": "save_annotation_template"
       }
     },
@@ -2948,7 +3641,7 @@
       "path": "/api/annotation/templates/{template_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2759,
+        "line": 2798,
         "symbol": "delete_annotation_template"
       }
     },
@@ -2959,7 +3652,7 @@
       "path": "/api/auth/config",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 250,
+        "line": 281,
         "symbol": "auth_config"
       }
     },
@@ -2970,7 +3663,7 @@
       "path": "/api/auth/login",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 211,
+        "line": 239,
         "symbol": "login"
       }
     },
@@ -2981,7 +3674,7 @@
       "path": "/api/auth/logout",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 259,
+        "line": 290,
         "symbol": "logout"
       }
     },
@@ -2992,7 +3685,7 @@
       "path": "/api/auth/me",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 266,
+        "line": 299,
         "symbol": "me"
       }
     },
@@ -3003,7 +3696,7 @@
       "path": "/api/auth/password",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 271,
+        "line": 320,
         "symbol": "change_password"
       }
     },
@@ -3014,7 +3707,7 @@
       "path": "/api/compare",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4062,
+        "line": 4705,
         "symbol": "compare_files"
       }
     },
@@ -3025,7 +3718,7 @@
       "path": "/api/drawings/{model_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4164,
+        "line": 4808,
         "symbol": "get_drawing_package"
       }
     },
@@ -3036,7 +3729,7 @@
       "path": "/api/drawings/{model_id}/parts/{part_id}/annotations",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4207,
+        "line": 4851,
         "symbol": "get_part_annotations"
       }
     },
@@ -3047,7 +3740,7 @@
       "path": "/api/drawings/{model_id}/parts/{part_id}/annotations",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4231,
+        "line": 4875,
         "symbol": "save_part_annotations"
       }
     },
@@ -3058,7 +3751,7 @@
       "path": "/api/drawings/{model_id}/parts/{part_id}/features",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4174,
+        "line": 4818,
         "symbol": "get_drawing_part_features"
       }
     },
@@ -3069,7 +3762,7 @@
       "path": "/api/engineer/artifacts",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 324,
+        "line": 373,
         "symbol": "list_artifacts"
       }
     },
@@ -3080,7 +3773,7 @@
       "path": "/api/engineer/artifacts/{artifact_id}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 332,
+        "line": 381,
         "symbol": "delete_artifact"
       }
     },
@@ -3091,7 +3784,7 @@
       "path": "/api/engineer/preferences",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 311,
+        "line": 360,
         "symbol": "reset_preferences"
       }
     },
@@ -3102,7 +3795,7 @@
       "path": "/api/engineer/preferences",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 294,
+        "line": 343,
         "symbol": "get_preferences"
       }
     },
@@ -3113,7 +3806,7 @@
       "path": "/api/engineer/preferences",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 299,
+        "line": 348,
         "symbol": "put_preferences"
       }
     },
@@ -3124,7 +3817,7 @@
       "path": "/api/engineer/tolerance-cases",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 348,
+        "line": 397,
         "symbol": "clear_personal_tolerance_cases"
       }
     },
@@ -3135,7 +3828,7 @@
       "path": "/api/engineer/tolerance-cases",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 343,
+        "line": 392,
         "symbol": "list_personal_tolerance_cases"
       }
     },
@@ -3146,7 +3839,7 @@
       "path": "/api/engineer/tolerance-cases/{case_record_id}",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 354,
+        "line": 403,
         "symbol": "delete_personal_tolerance_case"
       }
     },
@@ -3157,7 +3850,7 @@
       "path": "/api/engineer/trash",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 364,
+        "line": 413,
         "symbol": "list_engineer_trash"
       }
     },
@@ -3168,7 +3861,7 @@
       "path": "/api/engineer/trash/{trash_id}/restore",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 373,
+        "line": 422,
         "symbol": "restore_engineer_trash"
       }
     },
@@ -3179,7 +3872,7 @@
       "path": "/api/examples",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4387,
+        "line": 5031,
         "symbol": "list_examples"
       }
     },
@@ -3190,7 +3883,7 @@
       "path": "/api/features/{model_id}/{part_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3498,
+        "line": 3936,
         "symbol": "get_part_features"
       }
     },
@@ -3201,7 +3894,7 @@
       "path": "/api/health",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4433,
+        "line": 5077,
         "symbol": "health_check"
       }
     },
@@ -3212,7 +3905,7 @@
       "path": "/api/integrations/email/credential-notifications",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 894,
+        "line": 943,
         "symbol": "integration_list_credential_notifications"
       }
     },
@@ -3223,7 +3916,7 @@
       "path": "/api/integrations/email/credential-notifications/{notification_id}/ack",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 905,
+        "line": 954,
         "symbol": "integration_ack_credential_notification"
       }
     },
@@ -3234,7 +3927,7 @@
       "path": "/api/jobs/active",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3978,
+        "line": 4603,
         "symbol": "get_active_job"
       }
     },
@@ -3245,7 +3938,7 @@
       "path": "/api/model/{model_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4140,
+        "line": 4784,
         "symbol": "get_model"
       }
     },
@@ -3256,7 +3949,7 @@
       "path": "/api/models",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4120,
+        "line": 4764,
         "symbol": "list_models"
       }
     },
@@ -3267,8 +3960,19 @@
       "path": "/api/models/{model_id}/reanalyze",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3914,
+        "line": 4532,
         "symbol": "reanalyze_model"
+      }
+    },
+    {
+      "handler": "presence_heartbeat",
+      "id": "api_a368f556d8",
+      "method": "POST",
+      "path": "/api/presence/heartbeat",
+      "source": {
+        "file": "web_app/backend/account_api.py",
+        "line": 304,
+        "symbol": "presence_heartbeat"
       }
     },
     {
@@ -3278,7 +3982,7 @@
       "path": "/api/processed/fan-20260625",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4413,
+        "line": 5057,
         "symbol": "list_processed_fan_20260625"
       }
     },
@@ -3289,7 +3993,7 @@
       "path": "/api/recommendation-tags",
       "source": {
         "file": "web_app/backend/account_api.py",
-        "line": 319,
+        "line": 368,
         "symbol": "list_recommendation_tags"
       }
     },
@@ -3300,7 +4004,7 @@
       "path": "/api/results/{job_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3987,
+        "line": 4612,
         "symbol": "get_results"
       }
     },
@@ -3311,7 +4015,7 @@
       "path": "/api/status/{job_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3968,
+        "line": 4588,
         "symbol": "get_status"
       }
     },
@@ -3322,7 +4026,7 @@
       "path": "/api/tolerance/audit/model-preview/{case_id}.png",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2137,
+        "line": 2176,
         "symbol": "get_tolerance_audit_model_preview"
       }
     },
@@ -3333,7 +4037,7 @@
       "path": "/api/tolerance/audit/source-step/{case_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2158,
+        "line": 2197,
         "symbol": "download_tolerance_audit_source_step"
       }
     },
@@ -3344,7 +4048,7 @@
       "path": "/api/tolerance/cases",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 1559,
+        "line": 1598,
         "symbol": "list_tolerance_cases"
       }
     },
@@ -3355,7 +4059,7 @@
       "path": "/api/tolerance/confirm-feature-case",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2651,
+        "line": 2690,
         "symbol": "confirm_feature_tolerance_case"
       }
     },
@@ -3366,7 +4070,7 @@
       "path": "/api/tolerance/debug/cases",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 1791,
+        "line": 1830,
         "symbol": "list_tolerance_debug_cases"
       }
     },
@@ -3377,7 +4081,7 @@
       "path": "/api/tolerance/debug/component-asset/{component_name}/{asset_name}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2010,
+        "line": 2049,
         "symbol": "get_tolerance_debug_component_asset"
       }
     },
@@ -3388,7 +4092,7 @@
       "path": "/api/tolerance/debug/component-details/{component_name}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 1946,
+        "line": 1985,
         "symbol": "get_tolerance_debug_component_details"
       }
     },
@@ -3399,7 +4103,7 @@
       "path": "/api/tolerance/download/{model_name}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2377,
+        "line": 2416,
         "symbol": "download_drawing_file"
       }
     },
@@ -3410,7 +4114,7 @@
       "path": "/api/tolerance/drawing-details/{model_name}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2197,
+        "line": 2236,
         "symbol": "get_drawing_details"
       }
     },
@@ -3421,7 +4125,7 @@
       "path": "/api/tolerance/drawing-pdf/{model_name}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2173,
+        "line": 2212,
         "symbol": "get_drawing_pdf"
       }
     },
@@ -3432,7 +4136,7 @@
       "path": "/api/tolerance/drawing-svg/{model_name}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2058,
+        "line": 2097,
         "symbol": "get_drawing_svg"
       }
     },
@@ -3443,7 +4147,7 @@
       "path": "/api/tolerance/external-predictions/{model_id}/{part_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2497,
+        "line": 2536,
         "symbol": "delete_external_tolerance_predictions"
       }
     },
@@ -3454,7 +4158,7 @@
       "path": "/api/tolerance/external-predictions/{model_id}/{part_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2478,
+        "line": 2517,
         "symbol": "get_external_tolerance_predictions"
       }
     },
@@ -3465,7 +4169,7 @@
       "path": "/api/tolerance/external-predictions/{model_id}/{part_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2408,
+        "line": 2447,
         "symbol": "save_external_tolerance_predictions"
       }
     },
@@ -3476,7 +4180,7 @@
       "path": "/api/tolerance/open-local",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2340,
+        "line": 2379,
         "symbol": "open_local_drawing"
       }
     },
@@ -3487,7 +4191,7 @@
       "path": "/api/tolerance/recommend",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2514,
+        "line": 2553,
         "symbol": "recommend_tolerances"
       }
     },
@@ -3498,7 +4202,7 @@
       "path": "/api/tolerance/save-case",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2710,
+        "line": 2749,
         "symbol": "save_tolerance_case"
       }
     },
@@ -3509,7 +4213,7 @@
       "path": "/api/tolerance/stats",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 1515,
+        "line": 1554,
         "symbol": "get_tolerance_stats"
       }
     },
@@ -3520,7 +4224,7 @@
       "path": "/api/tolerances",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4459,
+        "line": 5104,
         "symbol": "get_tolerances"
       }
     },
@@ -3531,7 +4235,7 @@
       "path": "/api/tolerances",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4465,
+        "line": 5110,
         "symbol": "update_tolerances"
       }
     },
@@ -3542,7 +4246,7 @@
       "path": "/api/upload",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3859,
+        "line": 4476,
         "symbol": "upload_file"
       }
     },
@@ -3553,7 +4257,7 @@
       "path": "/tolerance-audit-v2.html",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4502,
+        "line": 5147,
         "symbol": "tolerance_audit_v2_page"
       }
     },
@@ -3564,26 +4268,35 @@
       "path": "/tolerance-inspector.html",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4484,
+        "line": 5129,
         "symbol": "tolerance_inspector_page"
       }
     }
   ],
   "schema_version": 1,
   "summary": {
-    "backend_routes": 99,
-    "frontend_http_calls": 69,
+    "backend_routes": 114,
+    "frontend_http_calls": 88,
     "unresolved_frontend_calls": 0,
-    "worker_actions": 5
+    "worker_actions": 6
   },
   "unresolved_frontend_calls": [],
   "worker_actions": [
+    {
+      "action": "analysis",
+      "handler": "run_job",
+      "source": {
+        "file": "tools/cad_annotation_worker.py",
+        "line": 292,
+        "symbol": "run_job"
+      }
+    },
     {
       "action": "candidates",
       "handler": "run_job",
       "source": {
         "file": "tools/cad_annotation_worker.py",
-        "line": 287,
+        "line": 319,
         "symbol": "run_job"
       }
     },
@@ -3592,7 +4305,7 @@
       "handler": "run_job",
       "source": {
         "file": "tools/cad_annotation_worker.py",
-        "line": 277,
+        "line": 288,
         "symbol": "run_job"
       }
     },
@@ -3601,7 +4314,7 @@
       "handler": "run_job",
       "source": {
         "file": "tools/cad_annotation_worker.py",
-        "line": 279,
+        "line": 290,
         "symbol": "run_job"
       }
     },
@@ -3610,7 +4323,7 @@
       "handler": "run_job",
       "source": {
         "file": "tools/cad_annotation_worker.py",
-        "line": 275,
+        "line": 286,
         "symbol": "run_job"
       }
     },

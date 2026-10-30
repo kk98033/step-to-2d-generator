@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 from unittest.mock import patch
 
@@ -78,7 +79,7 @@ class ModelReanalysisQueueTests(unittest.TestCase):
         audit.parent.mkdir(parents=True)
         audit.write_text('{"kept": true}', encoding="utf-8")
         (self.output_dir / "old-generated.txt").write_text("old", encoding="utf-8")
-        job_id = "reanalysis-job"
+        job_id = str(uuid.uuid4())
         with server.jobs_lock:
             server.jobs[job_id] = {
                 "job_type": "model_reanalysis",
@@ -89,7 +90,7 @@ class ModelReanalysisQueueTests(unittest.TestCase):
                 "message": "queued",
             }
 
-        def fake_batch_generate(_source, destination, _assembly, progress_cb):
+        def fake_reanalysis_generation(_job_id, _source, destination):
             destination = Path(destination)
             parts = destination / "_parts"
             parts.mkdir(parents=True)
@@ -98,12 +99,15 @@ class ModelReanalysisQueueTests(unittest.TestCase):
             )
             (parts / "part-01.stp").write_text("STEP", encoding="utf-8")
             (destination / "new-generated.txt").write_text("new", encoding="utf-8")
-            progress_cb(2, 2, "done")
 
         with (
             patch.object(server, "OUTPUT_DIR", str(self.output_root)),
             patch.object(server, "MODELS_DIR", str(self.models_root)),
-            patch.object(server, "batch_generate", side_effect=fake_batch_generate),
+            patch.object(
+                server,
+                "_run_model_reanalysis_generation",
+                side_effect=fake_reanalysis_generation,
+            ),
             patch.object(server, "_schedule_experimental_shadow_analysis"),
         ):
             server.run_model_reanalysis_job(job_id, str(source))
