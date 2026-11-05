@@ -1,20 +1,20 @@
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import axios from 'axios';
+import { AuditRequestDetails, auditActionLabels, requestInfo } from './AuditRequestDetails';
 import {
-  Activity, AlertCircle, ArchiveRestore, ArrowLeft, CheckCircle2, Clock3, Download,
-  FileSpreadsheet, FileText, KeyRound, Pencil, Plus, RefreshCw, Save, Search,
-  Gauge, Network, Server, ShieldCheck, Tags, Trash2, UserPlus, Users, X,
+  Activity, AlertCircle, ArchiveRestore, CheckCircle2, Clock3, Download,
+  FileText, Pencil, Plus, RefreshCw, Save, Search, Trash2, UserPlus, X,
 } from 'lucide-react';
 import { LoginPage, apiErrorMessage, buttonStyle, fieldStyle, type AuthUser } from './AccountPortal';
+import type { AccountSection } from './adminNavigation';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-type Tab = 'accounts' | 'import' | 'passwords' | 'tags' | 'trash' | 'logs' | 'settings';
 type Toast = { text: string; kind: 'success' | 'error' } | null;
 
-export default function AdminAccountPage() {
+export default function AdminAccountPage({ section = 'accounts' }: { section?: AccountSection }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [checking, setChecking] = useState(true);
-  const [tab, setTab] = useState<Tab>('accounts');
+  const tab = section;
   const [users, setUsers] = useState<any[]>([]);
   const [tags, setTags] = useState<any[]>([]);
   const [trash, setTrash] = useState<any[]>([]);
@@ -32,7 +32,7 @@ export default function AdminAccountPage() {
   const [domainResolutions, setDomainResolutions] = useState<Record<string, string>>({});
   const [resolvingImport, setResolvingImport] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
-  const [search, setSearch] = useState<Record<string, string>>({});
+  const [search, setSearch] = useState<Record<string, string>>(() => ({ logs: new URLSearchParams(window.location.search).get('user') || '' }));
   const [account, setAccount] = useState({ email_local: '', email_domain: '', display_name: '', role: 'ENGINEER' });
   const [tagForm, setTagForm] = useState({ key: '', name: '', dimension: 'CUSTOMER', description: '' });
   const [newDomain, setNewDomain] = useState('');
@@ -119,10 +119,10 @@ export default function AdminAccountPage() {
   );
   const filteredOperationLogs = useMemo(() => operationLogs.filter(item => {
     if (logStatus !== 'all' && item.status !== logStatus) return false;
-    return matches('logs', item.operation_id, item.model_id, item.part_id, item.message, item.error, item.error_type, item.engineer?.display_name, item.engineer?.email);
+    return matches('logs', item.operation_id, item.model_id, item.part_id, item.message, item.error, item.error_type, item.engineer?.display_name, item.engineer?.email, JSON.stringify(item.request_metadata || {}));
   }), [operationLogs, search, logStatus]);
   const filteredAuditEvents = useMemo(
-    () => auditEvents.filter(item => matches('logs', item.action, item.target_type, item.target_id, item.actor_display_name, item.actor_email, JSON.stringify(item.details || {}))),
+    () => auditEvents.filter(item => matches('logs', item.action, auditActionLabels[item.action], item.target_type, item.target_id, item.actor_display_name, item.actor_email, JSON.stringify(item.details || {}))),
     [auditEvents, search],
   );
 
@@ -316,14 +316,7 @@ export default function AdminAccountPage() {
   if (!user) return <LoginPage onLogin={loggedIn => { setUser(loggedIn); if (loggedIn.role === 'ADMIN') load().catch(reason => fail(reason, '管理資料載入失敗')); }} />;
   if (user.role !== 'ADMIN') return <div style={centerStyle}><div><h2>權限不足</h2><p style={{ color: '#999' }}>此頁面僅供系統管理員使用。</p><a href="/" style={buttonStyle}>返回主系統</a></div></div>;
 
-  const nav: Array<[Tab, string, typeof Users]> = [
-    ['accounts', '帳號管理', Users], ['import', '批次匯入', FileSpreadsheet],
-    ['passwords', '密碼管理', KeyRound], ['tags', '推薦標籤', Tags],
-    ['trash', '全域回收桶', ArchiveRestore], ['logs', '系統紀錄', Activity],
-    ['settings', '系統設定', ShieldCheck],
-  ];
-
-  return <div style={{ height: '100vh', overflow: 'hidden', background: '#0a0a0a', color: '#e5e5e5' }}>
+  return <div style={{ minHeight: '100%', background: '#101010', color: '#e5e5e5' }}>
     {toast && <ToastMessage toast={toast} onClose={() => setToast(null)} />}
     {importReview && <ImportDomainReviewDialog
       review={importReview}
@@ -334,15 +327,7 @@ export default function AdminAccountPage() {
       onConfirm={resolveImportDomains}
       onClose={() => setImportReview(null)}
     />}
-    <header style={{ height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 22px', background: '#171717', borderBottom: '1px solid #303030' }}><div style={{ display: 'flex', alignItems: 'center', gap: 12 }}><ShieldCheck size={21} color="#60a5fa" /><strong>帳號與推薦資料管理</strong><span style={{ color: '#737373', fontSize: 12 }}>{user.email}</span></div><a href="/" style={{ ...buttonStyle, background: '#262626', borderColor: '#444', textDecoration: 'none' }}><ArrowLeft size={15} />返回主系統</a></header>
-    <div style={{ display: 'grid', gridTemplateColumns: '230px minmax(0, 1fr)', height: 'calc(100vh - 58px)', minHeight: 0, overflow: 'hidden' }}>
-      <nav style={{ background: '#111', borderRight: '1px solid #2b2b2b', padding: 16, minHeight: 0, overflowY: 'auto' }}>
-        {nav.map(([id, label, Icon]) => <button key={id} onClick={() => setTab(id)} style={{ ...buttonStyle, width: '100%', justifyContent: 'flex-start', marginBottom: 8, background: tab === id ? '#2563eb' : '#202020', borderColor: tab === id ? '#2563eb' : '#333' }}><Icon size={16} />{label}</button>)}
-        <a href="/admin/stress-test" style={{ ...buttonStyle, width: '100%', boxSizing: 'border-box', justifyContent: 'flex-start', marginTop: 12, background: '#202020', borderColor: '#333', textDecoration: 'none' }}><Gauge size={16} />CAD 壓力測試</a>
-        <a href="/admin/system" style={{ ...buttonStyle, width: '100%', boxSizing: 'border-box', justifyContent: 'flex-start', marginTop: 8, background: '#202020', borderColor: '#333', textDecoration: 'none' }}><Server size={16} />後端監控與控制</a>
-        <a href="/admin/api-graph" style={{ ...buttonStyle, width: '100%', boxSizing: 'border-box', justifyContent: 'flex-start', marginTop: 12, background: '#202020', borderColor: '#333', textDecoration: 'none' }}><Network size={16} />系統 API 關係圖</a>
-      </nav>
-      <main style={{ padding: 28, maxWidth: 1180, width: '100%', height: '100%', minHeight: 0, overflowY: 'auto', boxSizing: 'border-box' }}>
+      <main style={{ padding: 24, width: '100%', minHeight: 0, boxSizing: 'border-box' }}>
         {createdCredential && <CredentialPanel value={createdCredential} onClose={() => setCreatedCredential(null)} />}
 
         {tab === 'accounts' && <section><Title title="帳號管理" description="Email 是唯一帳號；新帳號會產生隨機初始密碼。" /><form onSubmit={createAccount} style={panelStyle}><h3><UserPlus size={17} style={{ verticalAlign: -3, marginRight: 7 }} />建立單一帳號</h3><div style={{ display: 'grid', gridTemplateColumns: '1fr 190px 1fr 160px', gap: 10 }}><input required placeholder="Email 帳號部分" style={fieldStyle} value={account.email_local} onChange={event => setAccount({ ...account, email_local: event.target.value.replace(/@.*$/, '') })} /><select style={fieldStyle} value={account.email_domain} onChange={event => setAccount({ ...account, email_domain: event.target.value })}>{domains.map(domain => <option key={domain} value={domain}>@{domain}</option>)}</select><input required placeholder="姓名" style={fieldStyle} value={account.display_name} onChange={event => setAccount({ ...account, display_name: event.target.value })} /><select style={fieldStyle} value={account.role} onChange={event => setAccount({ ...account, role: event.target.value })}><option value="ENGINEER">工程師</option><option value="ADMIN">管理員</option></select></div><button style={{ ...buttonStyle, marginTop: 12 }}><Plus size={15} />建立並產生密碼</button></form><SearchField value={search.accounts || ''} onChange={value => setSearch({ ...search, accounts: value })} placeholder="搜尋姓名、Email、角色或狀態" /><div style={{ ...panelStyle, padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}><label style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: selectableFilteredUsers.length ? 'pointer' : 'default', color: '#d4d4d4' }}><input type="checkbox" checked={allFilteredUsersSelected} disabled={!selectableFilteredUsers.length} onChange={toggleAllFilteredUsers} />選取目前搜尋結果</label><div style={{ display: 'flex', alignItems: 'center', gap: 12 }}><span style={subStyle}>已選取 {selectedUserIds.length} 個帳號</span><button disabled={!selectedUserIds.length} onClick={deleteSelectedUsers} style={{ ...buttonStyle, background: '#3f1d1d', borderColor: '#7f1d1d', opacity: selectedUserIds.length ? 1 : .45 }}><Trash2 size={15} />批量刪除</button></div></div><UserTable users={filteredUsers} currentUser={user} selectedUserIds={selectedUserIds} onSelect={(id: string) => setSelectedUserIds(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])} onToggle={toggleUser} onDelete={deleteUser} /></section>}
@@ -384,7 +369,6 @@ export default function AdminAccountPage() {
           <div style={{ ...panelStyle, maxWidth: 520 }}><h3>回收桶</h3><label style={{ display: 'block', color: '#aaa', fontSize: 12, marginBottom: 7 }}>保留天數（1–3650）</label><input type="number" min={1} max={3650} value={retentionDays} onChange={event => setRetentionDays(Number(event.target.value))} style={fieldStyle} /><button onClick={saveRetention} style={{ ...buttonStyle, marginTop: 12 }}><Save size={15} />儲存設定</button></div>
         </section>}
       </main>
-    </div>
   </div>;
 }
 
@@ -453,20 +437,45 @@ function localTime(value?: string) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-TW', { hour12: false });
 }
 
-function SystemLogPanel({ loading, operationLogs, auditEvents, selected, status, searchValue, onSearch, onStatus, onSelect, onRefresh, onCloseDetail }: any) {
+function SystemLogPanel({ loading, operationLogs: allOperations, auditEvents: allAuditEvents, selected, status, searchValue, onSearch, onStatus, onSelect, onRefresh, onCloseDetail }: any) {
+  const [logType, setLogType] = useState<'security' | 'operations' | 'cad'>('security');
+  const [from, setFrom] = useState('');
+  const [until, setUntil] = useState('');
+  const [actor, setActor] = useState('');
+  const [ip, setIp] = useState('');
+  const inRange = (at: string) => (!from || Date.parse(at) >= Date.parse(from)) && (!until || Date.parse(at) <= Date.parse(until));
+  const includes = (value: string, query: string) => value.toLowerCase().includes(query.trim().toLowerCase());
+  const operationLogs = allOperations.filter((entry: any) => inRange(entry.created_at)
+    && includes(JSON.stringify(entry.engineer || {}), actor) && includes(entry.request_metadata?.client_ip || '', ip));
+  const auditEvents = allAuditEvents.filter((event: any) => {
+    const info = requestInfo(event.details);
+    const security = /LOGIN|LOGOUT|SESSION_|AUTH_|ACCESS_DENIED|PASSWORD/.test(event.action);
+    const failed = Number(info.status_code || 0) >= 400 || event.action.endsWith('_FAILED');
+    return (logType === 'security' ? security : !security) && inRange(event.created_at)
+      && includes(`${event.actor_display_name || ''} ${event.actor_email || ''} ${info.actor_email || ''} ${info.attempted_identifier || ''}`, actor)
+      && includes(info.client_ip || '', ip) && (status === 'all' || (status === 'error' ? failed : !failed));
+  });
   const failure = selected?.failure;
   const request = selected?.request || {};
   const execution = selected?.execution || {};
   return <section>
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
-      <Title title="系統紀錄" description="查看智慧標註工作、崩潰診斷與管理操作；模型僅保存識別資訊，不保存 STEP 二進位內容。" />
+      <Title title="系統紀錄" description="查看登入／登出、工作階段到期、操作結果、來源 IP、瀏覽器與請求編號，以及標註工作與崩潰診斷。" />
       <button onClick={onRefresh} disabled={loading} style={{ ...buttonStyle, flexShrink: 0 }}><RefreshCw size={15} />{loading ? '載入中' : '重新整理'}</button>
     </div>
-    <SearchField value={searchValue} onChange={onSearch} placeholder="搜尋操作者、模型、零件、工作編號、錯誤或操作類型" />
+    <SearchField value={searchValue} onChange={onSearch} placeholder="搜尋 IP、帳號、請求編號、模型、錯誤或操作類型" />
+    <nav aria-label="紀錄分類" style={{ display: 'flex', gap: 8, marginBottom: 14 }}>{([['security', '登入與安全'], ['operations', '使用者／管理操作'], ['cad', 'CAD 工作']] as const).map(([value, label]) => <button key={value} aria-pressed={logType === value} onClick={() => setLogType(value)} style={{ ...buttonStyle, background: logType === value ? '#2563eb' : '#262626' }}>{label}</button>)}</nav>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 14, fontSize: 12, color: '#999' }}>
+      <label>起始時間<input aria-label="紀錄起始時間" type="datetime-local" value={from} onChange={event => setFrom(event.target.value)} style={{ ...fieldStyle, marginTop: 6 }} /></label>
+      <label>結束時間<input aria-label="紀錄結束時間" type="datetime-local" value={until} onChange={event => setUntil(event.target.value)} style={{ ...fieldStyle, marginTop: 6 }} /></label>
+      <label>使用者<input value={actor} onChange={event => setActor(event.target.value)} placeholder="姓名或帳號" style={{ ...fieldStyle, marginTop: 6 }} /></label>
+      <label>來源 IP<input value={ip} onChange={event => setIp(event.target.value)} placeholder="IPv4／IPv6" style={{ ...fieldStyle, marginTop: 6 }} /></label>
+    </div>
+    <p style={subStyle}>目前查詢最近載入的 300 筆操作與系統紀錄。</p>
     <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
       {([['all', '全部'], ['error', '失敗／崩潰'], ['completed', '已完成']] as const).map(([value, label]) => <button key={value} onClick={() => onStatus(value)} style={{ ...buttonStyle, background: status === value ? '#2563eb' : '#262626', borderColor: status === value ? '#2563eb' : '#444' }}>{label}</button>)}
     </div>
-    <div style={{ display: 'grid', gridTemplateColumns: selected ? 'minmax(360px, .9fr) minmax(420px, 1.1fr)' : '1fr', gap: 14, minHeight: 0 }}>
+    {logType === 'cad' && <div style={{ display: 'grid', gridTemplateColumns: selected ? 'repeat(auto-fit, minmax(min(100%, 380px), 1fr))' : '1fr', gap: 14, minHeight: 0 }}>
       <div style={{ minHeight: 0 }}>
         <h3 style={{ margin: '0 0 10px', fontSize: 14 }}>智慧標註工作 <span style={{ color: '#737373', fontWeight: 400 }}>({operationLogs.length})</span></h3>
         <div style={{ ...listStyle, maxHeight: 430 }}>
@@ -489,6 +498,7 @@ function SystemLogPanel({ loading, operationLogs, auditEvents, selected, status,
           <dt style={detailTermStyle}>狀態</dt><dd style={detailValueStyle}>{selected.status}</dd>
           <dt style={detailTermStyle}>時間</dt><dd style={detailValueStyle}>{localTime(selected.created_at)} → {localTime(selected.completed_at)}</dd>
           <dt style={detailTermStyle}>操作者</dt><dd style={detailValueStyle}>{selected.engineer?.display_name || '—'}<div style={subStyle}>{selected.engineer?.email || selected.engineer?.id}</div></dd>
+          <dt style={detailTermStyle}>請求資訊</dt><dd style={detailValueStyle}><AuditRequestDetails details={selected.request_metadata} /></dd>
           <dt style={detailTermStyle}>模型／零件</dt><dd style={detailValueStyle}>{request.model_id || '—'}<div style={subStyle}>{request.part_id || '—'}</div></dd>
           <dt style={detailTermStyle}>引擎</dt><dd style={detailValueStyle}>{request.candidate_engine || 'legacy_smart'}</dd>
           <dt style={detailTermStyle}>標註規則</dt><dd style={detailValueStyle}>{request.feature_record_count || 0} 條</dd>
@@ -500,9 +510,12 @@ function SystemLogPanel({ loading, operationLogs, auditEvents, selected, status,
         {(selected.events || []).map((event: any, index: number) => <div key={`${event.at}-${index}`} style={{ borderLeft: '2px solid #2563eb', padding: '3px 0 12px 12px', fontSize: 12 }}><div>{event.message || event.status}</div><div style={subStyle}>{localTime(event.at)} · {event.status}</div></div>)}
         {execution.output_files && <><h4 style={{ marginBottom: 8 }}><FileText size={14} style={{ verticalAlign: -2, marginRight: 6 }} />輸出紀錄</h4><pre style={{ padding: 10, overflow: 'auto', background: '#111', color: '#a3a3a3', fontSize: 11 }}>{JSON.stringify(execution.output_files, null, 2)}</pre></>}
       </div>}
-    </div>
-    <h3 style={{ margin: '24px 0 10px', fontSize: 14 }}>管理操作 <span style={{ color: '#737373', fontWeight: 400 }}>({auditEvents.length})</span></h3>
-    <div style={{ ...listStyle, maxHeight: 300 }}>{auditEvents.length === 0 && <div style={panelStyle}>沒有符合的管理操作紀錄</div>}{auditEvents.map((event: any) => <div key={event.id} style={rowStyle}><Activity size={16} color="#60a5fa" style={{ flexShrink: 0 }} /><div style={{ flex: 1, minWidth: 0 }}><strong>{actionLabels[event.action] || event.action}</strong><div style={subStyle}>{event.actor_display_name || event.actor_email || event.actor_user_id || '系統'} · {localTime(event.created_at)}</div><div style={{ ...subStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{event.target_type || 'SYSTEM'} {event.target_id || ''}</div></div></div>)}</div>
+    </div>}
+    {logType !== 'cad' && <><h3 style={{ margin: '24px 0 10px', fontSize: 14 }}>{logType === 'security' ? '登入與安全' : '使用者／管理操作'} <span style={{ color: '#737373', fontWeight: 400 }}>({auditEvents.length})</span></h3>
+    <div style={{ ...listStyle, maxHeight: 520 }}>{auditEvents.length === 0 && <div style={panelStyle}>沒有符合的系統操作紀錄</div>}{auditEvents.map((event: any) => {
+      const info = requestInfo(event.details);
+      return <div key={event.id} style={{ ...rowStyle, alignItems: 'flex-start' }}><Activity size={16} color={info.result === 'FAILURE' ? '#f87171' : '#60a5fa'} style={{ flexShrink: 0 }} /><div style={{ flex: 1, minWidth: 0 }}><strong>{auditActionLabels[event.action] || actionLabels[event.action] || event.action}</strong><div style={subStyle}>{info.actor_display_name || event.actor_display_name || info.actor_email || event.actor_email || info.attempted_identifier || event.actor_user_id || '系統'} · {localTime(event.created_at)}</div><div style={subStyle}>{info.actor_email || event.actor_email} {info.actor_role || ''} · {event.target_type || 'SYSTEM'} {event.target_id || ''}</div><AuditRequestDetails details={event.details} /></div></div>;
+    })}</div></>}
   </section>;
 }
 

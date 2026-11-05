@@ -1,0 +1,8 @@
+:root { --cad-surface: #171717; --cad-control: #262626; --cad-accent: #2563eb; --cad-border: #333; --cad-muted: #a3a3a3; }
+.system-status { display: flex; align-items: center; gap: 14px; color: var(--cad-muted); font-size: 11px; flex-wrap: wrap; font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif; }
+.system-status span { white-space: nowrap; }
+.system-sessionbar { height: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 14px; background: var(--cad-surface); border-bottom: 1px solid var(--cad-border); color: #d4d4d4; box-sizing: border-box; font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif; }
+.system-sessionbar > .system-status { flex: 1; justify-content: center; }
+.system-sessionbar button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+@media (max-width: 850px) { .system-session-label { display: none; } .system-status { gap: 8px; } }
+@media (max-width: 600px) { .system-status span:not(.system-status-service) { display: none; } .system-sessionbar { gap: 8px; } }

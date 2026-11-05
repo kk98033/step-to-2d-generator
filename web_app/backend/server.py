@@ -37,6 +37,7 @@ from web_app.backend.engineer_personalization import personalize_recommendations
 from web_app.backend.identity_store import CurrentUser
 from web_app.backend.admin_log_service import load_operation_replay_source
 from web_app.backend.presence_service import presence_service
+from web_app.backend.request_audit import audit_context
 from web_app.backend.stress_test_service import StressTestService
 from web_app.backend.runtime_control_service import RuntimeControlService
 
@@ -363,6 +364,7 @@ def _annotation_audit_payload(job_id: str, job: Dict[str, Any]) -> Dict[str, Any
         "completed_at": job.get("completed_at"),
         "events": job.get("events") or [],
         "engineer": engineer,
+        "request_metadata": job.get("request_metadata") or {},
         "request": {
             "model_id": job.get("model_id"),
             "part_id": job.get("part_id"),
@@ -3222,6 +3224,7 @@ def _submit_custom_annotation_drawing(
                         "message": "使用相同設定的既有標註工程圖",
                     }],
                     "audit_path": audit_path,
+                    "request_metadata": dict(audit_context.get() or {}),
                     "audit_url": audit_url,
                     "created_at": cached_at,
                     "updated_at": cached_at,
@@ -3293,6 +3296,7 @@ def _submit_custom_annotation_drawing(
             "relative_output_parts": relative_parts,
             "worker_dir": worker_dir,
             "audit_path": audit_path,
+            "request_metadata": dict(audit_context.get() or {}),
             "audit_url": audit_url,
             "manifest_path": manifest_path,
             "request_hash": request_hash,
@@ -3362,6 +3366,22 @@ def _active_heavy_job_summary() -> Dict[str, int]:
             job.get("status") in ANNOTATION_ACTIVE_STATUSES for job in annotation_jobs.values()
         )
     return {"analysis": int(analysis_count), "annotation": int(annotation_count)}
+
+
+@app.get("/api/system/status")
+def system_status(current_user: CurrentUser = Depends(require_user)):
+    """Authenticated aggregate counters only; no names, IPs, jobs or models."""
+    summary = presence_service.snapshot()["summary"]
+    with jobs_lock:
+        analysis = [dict(job) for job in jobs.values() if job.get("status") in ACTIVE_JOB_STATUSES]
+    with annotation_state_lock:
+        annotations = [dict(job) for job in annotation_jobs.values() if job.get("status") in ANNOTATION_ACTIVE_STATUSES]
+    active = analysis + annotations
+    executing = {job["owner_user_id"] for job in active if job.get("owner_user_id") and job.get("status") != "queued"}
+    queued = {job["owner_user_id"] for job in active if job.get("owner_user_id") and job.get("status") == "queued"}
+    return {"status": "ok", "maintenance_mode": runtime_control_service.maintenance_mode,
+            "online": summary["online"], "idle": summary["idle"],
+            "executing_users": len(executing), "queued_users": len(queued)}
 
 
 def _interrupt_active_jobs_for_forced_restart() -> None:
@@ -5159,6 +5179,16 @@ def tolerance_audit_v2_page():
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
 if os.path.exists(FRONTEND_DIR):
+    @app.get("/admin", include_in_schema=False)
+    @app.get("/admin/", include_in_schema=False)
+    @app.get("/admin/accounts/import", include_in_schema=False)
+    @app.get("/admin/accounts/passwords", include_in_schema=False)
+    @app.get("/admin/presence", include_in_schema=False)
+    @app.get("/admin/service-control", include_in_schema=False)
+    @app.get("/admin/tags", include_in_schema=False)
+    @app.get("/admin/trash", include_in_schema=False)
+    @app.get("/admin/logs", include_in_schema=False)
+    @app.get("/admin/settings", include_in_schema=False)
     @app.get("/admin/accounts", include_in_schema=False)
     def admin_accounts_page():
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"), media_type="text/html")

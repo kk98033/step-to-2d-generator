@@ -82,6 +82,7 @@ def _summary(path: Path, payload: Dict[str, Any]) -> Dict[str, Any]:
         "completed_at": payload.get("completed_at"),
         "updated_at": payload.get("updated_at"),
         "engineer": engineer,
+        "request_metadata": payload.get("request_metadata") or {},
         "model_id": request.get("model_id"),
         "part_id": request.get("part_id"),
         "candidate_engine": request.get("candidate_engine"),
@@ -133,6 +134,7 @@ def list_operation_logs(
                     item.get("part_id"),
                     item.get("error_type"),
                     item.get("error"),
+                    json.dumps(item.get("request_metadata") or {}, ensure_ascii=False),
                     (item.get("engineer") or {}).get("display_name"),
                     (item.get("engineer") or {}).get("email"),
                 )

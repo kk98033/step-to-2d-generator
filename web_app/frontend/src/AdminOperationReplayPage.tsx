@@ -138,10 +138,10 @@ export default function AdminOperationReplayPage() {
   const runtime = data?.runtime || {};
   const model = data?.model || {};
   const replayTerminal = job && ['completed', 'error'].includes(job.status);
-  return <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#e5e5e5' }}>
+  return <div style={{ minHeight: '100%', background: '#101010', color: '#e5e5e5' }}>
     <header style={{ height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 22px', background: '#171717', borderBottom: '1px solid #303030' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}><Box size={20} color="#60a5fa" /><strong>標註工作重現檢視</strong><span style={{ color: '#737373', fontSize: 12 }}>{operationId}</span></div>
-      <a href="/admin/accounts" style={{ ...buttonStyle, background: '#262626', borderColor: '#444', textDecoration: 'none' }}><ArrowLeft size={15} />返回系統紀錄</a>
+      <a href="/admin/logs" style={{ ...buttonStyle, background: '#262626', borderColor: '#444', textDecoration: 'none' }}><ArrowLeft size={15} />返回系統紀錄</a>
     </header>
     <main style={{ maxWidth: 1500, margin: '0 auto', padding: 24 }}>
       {error && <div style={{ ...panelStyle, borderColor: '#7f1d1d', color: '#fecaca' }}><AlertCircle size={16} style={{ verticalAlign: -3, marginRight: 7 }} />{error}</div>}

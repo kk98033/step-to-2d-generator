@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import secrets
 import csv
+import time
 from io import BytesIO, StringIO
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -25,6 +26,7 @@ from web_app.backend.admin_log_service import (
     list_operation_logs,
 )
 from web_app.backend.presence_service import presence_service
+from web_app.backend.request_audit import audit_context, request_metadata
 
 
 SESSION_COOKIE = "cad_session"
@@ -100,10 +102,62 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
     """Require a revocable session for API and protected generated files."""
 
     async def dispatch(self, request: Request, call_next):
+        token = _request_token(request)
+        metadata = request_metadata(request, token)
+        context_token = audit_context.set(metadata)
+        started = time.perf_counter()
+        try:
+            try:
+                response = await self._dispatch(request, call_next)
+            except Exception:
+                self._record_request(request, metadata, 500, started)
+                raise
+            self._record_request(request, metadata, response.status_code, started)
+            response.headers["X-Request-ID"] = metadata["request_id"]
+            return response
+        finally:
+            audit_context.reset(context_token)
+
+    @staticmethod
+    def _record_request(request: Request, metadata: dict, status: int, started: float):
+        path = request.url.path
+        if not path.startswith("/api/"):
+            return
+        if path == "/api/presence/heartbeat" and status < 400:
+            return
+        if not (request.method in {"POST", "PUT", "PATCH", "DELETE"}
+                or status >= 400 or "/download" in path or path.startswith("/api/files/")):
+            return
+        user = getattr(request.state, "current_user", None)
+        action = {
+            "/api/auth/login": "LOGIN" if status < 400 else "LOGIN_FAILED",
+            "/api/auth/logout": "LOGOUT" if status < 400 else "LOGOUT_FAILED",
+            "/api/auth/password": "PASSWORD_CHANGED" if status < 400 else "PASSWORD_CHANGE_FAILED",
+            "/api/upload": "MODEL_UPLOAD",
+        }.get(path, "AUTH_REJECTED" if status == 401 else "ACCESS_DENIED" if status == 403
+              else "FILE_DOWNLOAD" if request.method == "GET" and status < 400 else "API_OPERATION")
+        details = {
+            **metadata,
+            "status_code": status,
+            "result": "SUCCESS" if status < 400 else "FAILURE",
+            "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+        }
+        attempted = getattr(request.state, "login_identifier", None)
+        if attempted:
+            details["attempted_identifier"] = attempted
+        store.record_request_event(user, action, details)
+        if user:
+            presence_service.record_activity(user, action=action, method=request.method,
+                                             path=path, status_code=status, metadata=details)
+
+    async def _dispatch(self, request: Request, call_next):
         path = request.url.path
         token = _request_token(request)
         user = store.user_for_token(token)
         request.state.current_user = user
+        if user:
+            audit_context.get().update({"actor_email": user.email, "actor_display_name": user.display_name,
+                                        "actor_role": user.role, "actor_user_id": user.id})
 
         is_api = path == "/api" or path.startswith("/api/")
         exempt = any(path.startswith(prefix) for prefix in AUTH_EXEMPT_PREFIXES)
@@ -143,29 +197,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             if model_id and not store.can_access_model(user, model_id):
                 return JSONResponse({"detail": "File not found"}, status_code=404)
 
-        response = await call_next(request)
-        should_record = (
-            user is not None
-            and path != "/api/presence/heartbeat"
-            and (
-                request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
-                or "/download" in path
-                or path.startswith("/api/files/")
-            )
-        )
-        if should_record:
-            action = {
-                "/api/auth/logout": "LOGOUT",
-                "/api/upload": "MODEL_UPLOAD",
-            }.get(path, "FILE_DOWNLOAD" if request.method.upper() == "GET" else "API_OPERATION")
-            presence_service.record_activity(
-                user,
-                action=action,
-                method=request.method,
-                path=path,
-                status_code=response.status_code,
-            )
-        return response
+        return await call_next(request)
 
 
 class LoginRequest(BaseModel):
@@ -240,6 +272,7 @@ def login(payload: LoginRequest, request: Request, response: Response):
     identifier = payload.email_local or payload.username or ""
     domains = store.list_company_email_domains()
     selected_domain = payload.email_domain or domains[0]
+    request.state.login_identifier = f"{identifier}@{selected_domain}"[:200] if "@" not in identifier else identifier[:200]
     try:
         store.canonical_company_email(identifier, selected_domain)
     except ValueError as exc:
@@ -247,12 +280,19 @@ def login(payload: LoginRequest, request: Request, response: Response):
     user = store.authenticate(identifier, payload.password, selected_domain)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid company email or password")
+    request.state.current_user = user
+    context = audit_context.get()
+    if context is not None:
+        context.update({"actor_email": user.email, "actor_display_name": user.display_name,
+                        "actor_role": user.role, "actor_user_id": user.id})
     client_ip = request.client.host if request.client else None
     token, expires_at = store.create_session(
         user.id,
         client_ip=client_ip,
         user_agent=request.headers.get("user-agent"),
     )
+    if context is not None:
+        context["session_id"] = presence_service.session_key(token, user.id)
     response.set_cookie(
         SESSION_COOKIE,
         token,
@@ -270,9 +310,6 @@ def login(payload: LoginRequest, request: Request, response: Response):
         samesite="strict",
         max_age=365 * 24 * 60 * 60,
         path="/",
-    )
-    presence_service.record_activity(
-        user, action="LOGIN", method="POST", path="/api/auth/login", status_code=200
     )
     return {"status": "ok", "user": user.as_dict(), "expires_at": expires_at.isoformat()}
 
@@ -312,6 +349,7 @@ def presence_heartbeat(
         page=payload.page,
         idle=payload.idle,
         user_agent=request.headers.get("user-agent"),
+        client_ip=request.client.host if request.client else None,
     )
     return {"status": "ok", "presence": presence}
 

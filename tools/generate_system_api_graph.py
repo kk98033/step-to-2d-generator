@@ -429,12 +429,14 @@ def relationship_markdown(graph: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def outputs(graph: dict[str, Any]) -> dict[Path, str]:
-    return {
+def outputs(graph: dict[str, Any], include_docs: bool = False) -> dict[Path, str]:
+    result = {
         OUTPUT_DIR / "api_graph.json": json.dumps(graph, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        OUTPUT_DIR / "api_catalog.md": markdown_catalog(graph),
-        OUTPUT_DIR / "api_relationships.md": relationship_markdown(graph),
     }
+    if include_docs:
+        result[OUTPUT_DIR / "api_catalog.md"] = markdown_catalog(graph)
+        result[OUTPUT_DIR / "api_relationships.md"] = relationship_markdown(graph)
+    return result
 
 
 def query_graph(graph: dict[str, Any], query: str) -> int:
@@ -503,11 +505,12 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="fail if generated files differ")
     parser.add_argument("--query", help="print a bounded impact view for an API path or symbol")
+    parser.add_argument("--include-docs", action="store_true", help="also generate local, untracked Markdown references")
     args = parser.parse_args(argv)
     graph = build_graph()
     if args.query:
         return query_graph(graph, args.query)
-    generated = outputs(graph)
+    generated = outputs(graph, include_docs=args.include_docs)
     if args.check:
         stale = [rel(path) for path, content in generated.items() if not path.exists() or path.read_text(encoding="utf-8") != content]
         if stale:

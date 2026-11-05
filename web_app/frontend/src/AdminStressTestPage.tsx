@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import axios from 'axios';
 import {
-  Activity, AlertTriangle, ArrowLeft, CheckCircle2, Cpu, Database,
+  Activity, AlertTriangle, CheckCircle2, Cpu, Database,
   Download, Gauge, History, MemoryStick, Play, RefreshCw, RotateCcw,
-  ShieldCheck, Square, Trash2, Users,
+  Square, Trash2, Users,
 } from 'lucide-react';
 import { LoginPage, apiErrorMessage, buttonStyle, fieldStyle, type AuthUser } from './AccountPortal';
 
@@ -398,7 +398,7 @@ export default function AdminStressTestPage() {
   if (!user) return <LoginPage onLogin={setUser} />;
   if (user.role !== 'ADMIN') return <div style={centerStyle}><div><h2>權限不足</h2><p>此頁面僅供系統管理員使用。</p><a href="/" style={buttonStyle}>返回主系統</a></div></div>;
 
-  return <div style={{ height: '100vh', overflowY: 'auto', overflowX: 'hidden', background: '#0a0a0a', color: '#e5e5e5', scrollbarGutter: 'stable' }}>
+  return <div style={{ minHeight: '100%', background: '#101010', color: '#e5e5e5' }}>
     <header style={{ height: 58, position: 'sticky', top: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 18px', background: '#171717', borderBottom: '1px solid #303030' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <Gauge size={20} color="#60a5fa" />
@@ -407,8 +407,6 @@ export default function AdminStressTestPage() {
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={() => load().catch(reason => setError(apiErrorMessage(reason, '重新整理失敗')))} style={{ ...buttonStyle, background: '#262626' }}><RefreshCw size={15} />重新整理</button>
-        <a href="/admin/accounts" style={{ ...buttonStyle, textDecoration: 'none', background: '#262626', borderColor: '#444' }}><ShieldCheck size={15} />管理介面</a>
-        <a href="/" style={{ ...buttonStyle, textDecoration: 'none', background: '#262626', borderColor: '#444' }}><ArrowLeft size={15} />返回主系統</a>
       </div>
     </header>
 

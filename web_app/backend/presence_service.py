@@ -51,6 +51,7 @@ class PresenceService:
         page: str,
         idle: bool,
         user_agent: str | None = None,
+        client_ip: str | None = None,
     ) -> dict[str, Any]:
         now = _utcnow()
         key = self.session_key(token, str(user.id))
@@ -69,6 +70,7 @@ class PresenceService:
                 "first_seen_at": existing.get("first_seen_at") or _iso(now),
                 "last_seen_at": _iso(now),
                 "user_agent": str(user_agent or "")[:240] or None,
+                "client_ip": client_ip,
             }
             minute = now.replace(second=0, microsecond=0).isoformat()
             self._minute_users[minute].add(str(user.id))
@@ -83,6 +85,7 @@ class PresenceService:
                     path=safe_page,
                     status_code=200,
                     at=now,
+                    metadata={"client_ip": client_ip, "user_agent": str(user_agent or "")[:500]},
                 )
             return dict(self._sessions[key])
 
@@ -100,6 +103,7 @@ class PresenceService:
         path: str,
         status_code: int,
         at: datetime,
+        metadata: dict | None = None,
     ) -> None:
         self._activities.appendleft({
             "id": str(uuid.uuid4()),
@@ -112,6 +116,7 @@ class PresenceService:
             "method": str(method)[:12],
             "path": str(path)[:300],
             "status_code": int(status_code),
+            "request": dict(metadata or {}),
         })
 
     def record_activity(
@@ -122,6 +127,7 @@ class PresenceService:
         method: str,
         path: str,
         status_code: int,
+        metadata: dict | None = None,
     ) -> None:
         with self._lock:
             self._record_activity_locked(
@@ -131,6 +137,7 @@ class PresenceService:
                 path=path,
                 status_code=status_code,
                 at=_utcnow(),
+                metadata=metadata,
             )
 
     def activities(self, limit: int = 300) -> list[dict[str, Any]]:
@@ -161,15 +168,19 @@ class PresenceService:
                 status = "OFFLINE" if last_seen < online_cutoff else ("IDLE" if session["idle"] else "ONLINE")
                 current = by_user.get(user_id)
                 if current is None:
-                    by_user[user_id] = {**session, "status": status, "session_count": 1}
+                    by_user[user_id] = {**session, "status": status, "session_count": 1,
+                                        "connections": [{**session, "status": status}]}
                     continue
                 session_count = int(current["session_count"]) + 1
+                connections = [*current["connections"], {**session, "status": status}]
                 current_status = current["status"]
                 newest = session["last_seen_at"] > current["last_seen_at"]
                 if newest:
-                    by_user[user_id] = {**session, "status": status, "session_count": session_count}
+                    by_user[user_id] = {**session, "status": status, "session_count": session_count,
+                                        "connections": connections}
                 else:
                     current["session_count"] = session_count
+                    current["connections"] = connections
                 # One active tab means the engineer is active even if a newer tab is idle.
                 if status == "ONLINE" or current_status == "ONLINE":
                     by_user[user_id]["status"] = "ONLINE"

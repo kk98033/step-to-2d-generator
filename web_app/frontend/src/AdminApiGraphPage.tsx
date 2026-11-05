@@ -4,7 +4,7 @@ import {
 } from 'react';
 import axios from 'axios';
 import {
-  ArrowLeft, Boxes, ChevronRight, Maximize2, RefreshCw, Search, ShieldCheck,
+  Boxes, ChevronRight, Maximize2, RefreshCw, Search,
 } from 'lucide-react';
 import { LoginPage, apiErrorMessage, buttonStyle, fieldStyle, type AuthUser } from './AccountPortal';
 
@@ -331,16 +331,12 @@ export default function AdminApiGraphPage() {
   if (!user) return <LoginPage onLogin={setUser} />;
   if (user.role !== 'ADMIN') return <div style={centerStyle}><div><h2>權限不足</h2><p>此頁面僅供系統管理員使用。</p><a href="/" style={buttonStyle}>返回主系統</a></div></div>;
 
-  return <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#0a0a0a', color: '#e5e5e5' }}>
+  return <div style={{ height: '100%', minHeight: 540, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#101010', color: '#e5e5e5' }}>
     <header style={{ height: 58, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 18px', background: '#171717', borderBottom: '1px solid #303030' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <Boxes size={20} color="#60a5fa" />
         <strong>系統 API 關係圖</strong>
         <span style={{ color: '#737373', fontSize: 12 }}>僅限管理員 · 每 60 秒同步</span>
-      </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <a href="/admin/accounts" style={{ ...buttonStyle, textDecoration: 'none', background: '#262626', borderColor: '#444' }}><ShieldCheck size={15} />管理介面</a>
-        <a href="/" style={{ ...buttonStyle, textDecoration: 'none', background: '#262626', borderColor: '#444' }}><ArrowLeft size={15} />返回主系統</a>
       </div>
     </header>
 

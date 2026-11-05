@@ -1,8 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import axios from 'axios';
-import { Activity, ArrowLeft, Cpu, Gauge, HardDrive, MemoryStick, PauseCircle, PlayCircle, RefreshCw, Server, ShieldAlert } from 'lucide-react';
+import { Activity, Cpu, HardDrive, MemoryStick, PauseCircle, PlayCircle, RefreshCw, Server, ShieldAlert } from 'lucide-react';
 import { LoginPage, apiErrorMessage, buttonStyle, fieldStyle, type AuthUser } from './AccountPortal';
-import AdminWorkforceDashboard from './AdminWorkforceDashboard';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 const panel: CSSProperties = { background: '#171717', border: '1px solid #303030', borderRadius: 6, padding: 16 };
@@ -53,7 +52,7 @@ function ResourceChart({ samples }: { samples: ResourceSample[] }) {
   </div>;
 }
 
-export default function AdminSystemPage() {
+export default function AdminSystemPage({ mode = 'monitor' }: { mode?: 'monitor' | 'control' }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [checking, setChecking] = useState(true);
   const [data, setData] = useState<RuntimePayload | null>(null);
@@ -134,13 +133,11 @@ export default function AdminSystemPage() {
   if (user.role !== 'ADMIN') return <div style={centerStyle}><div><ShieldAlert size={34} /><h2>需要管理員權限</h2><a href="/">返回主系統</a></div></div>;
 
   const maintenance = Boolean(data?.runtime.maintenance_mode);
-  return <div style={{ height: '100vh', overflowY: 'auto', overflowX: 'hidden', background: '#0d0d0d', color: '#e5e5e5', scrollbarGutter: 'stable' }}>
+  return <div style={{ minHeight: '100%', background: '#101010', color: '#e5e5e5' }}>
     <header style={{ height: 46, borderBottom: '1px solid #333', background: '#171717', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}><Server size={19} color="#60a5fa" /><strong>後端監控與服務控制</strong></div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}><Server size={19} color="#60a5fa" /><strong>{mode === 'control' ? '服務控制' : '資源與工作池監控'}</strong></div>
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={() => load()} style={{ ...buttonStyle, background: '#262626' }}><RefreshCw size={15} />重新整理</button>
-        <a href="/admin/stress-test" style={{ ...buttonStyle, textDecoration: 'none', background: '#262626' }}><Gauge size={15} />壓力測試</a>
-        <a href="/admin/accounts" style={{ ...buttonStyle, textDecoration: 'none', background: '#262626' }}><ArrowLeft size={15} />管理介面</a>
       </div>
     </header>
     <main style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -167,7 +164,7 @@ export default function AdminSystemPage() {
         <div style={{ ...muted, marginTop: 9, display: 'flex', gap: 14, flexWrap: 'wrap' }}><span><Cpu size={13} style={{ verticalAlign: -2 }} /> CPU 來自 Windows 系統計數器</span><span><MemoryStick size={13} style={{ verticalAlign: -2 }} /> 記憶體為全機數值</span><span><HardDrive size={13} style={{ verticalAlign: -2 }} /> 磁碟為輸出目錄所在磁碟</span></div>
       </section>
 
-      <section style={{ ...panel, display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(280px, 1fr)', gap: 18 }}>
+      {mode === 'control' && <section style={{ ...panel, borderColor: '#92400e', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 18 }}>
         <div>
           <h3 style={{ marginTop: 0 }}>CAD 重型服務接單控制</h3>
           <p style={muted}>停止接單後，登入、監控、報告與既有結果仍可使用；新的上傳分析、比較與智慧標註會回覆維護中。</p>
@@ -183,17 +180,15 @@ export default function AdminSystemPage() {
           <button disabled={busy || !data?.runtime.process_control.restart_available} onClick={restartBackend} style={{ ...buttonStyle, background: data?.runtime.process_control.restart_available ? '#2563eb' : '#262626', opacity: data?.runtime.process_control.restart_available ? 1 : 0.55 }}><RefreshCw size={15} />重新啟動後端</button>
           <div style={{ ...muted, marginTop: 10 }}>Supervisor：{data?.runtime.process_control.supervisor_available ? '已連線，後端受管理' : '後端未受管理（需由 supervisor 啟動）'}</div>
         </div>
-      </section>
+      </section>}
 
-      <section style={panel}>
+      {mode === 'monitor' && <section style={panel}>
         <h3 style={{ marginTop: 0, display: 'flex', gap: 8, alignItems: 'center' }}><Activity size={17} />工作池即時狀態</h3>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}><thead><tr>{['工作池', '目前活動', '佇列', 'Limiter 使用量', '設定上限'].map(value => <th key={value} style={th}>{value}</th>)}</tr></thead><tbody>
           <tr><td style={td}>模型分析</td><td style={td}>{data?.active_heavy_jobs.analysis ?? '—'}</td><td style={td}>{data?.queued_jobs.analysis ?? '—'}</td><td style={td}>{data?.active_slots.analysis ?? '—'}</td><td style={td}>{data?.concurrency.analysis_max_concurrency ?? '—'}</td></tr>
           <tr><td style={td}>智慧標註</td><td style={td}>{data?.active_heavy_jobs.annotation ?? '—'}</td><td style={td}>{data?.queued_jobs.annotation ?? '—'}</td><td style={td}>{data?.active_slots.annotation ?? '—'}</td><td style={td}>{data?.concurrency.annotation_max_concurrency ?? '—'}</td></tr>
         </tbody></table>
-      </section>
-
-      <AdminWorkforceDashboard />
+      </section>}
     </main>
   </div>;
 }

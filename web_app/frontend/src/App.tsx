@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { AccountDialog, LoginPage, type AuthUser } from './AccountPortal';
+import SystemStatus from './SystemStatus';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Html } from '@react-three/drei';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
@@ -4450,12 +4451,13 @@ function App() {
   }
   return (
     <div style={{ height: '100vh', minHeight: 0, display: 'flex', flexDirection: 'column', background: '#0a0a0a' }}>
-      <div style={{ height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', background: '#111', borderBottom: '1px solid #2b2b2b', color: '#d4d4d4', boxSizing: 'border-box' }}>
+      <div className="system-sessionbar">
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12 }}>
           <ShieldCheck size={15} color="#60a5fa" />
-          <span style={{ color: '#737373' }}>工程師工作階段</span>
+          <span className="system-session-label" style={{ color: '#737373' }}>工程師工作階段</span>
           <span style={{ border: '1px solid #3a3a3a', background: '#1f1f1f', padding: '2px 6px', color: user.role === 'ADMIN' ? '#93c5fd' : '#cbd5e1' }}>{user.role}</span>
         </div>
+        <SystemStatus />
         <button
           type="button"
           onClick={() => setAccountOpen(true)}

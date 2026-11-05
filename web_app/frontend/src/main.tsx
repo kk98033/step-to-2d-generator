@@ -1,30 +1,16 @@
-import { StrictMode } from 'react'
+import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import './authSession'
-import App from './App.tsx'
-import AdminAccountPage from './AdminAccountPage.tsx'
-import AdminOperationReplayPage from './AdminOperationReplayPage.tsx'
-import AdminApiGraphPage from './AdminApiGraphPage.tsx'
-import AdminStressTestPage from './AdminStressTestPage.tsx'
-import AdminSystemPage from './AdminSystemPage.tsx'
 import PresenceHeartbeat from './PresenceHeartbeat.tsx'
 
-const RootComponent = window.location.pathname.startsWith('/admin/operations/')
-  ? AdminOperationReplayPage
-  : window.location.pathname === '/admin/api-graph'
-    ? AdminApiGraphPage
-  : window.location.pathname === '/admin/stress-test'
-    ? AdminStressTestPage
-  : window.location.pathname === '/admin/system'
-    ? AdminSystemPage
-  : window.location.pathname === '/admin/accounts'
-    ? AdminAccountPage
-    : App
+const App = lazy(() => import('./App.tsx'))
+const AdminCenter = lazy(() => import('./AdminCenter.tsx'))
+const RootComponent = window.location.pathname === '/admin' || window.location.pathname.startsWith('/admin/') ? AdminCenter : App
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <PresenceHeartbeat />
-    <RootComponent />
+    <Suspense fallback={<div style={{ padding: 24, color: '#ddd', background: '#171717', height: '100vh' }}>正在載入系統…</div>}><RootComponent /></Suspense>
   </StrictMode>,
 )

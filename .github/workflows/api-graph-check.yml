@@ -15,5 +15,7 @@ jobs:
           python-version: "3.11"
       - name: Verify generated API graph
         run: python tools/generate_system_api_graph.py --check
+      - name: Check release data boundary
+        run: python tools/check_release_content.py --tree HEAD
       - name: Test graph extraction
         run: python tests/test_api_graph_generator.py

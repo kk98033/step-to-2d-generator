@@ -21,6 +21,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from web_app.backend.request_audit import audit_context, safe_details
+
 from sqlalchemy import (
     Boolean,
     Column,
@@ -710,7 +712,31 @@ class IdentityStore:
         )
         with self.engine.connect() as conn:
             row = conn.execute(stmt).first()
-            return self._row_user(row) if row else None
+        if row:
+            return self._row_user(row)
+        # Claim expiration once, including when several tabs discover it together.
+        with self.engine.begin() as conn:
+            expired = conn.execute(select(sessions, users.c.email, users.c.display_name, users.c.role)
+                                  .select_from(sessions.join(users, sessions.c.user_id == users.c.id)).where(and_(
+                sessions.c.token_hash == _token_hash(token),
+                sessions.c.revoked_at.is_(None),
+                sessions.c.expires_at <= now,
+            ))).first()
+            if expired:
+                item = expired._mapping
+                changed = conn.execute(update(sessions).where(and_(
+                    sessions.c.id == item["id"], sessions.c.revoked_at.is_(None),
+                )).values(revoked_at=now))
+                if changed.rowcount:
+                    self._audit_conn(conn, item["user_id"], "SESSION_EXPIRED", "SESSION", item["id"], {
+                        "expires_at": item["expires_at"].isoformat(),
+                        "login_ip": item["client_ip"],
+                        "actor_email": item["email"],
+                        "actor_display_name": item["display_name"],
+                        "actor_role": item["role"],
+                        "reason": "SESSION_LIFETIME_EXCEEDED",
+                    })
+        return None
 
     def revoke_session(self, token: Optional[str]) -> None:
         if not token:
@@ -1862,9 +1888,15 @@ class IdentityStore:
         for row in rows:
             value = dict(row._mapping)
             value["details"] = _load_json(value.pop("details_json"), {})
-            value["created_at"] = value["created_at"].isoformat()
+            created = value["created_at"]
+            value["created_at"] = (created.replace(tzinfo=UTC) if created.tzinfo is None else created).isoformat()
             result.append(value)
         return result
+
+    def record_request_event(self, user: Optional[CurrentUser], action: str, details: Dict[str, Any]) -> None:
+        with self.engine.begin() as conn:
+            self._audit_conn(conn, user.id if user else None, action, "REQUEST",
+                             details.get("request_id"), details)
 
     @staticmethod
     def _audit_conn(
@@ -1875,12 +1907,15 @@ class IdentityStore:
         target_id: Optional[str],
         details: Dict[str, Any],
     ) -> None:
+        context = dict(audit_context.get() or {})
+        if context:
+            details = {**details, "request": context}
         conn.execute(insert(audit_events).values(
             id=str(uuid.uuid4()),
             actor_user_id=actor_user_id,
             action=action,
             target_type=target_type,
             target_id=target_id,
-            details_json=_json(details),
+            details_json=_json(safe_details(details)),
             created_at=_utcnow(),
         ))

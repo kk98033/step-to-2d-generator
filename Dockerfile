@@ -38,12 +38,16 @@ ENV PATH="/opt/conda/envs/pyoccenv/bin:$PATH" \
     CAD_TOLERANCE_DXF_DIR=/data/company-reference/temp_dxf_cache_ref \
     CAD_CN_FONT_PATH=/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
 
-COPY . /app/
+COPY auto_2d_drawing/ /app/auto_2d_drawing/
+COPY web_app/backend/ /app/web_app/backend/
+COPY tools/ /app/tools/
+COPY experimental_lab/tolerance_extraction_audit/common/scripts/ /app/experimental_lab/tolerance_extraction_audit/common/scripts/
+COPY experimental_lab/tolerance_extraction_audit/DRAWING_CURRENT_FINAL/ /app/experimental_lab/tolerance_extraction_audit/DRAWING_CURRENT_FINAL/
+COPY docs/generated/api_graph.json /app/docs/generated/api_graph.json
 COPY --from=frontend-build /frontend/dist /app/web_app/frontend/dist
 
 RUN mkdir -p /data/models /data/output /data/reference /data/company-reference /data/templates /data/tolerance \
-    && cp -a /app/auto_2d_drawing/templates/. /data/templates/ \
-    && cp /app/auto_2d_drawing/tolerance/data/feature_case_base.json /data/tolerance/feature_case_base.json
+    && cp -a /app/auto_2d_drawing/templates/. /data/templates/
 
 EXPOSE 8000
 
