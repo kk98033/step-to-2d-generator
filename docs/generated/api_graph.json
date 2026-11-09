@@ -576,6 +576,11 @@
       "type": "handled_by"
     },
     {
+      "from": "api_eefd637ef5",
+      "to": "backend:server:get_drawing_history",
+      "type": "handled_by"
+    },
+    {
       "from": "api_f2c04c6f4b",
       "to": "backend:account_api:list_engineer_trash",
       "type": "handled_by"
@@ -722,12 +727,7 @@
     },
     {
       "from": "backend:server:_candidate_annotation_rules_impl",
-      "to": "backend:server:_experimental_candidate_cache_signature",
-      "type": "calls"
-    },
-    {
-      "from": "backend:server:_candidate_annotation_rules_impl",
-      "to": "backend:server:_read_experimental_candidate_cache",
+      "to": "backend:server:_read_candidate_cache",
       "type": "calls"
     },
     {
@@ -752,7 +752,7 @@
     },
     {
       "from": "backend:server:_candidate_annotation_rules_impl",
-      "to": "backend:server:_write_experimental_candidate_cache",
+      "to": "backend:server:_write_candidate_cache",
       "type": "calls"
     },
     {
@@ -848,6 +848,16 @@
     {
       "from": "backend:server:_promote_model_reanalysis_output",
       "to": "backend:server:_run_model_output_operation",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_register_annotation_job",
+      "to": "backend:server:_active_annotation_job_for_user",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_register_annotation_job",
+      "to": "backend:server:_annotation_job_status_payload",
       "type": "calls"
     },
     {
@@ -987,6 +997,11 @@
     },
     {
       "from": "backend:server:_submit_custom_annotation_drawing",
+      "to": "backend:server:_register_annotation_job",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_submit_custom_annotation_drawing",
       "to": "backend:server:_reject_heavy_work_during_exclusive_stress_test",
       "type": "calls"
     },
@@ -1008,6 +1023,11 @@
     {
       "from": "backend:server:_submit_custom_annotation_drawing",
       "to": "backend:server:_safe_part_id",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:_submit_custom_annotation_drawing",
+      "to": "backend:server:_set_annotation_job_state",
       "type": "calls"
     },
     {
@@ -1223,6 +1243,21 @@
     {
       "from": "backend:server:get_drawing_details",
       "to": "backend:server:lookup_drawing_paths",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_drawing_history",
+      "to": "backend:server:_require_experimental_engine_admin",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_drawing_history",
+      "to": "backend:server:_safe_output_dir",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:get_drawing_history",
+      "to": "backend:server:_safe_part_id",
       "type": "calls"
     },
     {
@@ -2002,7 +2037,7 @@
     },
     {
       "from": "frontend:web_app/frontend/src/App.tsx:WorkspaceApp",
-      "to": "api_265a62585b",
+      "to": "api_eefd637ef5",
       "type": "calls_api"
     },
     {
@@ -2082,42 +2117,52 @@
     },
     {
       "from": "frontend:web_app/frontend/src/App.tsx:poll",
-      "to": "api_13e5582fe4",
-      "type": "calls_api"
-    },
-    {
-      "from": "frontend:web_app/frontend/src/App.tsx:poll",
       "to": "api_5ca8664a1a",
-      "type": "calls_api"
-    },
-    {
-      "from": "frontend:web_app/frontend/src/App.tsx:poll",
-      "to": "api_6dc24427f2",
-      "type": "calls_api"
-    },
-    {
-      "from": "frontend:web_app/frontend/src/App.tsx:poll",
-      "to": "api_998593a2db",
-      "type": "calls_api"
-    },
-    {
-      "from": "frontend:web_app/frontend/src/App.tsx:poll",
-      "to": "api_a4e83714f0",
-      "type": "calls_api"
-    },
-    {
-      "from": "frontend:web_app/frontend/src/App.tsx:poll",
-      "to": "api_a6c5ae5102",
-      "type": "calls_api"
-    },
-    {
-      "from": "frontend:web_app/frontend/src/App.tsx:poll",
-      "to": "api_e718327d99",
       "type": "calls_api"
     },
     {
       "from": "frontend:web_app/frontend/src/App.tsx:reanalyzeWholeModel",
       "to": "api_fdfdd2250a",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:restore",
+      "to": "api_13e5582fe4",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:restore",
+      "to": "api_265a62585b",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:restore",
+      "to": "api_37b9e05670",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:restore",
+      "to": "api_6dc24427f2",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:restore",
+      "to": "api_998593a2db",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:restore",
+      "to": "api_a4e83714f0",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:restore",
+      "to": "api_a6c5ae5102",
+      "type": "calls_api"
+    },
+    {
+      "from": "frontend:web_app/frontend/src/App.tsx:restore",
+      "to": "api_e718327d99",
       "type": "calls_api"
     },
     {
@@ -2867,12 +2912,23 @@
     {
       "id": "frontend_fb524e9fd7",
       "method": "GET",
+      "path": "/api/annotation/history/{param}/{param}",
+      "raw_url": "${API_BASE}/api/annotation/history/${encodeURIComponent(modelId)}/${encodeURIComponent(selectedPart)}?engine=${candidateEngine}",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 872,
+        "symbol": "WorkspaceApp"
+      }
+    },
+    {
+      "id": "frontend_7ab0df45a9",
+      "method": "GET",
       "path": "/api/annotation/jobs/active",
       "raw_url": "${API_BASE}/api/annotation/jobs/active",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 838,
-        "symbol": "WorkspaceApp"
+        "line": 887,
+        "symbol": "restore"
       }
     },
     {
@@ -2882,74 +2938,85 @@
       "raw_url": "${API_BASE}/api/annotation/jobs/${annotationJobId}",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 855,
+        "line": 912,
         "symbol": "poll"
       }
     },
     {
-      "id": "frontend_1324bfd000",
+      "id": "frontend_7ab0df45a9",
       "method": "GET",
       "path": "/api/jobs/active",
       "raw_url": "${API_BASE}/api/jobs/active",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 923,
-        "symbol": "poll"
+        "line": 963,
+        "symbol": "restore"
       }
     },
     {
-      "id": "frontend_1324bfd000",
+      "id": "frontend_7ab0df45a9",
+      "method": "GET",
+      "path": "/api/model/{param}",
+      "raw_url": "${API_BASE}/api/model/${encodeURIComponent(saved.modelId)}",
+      "source": {
+        "file": "web_app/frontend/src/App.tsx",
+        "line": 979,
+        "symbol": "restore"
+      }
+    },
+    {
+      "id": "frontend_7ab0df45a9",
       "method": "GET",
       "path": "/api/annotation/templates",
       "raw_url": "${API_BASE}/api/annotation/templates",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 942,
-        "symbol": "poll"
+        "line": 1009,
+        "symbol": "restore"
       }
     },
     {
-      "id": "frontend_1324bfd000",
+      "id": "frontend_7ab0df45a9",
       "method": "GET",
       "path": "/api/tolerance/stats",
       "raw_url": "${API_BASE}/api/tolerance/stats",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 953,
-        "symbol": "poll"
+        "line": 1020,
+        "symbol": "restore"
       }
     },
     {
-      "id": "frontend_1324bfd000",
+      "id": "frontend_7ab0df45a9",
       "method": "GET",
       "path": "/api/recommendation-tags",
       "raw_url": "${API_BASE}/api/recommendation-tags",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 961,
-        "symbol": "poll"
+        "line": 1028,
+        "symbol": "restore"
       }
     },
     {
-      "id": "frontend_1324bfd000",
+      "id": "frontend_7ab0df45a9",
       "method": "GET",
-      "path": "/api/features/{param}/{param}",
-      "raw_url": "${API_BASE}/api/features/${modelId}/${selectedPart}?t=${Date.now()}${refreshParam}",
+      "path": "/api/features/{param}/{param}{param}",
+      "raw_url": "${API_BASE}/api/features/${modelId}/${selectedPart}${forceRefresh ? '?refresh=true' : ''}",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1041,
-        "symbol": "poll"
+        "line": 1116,
+        "symbol": "restore"
       }
     },
     {
-      "id": "frontend_1324bfd000",
+      "id": "frontend_7ab0df45a9",
       "method": "GET",
       "path": "/api/annotation/candidate-rules/{param}/{param}",
-      "raw_url": "${API_BASE}/api/annotation/candidate-rules/${modelId}/${selectedPart}?engine=${candidateEngine}&t=${Date.now()}${refreshParam}",
+      "raw_url": "${API_BASE}/api/annotation/candidate-rules/${modelId}/${selectedPart}?engine=${candidateEngine}${refreshParam}",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1106,
-        "symbol": "poll"
+        "line": 1188,
+        "symbol": "restore"
       }
     },
     {
@@ -2959,7 +3026,7 @@
       "raw_url": "${API_BASE}/api/models/${modelId}/reanalyze",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1196,
+        "line": 1286,
         "symbol": "reanalyzeWholeModel"
       }
     },
@@ -2970,7 +3037,7 @@
       "raw_url": "${API_BASE}/api/tolerance/recommend",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1393,
+        "line": 1483,
         "symbol": "handleAiRecommendTolerances"
       }
     },
@@ -2981,7 +3048,7 @@
       "raw_url": "${API_BASE}/api/tolerance/save-case",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1487,
+        "line": 1577,
         "symbol": "handleSaveAsHistoricalCase"
       }
     },
@@ -2992,7 +3059,7 @@
       "raw_url": "${API_BASE}/api/annotation/apply-template",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1520,
+        "line": 1610,
         "symbol": "handleApplyTemplate"
       }
     },
@@ -3003,7 +3070,7 @@
       "raw_url": "${API_BASE}/api/annotation/render",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1602,
+        "line": 1692,
         "symbol": "handleRenderCustomDrawing"
       }
     },
@@ -3014,7 +3081,7 @@
       "raw_url": "${API_BASE}/api/annotation/templates",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1680,
+        "line": 1775,
         "symbol": "handleSaveNewTemplate"
       }
     },
@@ -3025,7 +3092,7 @@
       "raw_url": "${API_BASE}/api/annotation/templates/${templateId}",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1705,
+        "line": 1800,
         "symbol": "handleDeleteTemplate"
       }
     },
@@ -3036,7 +3103,7 @@
       "raw_url": "${API_BASE}/api/models",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1773,
+        "line": 1868,
         "symbol": "handleTreeNewScroll"
       }
     },
@@ -3047,7 +3114,7 @@
       "raw_url": "${API_BASE}/api/examples",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1777,
+        "line": 1872,
         "symbol": "handleTreeNewScroll"
       }
     },
@@ -3058,7 +3125,7 @@
       "raw_url": "${API_BASE}/api/processed/fan-20260625",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1780,
+        "line": 1875,
         "symbol": "handleTreeNewScroll"
       }
     },
@@ -3069,7 +3136,7 @@
       "raw_url": "${API_BASE}/api/status/${jobId}",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1796,
+        "line": 1891,
         "symbol": "handleTreeNewScroll"
       }
     },
@@ -3080,7 +3147,7 @@
       "raw_url": "${API_BASE}/api/results/${id}",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1841,
+        "line": 1936,
         "symbol": "fetchResults"
       }
     },
@@ -3088,10 +3155,10 @@
       "id": "frontend_8321ec4429",
       "method": "GET",
       "path": "/api/model/{param}",
-      "raw_url": "${API_BASE}/api/model/${modelId}",
+      "raw_url": "${API_BASE}/api/model/${encodeURIComponent(modelId)}",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1858,
+        "line": 1965,
         "symbol": "loadExistingModel"
       }
     },
@@ -3102,7 +3169,7 @@
       "raw_url": "${API_BASE}/api/upload",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1876,
+        "line": 1993,
         "symbol": "handleUpload"
       }
     },
@@ -3113,7 +3180,7 @@
       "raw_url": "${API_BASE}/api/compare",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 1907,
+        "line": 2024,
         "symbol": "handleDiffUpload"
       }
     },
@@ -3124,7 +3191,7 @@
       "raw_url": "${API_BASE}/api/auth/me",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 4423,
+        "line": 4578,
         "symbol": "App"
       }
     },
@@ -3135,7 +3202,7 @@
       "raw_url": "${API_BASE}/api/auth/logout",
       "source": {
         "file": "web_app/frontend/src/App.tsx",
-        "line": 4438,
+        "line": 4593,
         "symbol": "logout"
       }
     },
@@ -3160,7 +3227,7 @@
       "path": "/admin",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5193,
+        "line": 5219,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3171,7 +3238,7 @@
       "path": "/admin/",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5193,
+        "line": 5219,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3182,7 +3249,7 @@
       "path": "/admin/accounts",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5193,
+        "line": 5219,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3193,7 +3260,7 @@
       "path": "/admin/accounts/import",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5193,
+        "line": 5219,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3204,7 +3271,7 @@
       "path": "/admin/accounts/passwords",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5193,
+        "line": 5219,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3215,7 +3282,7 @@
       "path": "/admin/api-graph",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5201,
+        "line": 5227,
         "symbol": "admin_api_graph_page"
       }
     },
@@ -3226,7 +3293,7 @@
       "path": "/admin/logs",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5193,
+        "line": 5219,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3237,7 +3304,7 @@
       "path": "/admin/operations/{operation_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5213,
+        "line": 5239,
         "symbol": "admin_operation_replay_page"
       }
     },
@@ -3248,7 +3315,7 @@
       "path": "/admin/presence",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5193,
+        "line": 5219,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3259,7 +3326,7 @@
       "path": "/admin/service-control",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5193,
+        "line": 5219,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3270,7 +3337,7 @@
       "path": "/admin/settings",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5193,
+        "line": 5219,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3281,7 +3348,7 @@
       "path": "/admin/stress-test",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5205,
+        "line": 5231,
         "symbol": "admin_stress_test_page"
       }
     },
@@ -3292,7 +3359,7 @@
       "path": "/admin/system",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5209,
+        "line": 5235,
         "symbol": "admin_system_page"
       }
     },
@@ -3303,7 +3370,7 @@
       "path": "/admin/tags",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5193,
+        "line": 5219,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3314,7 +3381,7 @@
       "path": "/admin/trash",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5193,
+        "line": 5219,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3424,7 +3491,7 @@
       "path": "/api/admin/operation-logs/{operation_id}/replay",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3756,
+        "line": 3790,
         "symbol": "replay_annotation_operation"
       }
     },
@@ -3479,7 +3546,7 @@
       "path": "/api/admin/runtime",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3418,
+        "line": 3452,
         "symbol": "admin_runtime_status"
       }
     },
@@ -3490,7 +3557,7 @@
       "path": "/api/admin/runtime/maintenance",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3574,
+        "line": 3608,
         "symbol": "admin_set_runtime_maintenance"
       }
     },
@@ -3501,7 +3568,7 @@
       "path": "/api/admin/runtime/restart",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3593,
+        "line": 3627,
         "symbol": "admin_restart_runtime"
       }
     },
@@ -3556,7 +3623,7 @@
       "path": "/api/admin/stress-tests",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3633,
+        "line": 3667,
         "symbol": "admin_list_stress_tests"
       }
     },
@@ -3567,7 +3634,7 @@
       "path": "/api/admin/stress-tests",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3638,
+        "line": 3672,
         "symbol": "admin_start_stress_test"
       }
     },
@@ -3578,7 +3645,7 @@
       "path": "/api/admin/stress-tests/config",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3619,
+        "line": 3653,
         "symbol": "admin_stress_test_config"
       }
     },
@@ -3589,7 +3656,7 @@
       "path": "/api/admin/stress-tests/{run_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3684,
+        "line": 3718,
         "symbol": "admin_delete_stress_test"
       }
     },
@@ -3600,7 +3667,7 @@
       "path": "/api/admin/stress-tests/{run_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3676,
+        "line": 3710,
         "symbol": "admin_get_stress_test"
       }
     },
@@ -3611,7 +3678,7 @@
       "path": "/api/admin/stress-tests/{run_id}/apply-recommendation",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3703,
+        "line": 3737,
         "symbol": "admin_apply_stress_recommendation"
       }
     },
@@ -3622,7 +3689,7 @@
       "path": "/api/admin/stress-tests/{run_id}/restore-settings",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3739,
+        "line": 3773,
         "symbol": "admin_restore_stress_settings"
       }
     },
@@ -3633,7 +3700,7 @@
       "path": "/api/admin/stress-tests/{run_id}/stop",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3695,
+        "line": 3729,
         "symbol": "admin_stop_stress_test"
       }
     },
@@ -3798,7 +3865,7 @@
       "path": "/api/admin/workforce",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3443,
+        "line": 3477,
         "symbol": "admin_workforce_dashboard"
       }
     },
@@ -3809,7 +3876,7 @@
       "path": "/api/annotation/apply-template",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2817,
+        "line": 2832,
         "symbol": "apply_annotation_template"
       }
     },
@@ -3820,8 +3887,19 @@
       "path": "/api/annotation/candidate-rules/{model_id}/{part_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3935,
+        "line": 3961,
         "symbol": "get_candidate_annotation_rules"
+      }
+    },
+    {
+      "handler": "get_drawing_history",
+      "id": "api_eefd637ef5",
+      "method": "GET",
+      "path": "/api/annotation/history/{model_id}/{part_id}",
+      "source": {
+        "file": "web_app/backend/server.py",
+        "line": 3352,
+        "symbol": "get_drawing_history"
       }
     },
     {
@@ -3831,7 +3909,7 @@
       "path": "/api/annotation/jobs/active",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3325,
+        "line": 3343,
         "symbol": "get_active_annotation_job"
       }
     },
@@ -3842,7 +3920,7 @@
       "path": "/api/annotation/jobs/{job_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3334,
+        "line": 3368,
         "symbol": "get_annotation_job"
       }
     },
@@ -3853,7 +3931,7 @@
       "path": "/api/annotation/render",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3016,
+        "line": 3031,
         "symbol": "submit_custom_annotation_drawing"
       }
     },
@@ -3864,7 +3942,7 @@
       "path": "/api/annotation/templates",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2780,
+        "line": 2795,
         "symbol": "get_annotation_templates"
       }
     },
@@ -3875,7 +3953,7 @@
       "path": "/api/annotation/templates",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2787,
+        "line": 2802,
         "symbol": "save_annotation_template"
       }
     },
@@ -3886,7 +3964,7 @@
       "path": "/api/annotation/templates/{template_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2800,
+        "line": 2815,
         "symbol": "delete_annotation_template"
       }
     },
@@ -3952,7 +4030,7 @@
       "path": "/api/compare",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4725,
+        "line": 4751,
         "symbol": "compare_files"
       }
     },
@@ -3963,7 +4041,7 @@
       "path": "/api/drawings/{model_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4828,
+        "line": 4854,
         "symbol": "get_drawing_package"
       }
     },
@@ -3974,7 +4052,7 @@
       "path": "/api/drawings/{model_id}/parts/{part_id}/annotations",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4871,
+        "line": 4897,
         "symbol": "get_part_annotations"
       }
     },
@@ -3985,7 +4063,7 @@
       "path": "/api/drawings/{model_id}/parts/{part_id}/annotations",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4895,
+        "line": 4921,
         "symbol": "save_part_annotations"
       }
     },
@@ -3996,7 +4074,7 @@
       "path": "/api/drawings/{model_id}/parts/{part_id}/features",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4838,
+        "line": 4864,
         "symbol": "get_drawing_part_features"
       }
     },
@@ -4117,7 +4195,7 @@
       "path": "/api/examples",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5051,
+        "line": 5077,
         "symbol": "list_examples"
       }
     },
@@ -4128,7 +4206,7 @@
       "path": "/api/features/{model_id}/{part_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3956,
+        "line": 3982,
         "symbol": "get_part_features"
       }
     },
@@ -4139,7 +4217,7 @@
       "path": "/api/health",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5097,
+        "line": 5123,
         "symbol": "health_check"
       }
     },
@@ -4172,7 +4250,7 @@
       "path": "/api/jobs/active",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4623,
+        "line": 4649,
         "symbol": "get_active_job"
       }
     },
@@ -4183,7 +4261,7 @@
       "path": "/api/model/{model_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4804,
+        "line": 4830,
         "symbol": "get_model"
       }
     },
@@ -4194,7 +4272,7 @@
       "path": "/api/models",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4784,
+        "line": 4810,
         "symbol": "list_models"
       }
     },
@@ -4205,7 +4283,7 @@
       "path": "/api/models/{model_id}/reanalyze",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4552,
+        "line": 4578,
         "symbol": "reanalyze_model"
       }
     },
@@ -4227,7 +4305,7 @@
       "path": "/api/processed/fan-20260625",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5077,
+        "line": 5103,
         "symbol": "list_processed_fan_20260625"
       }
     },
@@ -4249,7 +4327,7 @@
       "path": "/api/results/{job_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4632,
+        "line": 4658,
         "symbol": "get_results"
       }
     },
@@ -4260,7 +4338,7 @@
       "path": "/api/status/{job_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4608,
+        "line": 4634,
         "symbol": "get_status"
       }
     },
@@ -4271,7 +4349,7 @@
       "path": "/api/system/status",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3372,
+        "line": 3406,
         "symbol": "system_status"
       }
     },
@@ -4282,7 +4360,7 @@
       "path": "/api/tolerance/audit/model-preview/{case_id}.png",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2178,
+        "line": 2193,
         "symbol": "get_tolerance_audit_model_preview"
       }
     },
@@ -4293,7 +4371,7 @@
       "path": "/api/tolerance/audit/source-step/{case_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2199,
+        "line": 2214,
         "symbol": "download_tolerance_audit_source_step"
       }
     },
@@ -4304,7 +4382,7 @@
       "path": "/api/tolerance/cases",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 1600,
+        "line": 1615,
         "symbol": "list_tolerance_cases"
       }
     },
@@ -4315,7 +4393,7 @@
       "path": "/api/tolerance/confirm-feature-case",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2692,
+        "line": 2707,
         "symbol": "confirm_feature_tolerance_case"
       }
     },
@@ -4326,7 +4404,7 @@
       "path": "/api/tolerance/debug/cases",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 1832,
+        "line": 1847,
         "symbol": "list_tolerance_debug_cases"
       }
     },
@@ -4337,7 +4415,7 @@
       "path": "/api/tolerance/debug/component-asset/{component_name}/{asset_name}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2051,
+        "line": 2066,
         "symbol": "get_tolerance_debug_component_asset"
       }
     },
@@ -4348,7 +4426,7 @@
       "path": "/api/tolerance/debug/component-details/{component_name}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 1987,
+        "line": 2002,
         "symbol": "get_tolerance_debug_component_details"
       }
     },
@@ -4359,7 +4437,7 @@
       "path": "/api/tolerance/download/{model_name}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2418,
+        "line": 2433,
         "symbol": "download_drawing_file"
       }
     },
@@ -4370,7 +4448,7 @@
       "path": "/api/tolerance/drawing-details/{model_name}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2238,
+        "line": 2253,
         "symbol": "get_drawing_details"
       }
     },
@@ -4381,7 +4459,7 @@
       "path": "/api/tolerance/drawing-pdf/{model_name}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2214,
+        "line": 2229,
         "symbol": "get_drawing_pdf"
       }
     },
@@ -4392,7 +4470,7 @@
       "path": "/api/tolerance/drawing-svg/{model_name}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2099,
+        "line": 2114,
         "symbol": "get_drawing_svg"
       }
     },
@@ -4403,7 +4481,7 @@
       "path": "/api/tolerance/external-predictions/{model_id}/{part_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2538,
+        "line": 2553,
         "symbol": "delete_external_tolerance_predictions"
       }
     },
@@ -4414,7 +4492,7 @@
       "path": "/api/tolerance/external-predictions/{model_id}/{part_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2519,
+        "line": 2534,
         "symbol": "get_external_tolerance_predictions"
       }
     },
@@ -4425,7 +4503,7 @@
       "path": "/api/tolerance/external-predictions/{model_id}/{part_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2449,
+        "line": 2464,
         "symbol": "save_external_tolerance_predictions"
       }
     },
@@ -4436,7 +4514,7 @@
       "path": "/api/tolerance/open-local",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2381,
+        "line": 2396,
         "symbol": "open_local_drawing"
       }
     },
@@ -4447,7 +4525,7 @@
       "path": "/api/tolerance/recommend",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2555,
+        "line": 2570,
         "symbol": "recommend_tolerances"
       }
     },
@@ -4458,7 +4536,7 @@
       "path": "/api/tolerance/save-case",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2751,
+        "line": 2766,
         "symbol": "save_tolerance_case"
       }
     },
@@ -4469,7 +4547,7 @@
       "path": "/api/tolerance/stats",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 1556,
+        "line": 1571,
         "symbol": "get_tolerance_stats"
       }
     },
@@ -4480,7 +4558,7 @@
       "path": "/api/tolerances",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5124,
+        "line": 5150,
         "symbol": "get_tolerances"
       }
     },
@@ -4491,7 +4569,7 @@
       "path": "/api/tolerances",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5130,
+        "line": 5156,
         "symbol": "update_tolerances"
       }
     },
@@ -4502,7 +4580,7 @@
       "path": "/api/upload",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4496,
+        "line": 4522,
         "symbol": "upload_file"
       }
     },
@@ -4513,7 +4591,7 @@
       "path": "/tolerance-audit-v2.html",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5167,
+        "line": 5193,
         "symbol": "tolerance_audit_v2_page"
       }
     },
@@ -4524,15 +4602,15 @@
       "path": "/tolerance-inspector.html",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5149,
+        "line": 5175,
         "symbol": "tolerance_inspector_page"
       }
     }
   ],
   "schema_version": 1,
   "summary": {
-    "backend_routes": 125,
-    "frontend_http_calls": 93,
+    "backend_routes": 126,
+    "frontend_http_calls": 95,
     "unresolved_frontend_calls": 0,
     "worker_actions": 6
   },

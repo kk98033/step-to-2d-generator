@@ -7,6 +7,9 @@ import {
   Cpu, Database, ExternalLink, X, UserRound, ShieldCheck
 } from 'lucide-react';
 import axios from 'axios';
+import { AnalysisCache } from './analysisCache';
+import { readWorkspace, saveWorkspace, type WorkspaceLocation } from './workspaceSession';
+import './annotationTask.css';
 import { AccountDialog, LoginPage, type AuthUser } from './AccountPortal';
 import SystemStatus from './SystemStatus';
 import { Canvas, useThree } from '@react-three/fiber';
@@ -793,6 +796,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     svg_url?: string;
     png_url?: string;
     timestamp?: string;
+    operation_id?: string;
     candidate_engine?: string;
     primary_view?: string;
     report_url?: string;
@@ -833,72 +837,105 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   const [analysisLoadError, setAnalysisLoadError] = useState<string | null>(null);
   const [analysisRefreshToken, setAnalysisRefreshToken] = useState(0);
   const forceReanalysisRef = useRef(false);
+  const analysisCacheRef = useRef(new AnalysisCache());
+  const restoredDrawingRef = useRef<{ partId: string | null; drawing: any } | null>(null);
+  const [workspaceRestored, setWorkspaceRestored] = useState(false);
+  const [annotationTask, setAnnotationTask] = useState<any>(null);
+  const [isOpeningAnnotationResult, setIsOpeningAnnotationResult] = useState(false);
+  const [drawingHistory, setDrawingHistory] = useState<any[]>([]);
+  const shownCompletionRef = useRef<string | null>(null);
+  const drawingContextRef = useRef<any>(null);
+  drawingContextRef.current = { modelId: results?.model_id || results?.output_dir, partId: selectedPart, engine: candidateEngine, viewTab };
+  const terminalAnnotation = ['completed', 'error'].includes(annotationTask?.status);
+  const taskTotal = Math.max(1, annotationTask?.progress?.total || 3);
+  const taskFraction = annotationTask?.status === 'completed' ? 1 : Math.max(0, Math.min(1, (annotationTask?.progress?.current || 0) / taskTotal));
 
   useEffect(() => {
-    axios.get(`${API_BASE}/api/annotation/jobs/active`).then(response => {
-      const activeJob = response.data?.job;
-      if (!activeJob) return;
-      setAnnotationJobId(activeJob.job_id);
-      setAnnotationJobMessage(activeJob.message || '正在恢復標註工作');
-      setAnnotationQueuePosition(activeJob.queue_position || 0);
-      setAnnotationWorkerLimit(activeJob.worker_limit || 1);
+    if (!workspaceRestored || annotationTask?.status !== 'completed' || !annotationTask.result) return;
+    const identity = annotationTask.job_id || annotationTask.result.operation_id || annotationTask.result.timestamp;
+    if (identity && shownCompletionRef.current === identity) return;
+    shownCompletionRef.current = identity;
+    const context = drawingContextRef.current;
+    if (context.modelId === annotationTask.model_id && context.partId === annotationTask.part_id
+        && context.engine === (annotationTask.result.candidate_engine || 'legacy_smart')
+        && context.viewTab === 'smart_annotation') {
+      setCustomDrawingResult(annotationTask.result);
+      setShowFeatureLayer(false);
+    }
+  }, [annotationTask, workspaceRestored]);
+
+  useEffect(() => {
+    const modelId = results?.model_id || results?.output_dir;
+    if (!modelId || !selectedPart) { setDrawingHistory([]); return; }
+    let active = true;
+    setDrawingHistory([]);
+    axios.get(`${API_BASE}/api/annotation/history/${encodeURIComponent(modelId)}/${encodeURIComponent(selectedPart)}?engine=${candidateEngine}`)
+      .then(response => {
+        if (!active) return;
+        const entries = Array.isArray(response.data?.drawings) ? response.data.drawings : [];
+        setDrawingHistory(entries);
+        if (entries[0]?.result) setCustomDrawingResult(current => current || entries[0].result);
+      }).catch(() => undefined);
+    return () => { active = false; };
+  }, [results?.model_id, results?.output_dir, selectedPart, candidateEngine, annotationTask?.status, user.id]);
+
+  useEffect(() => {
+    let active = true;
+    const restore = async () => {
+      let job = null;
+      try {
+        const response = await axios.get(`${API_BASE}/api/annotation/jobs/active`);
+        job = response.data?.job;
+      } catch { /* The saved ID can still recover a completed job. */ }
+      if (!active) return;
+      const savedId = window.localStorage.getItem(`cad-annotation-job:${user.id}`);
+      const id = job?.job_id || savedId;
+      if (!id) return;
+      setAnnotationTask(job);
+      setAnnotationJobId(id);
+      setAnnotationJobMessage(job?.message || '正在恢復標註工作');
+      setAnnotationQueuePosition(job?.queue_position || 0);
+      setAnnotationWorkerLimit(job?.worker_limit || 1);
       setIsRenderingDrawing(true);
-      window.localStorage.setItem(`cad-annotation-job:${user.id}`, activeJob.job_id);
-    }).catch(() => undefined);
+      window.localStorage.setItem(`cad-annotation-job:${user.id}`, id);
+    };
+    restore();
+    return () => { active = false; };
   }, [user.id]);
 
   useEffect(() => {
-    if (!annotationJobId) return;
+    if (!annotationJobId || terminalAnnotation) return;
     let stopped = false;
+    let timer: ReturnType<typeof window.setTimeout>;
     const poll = async () => {
       try {
         const response = await axios.get(`${API_BASE}/api/annotation/jobs/${annotationJobId}`);
         if (stopped) return;
         const job = response.data;
+        setAnnotationTask(job);
         setAnnotationJobMessage(job.message || '正在處理標註工作');
         setAnnotationQueuePosition(job.queue_position || 0);
         setAnnotationWorkerLimit(job.worker_limit || 1);
-        if (job.status === 'completed' && job.result) {
-          setCustomDrawingResult({
-            dxf_url: job.result.dxf_url,
-            pdf_url: job.result.pdf_url,
-            svg_url: job.result.svg_url,
-            png_url: job.result.png_url,
-            timestamp: job.result.timestamp,
-            candidate_engine: job.result.candidate_engine,
-            primary_view: job.result.primary_view,
-            report_url: job.result.report_url,
-            multiview_files: job.result.multiview_files,
-            multiview_layout: job.result.multiview_layout,
-            half_section_file: job.result.half_section_file,
-          });
-          setAnnotationJobId(null);
+        if (['completed', 'error'].includes(job.status)) {
           setIsRenderingDrawing(false);
-          window.localStorage.removeItem(`cad-annotation-job:${user.id}`);
-        } else if (job.status === 'error') {
-          setAnnotationJobId(null);
-          setIsRenderingDrawing(false);
-          window.localStorage.removeItem(`cad-annotation-job:${user.id}`);
-          const auditLocation = job.audit_url
-            ? `\n工作編號：${job.job_id}\n詳細紀錄：${job.audit_url}`
-            : `\n工作編號：${job.job_id}`;
-          alert(`標註工程圖產生失敗：${job.error || job.message || '未知錯誤'}${auditLocation}`);
+          return;
         }
       } catch (error: any) {
-        if (error?.response?.status === 404 && !stopped) {
-          setAnnotationJobId(null);
+        if (stopped) return;
+        if ([403, 404].includes(error?.response?.status)) {
+          setAnnotationTask({ status: 'error', message: '此工作已失效或無法存取，請重新開啟模型。' });
+          setAnnotationJobMessage('此工作已失效或無法存取，請重新開啟模型。');
           setIsRenderingDrawing(false);
           window.localStorage.removeItem(`cad-annotation-job:${user.id}`);
+          return;
         }
+        setAnnotationJobMessage('暫時無法取得工作狀態，正在重試…');
       }
+      if (!stopped) timer = window.setTimeout(poll, 1000);
     };
     poll();
-    const timer = window.setInterval(poll, 1000);
-    return () => {
-      stopped = true;
-      window.clearInterval(timer);
-    };
-  }, [annotationJobId, user.id]);
+    return () => { stopped = true; window.clearTimeout(timer); };
+  }, [annotationJobId, user.id, terminalAnnotation]);
 
   // --- AI CAD-RAG Tolerance Decision State ---
   const [aiRecommendations, setAiRecommendations] = useState<Record<string, any>>({});
@@ -920,19 +957,49 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   } | null>(null);
 
   useEffect(() => {
-    axios.get(`${API_BASE}/api/jobs/active`).then(response => {
-      const activeJob = response.data?.job;
-      if (!activeJob) return;
-      setJobId(activeJob.job_id);
-      setStatus('processing');
-      setProgressMsg(activeJob.message || '正在恢復處理進度...');
-      setProgress(activeJob.progress || { current: 0, total: 0 });
-      setQueuePosition(activeJob.queue_position || 0);
-      setAnalysisWorkerLimit(activeJob.worker_limit || 1);
-      setActiveJobFilename(activeJob.filename || '');
-      window.localStorage.setItem(`cad-active-job:${user.id}`, activeJob.job_id);
-    }).catch(() => undefined);
+    let active = true;
+    const restore = async () => {
+      try {
+        const response = await axios.get(`${API_BASE}/api/jobs/active`);
+        if (!active) return;
+        const job = response.data?.job;
+        if (job) {
+          setJobId(job.job_id);
+          setStatus('processing');
+          setProgressMsg(job.message || '正在恢復處理進度...');
+          setProgress(job.progress || { current: 0, total: 0 });
+          setQueuePosition(job.queue_position || 0);
+          setAnalysisWorkerLimit(job.worker_limit || 1);
+          setActiveJobFilename(job.filename || '');
+          window.localStorage.setItem(`cad-active-job:${user.id}`, job.job_id);
+          return;
+        }
+        const saved = readWorkspace(window.sessionStorage, user.id);
+        if (saved) {
+          const response = await axios.get(`${API_BASE}/api/model/${encodeURIComponent(saved.modelId)}`);
+          if (!active) return;
+          applyModelLocation(response.data, saved);
+        }
+      } catch (error: any) {
+        if (active) {
+          setStatus('idle');
+          if ([403, 404].includes(error?.response?.status)) saveWorkspace(window.sessionStorage, user.id, null);
+        }
+      } finally { if (active) setWorkspaceRestored(true); }
+    };
+    restore();
+    return () => { active = false; };
   }, [user.id]);
+
+  useEffect(() => {
+    if (!workspaceRestored) return;
+    const modelId = results?.model_id || results?.output_dir;
+    if (status === 'completed' && modelId) {
+      saveWorkspace(window.sessionStorage, user.id, {
+        modelId, partId: selectedPart, viewTab, engine: candidateEngine, drawing: customDrawingResult,
+      });
+    } else if (status === 'idle') saveWorkspace(window.sessionStorage, user.id, null);
+  }, [workspaceRestored, status, results, selectedPart, viewTab, candidateEngine, customDrawingResult, user.id]);
 
   // --- Tree Diff State ---
   const [diffedTreeOld, setDiffedTreeOld] = useState<any>(null);
@@ -964,7 +1031,9 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   }, []);
 
   useEffect(() => {
-    setCustomDrawingResult(null);
+    const restored = restoredDrawingRef.current;
+    setCustomDrawingResult(restored?.partId === selectedPart ? restored.drawing : null);
+    restoredDrawingRef.current = null;
     setDrawingPan({ x: 0, y: 0 });
     setAnnotationZoom(1);
     setAiRecommendations({});
@@ -1009,6 +1078,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   }, [results]);
 
   useEffect(() => {
+    let active = true;
     if (viewTab !== 'features3d') {
       setShowFeatureLayer(false);
     }
@@ -1035,11 +1105,17 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     const forceRefresh = forceReanalysisRef.current;
     forceReanalysisRef.current = false;
     const refreshParam = forceRefresh ? '&refresh=true' : '';
+    const cachePrefix = JSON.stringify([user.id, modelId]) + ':';
+    const featureKey = cachePrefix + JSON.stringify([selectedPart, 'features']);
+    const candidateKey = cachePrefix + JSON.stringify([selectedPart, candidateEngine]);
+    if (forceRefresh) analysisCacheRef.current.invalidate(cachePrefix);
 
     // 優先調用後端即時 3D 特徵動態提取 API (保證 100% 所有零件/新舊模型皆有 3D 特徵)
     if (modelId) {
-      axios.get(`${API_BASE}/api/features/${modelId}/${selectedPart}?t=${Date.now()}${refreshParam}`)
+      analysisCacheRef.current.load(featureKey, () =>
+        axios.get(`${API_BASE}/api/features/${modelId}/${selectedPart}${forceRefresh ? '?refresh=true' : ''}`).then(response => ({ data: response.data })))
         .then(res => {
+          if (!active) return;
           const records = Array.isArray(res.data?.records) ? res.data.records : [];
           if (forceRefresh && res.data?.stl_url && !selectedData?.stl) {
             setResults((previous: any) => ({
@@ -1066,6 +1142,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
           if (selectedData?.features_json) {
             axios.get(`${API_BASE}${selectedData.features_json}?t=${Date.now()}`)
               .then(res2 => {
+                if (!active) return;
                 const recs = Array.isArray(res2.data) ? res2.data : [];
                 setFeatureRecords(recs);
                 const topKeyFeatures = recs.filter((r: any) => {
@@ -1079,10 +1156,12 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
           }
         })
         .catch(err => {
+          if (!active) return;
           console.error('Dynamic feature API error:', err);
           if (selectedData?.features_json) {
             axios.get(`${API_BASE}${selectedData.features_json}?t=${Date.now()}`)
               .then(res2 => {
+                if (!active) return;
                 const recs = Array.isArray(res2.data) ? res2.data : [];
                 setFeatureRecords(recs);
                 const topKeyFeatures = recs.filter((r: any) => {
@@ -1093,18 +1172,22 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                 setSelectedFeatureIds(new Set(initial));
               })
               .catch(() => {
+                if (!active) return;
                 setFeatureRecords([]);
                 setSelectedFeatureIds(new Set());
               });
           }
         })
         .finally(() => {
+          if (!active) return;
           setIsLoadingFeatures(false);
         });
 
       // 提取候選標註幾何規則 (Candidate Dimension Rules)
-      axios.get(`${API_BASE}/api/annotation/candidate-rules/${modelId}/${selectedPart}?engine=${candidateEngine}&t=${Date.now()}${refreshParam}`)
+      analysisCacheRef.current.load(candidateKey, () =>
+        axios.get(`${API_BASE}/api/annotation/candidate-rules/${modelId}/${selectedPart}?engine=${candidateEngine}${refreshParam}`).then(response => ({ data: response.data })))
         .then(res => {
+          if (!active) return;
           const rules = Array.isArray(res.data?.rules) ? res.data.rules : [];
           setCandidateEngineMeta({
             engine: res.data?.candidate_engine || candidateEngine,
@@ -1138,6 +1221,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
           setRuleConfig(initialCfg);
         })
         .catch(err => {
+          if (!active) return;
           console.error('Candidate rules fetch error:', err);
           setCandidateEngineMeta(null);
           setCandidateRules([]);
@@ -1145,11 +1229,13 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
           setAnalysisLoadError(err?.response?.data?.detail || '標註特徵解析失敗，請重新解析此零件。');
         })
         .finally(() => {
+          if (!active) return;
           setIsLoadingCandidateRules(false);
         });
     } else if (selectedData?.features_json) {
       axios.get(`${API_BASE}${selectedData.features_json}?t=${Date.now()}`)
         .then(res => {
+          if (!active) return;
           const records = Array.isArray(res.data) ? res.data : [];
           setFeatureRecords(records);
           const topKeyFeatures = records.filter((r: any) => {
@@ -1160,17 +1246,20 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
           setSelectedFeatureIds(new Set(initialSelected));
         })
         .catch(err => {
+          if (!active) return;
           console.error('Feature records load error:', err);
           setFeatureRecords([]);
           setSelectedFeatureIds(new Set());
         })
         .finally(() => {
+          if (!active) return;
           setIsLoadingFeatures(false);
         });
     } else {
       setIsLoadingCandidateRules(false);
     }
-  }, [results, selectedPart, jobId, candidateEngine, analysisRefreshToken]);
+    return () => { active = false; };
+  }, [results, selectedPart, jobId, candidateEngine, analysisRefreshToken, user.id]);
 
   useEffect(() => {
     if (!isLoadingFeatures && !isLoadingCandidateRules) {
@@ -1191,6 +1280,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     if (!modelId || isSubmittingModelReanalysis) return;
     if (!window.confirm('將把此模型重新送入完整 CAD 解析佇列。既有工程師標註與操作紀錄會保留，是否繼續？')) return;
 
+    analysisCacheRef.current.invalidate(JSON.stringify([user.id, modelId]) + ':');
     setIsSubmittingModelReanalysis(true);
     try {
       const res = await axios.post(`${API_BASE}/api/models/${modelId}/reanalyze`);
@@ -1614,6 +1704,9 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
       });
 
       if (res.data?.status === 'ok') {
+        setAnnotationJobId(null);
+        window.localStorage.removeItem(`cad-annotation-job:${user.id}`);
+        setAnnotationTask({ status: 'completed', model_id: modelId, part_id: selectedPart, result: res.data, message: '已載入工程圖成果' });
         setCustomDrawingResult({
           dxf_url: res.data.dxf_url,
           pdf_url: res.data.pdf_url,
@@ -1629,6 +1722,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
         });
       } else if (res.data?.job_id && ['queued', 'processing', 'finalizing'].includes(res.data.status)) {
         queuedJob = true;
+        setAnnotationTask(res.data);
         setAnnotationJobId(res.data.job_id);
         setAnnotationJobMessage(res.data.message || '標註工作已加入佇列');
         setAnnotationQueuePosition(res.data.queue_position || 0);
@@ -1640,6 +1734,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
       const detail = err?.response?.data?.detail;
       if (detail?.job?.job_id) {
         queuedJob = true;
+        setAnnotationTask(detail.job);
         setAnnotationJobId(detail.job.job_id);
         setAnnotationJobMessage(detail.job.message || detail.message || '此帳號已有標註工作進行中');
         setAnnotationQueuePosition(detail.job.queue_position || 0);
@@ -1851,20 +1946,42 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     }
   };
 
-  const loadExistingModel = async (modelId: string) => {
+  const applyModelLocation = (data: any, location?: WorkspaceLocation) => {
+    setResults(data);
+    const defaultPart = data.tree?.file_prefix || Object.keys(data.parts_map || {})[0] || null;
+    const partId = location?.partId && data.parts_map?.[location.partId] ? location.partId : defaultPart;
+    restoredDrawingRef.current = location?.drawing ? { partId, drawing: location.drawing } : null;
+    setSelectedPart(partId);
+    setViewTab(location?.viewTab || 'main');
+    setCandidateEngine(location?.engine === 'experimental_v026' && user.role === 'ADMIN' ? 'experimental_v026' : 'legacy_smart');
+    setCustomDrawingResult(location?.drawing || null);
+    setStatus('completed');
+  };
+
+  const loadExistingModel = async (modelId: string, location?: WorkspaceLocation) => {
     try {
       setStatus('processing');
-      setProgressMsg("載入模型資料中...");
-      const res = await axios.get(`${API_BASE}/api/model/${modelId}`);
-      setResults(res.data);
-      if (res.data.tree && res.data.tree.file_prefix) {
-        setSelectedPart(res.data.tree.file_prefix);
-      }
-      setStatus('completed');
+      setProgressMsg('載入模型資料中...');
+      const res = await axios.get(`${API_BASE}/api/model/${encodeURIComponent(modelId)}`);
+      applyModelLocation(res.data, location);
+      return true;
     } catch (err) {
       console.error(err);
       setStatus('error');
+      return false;
     }
+  };
+
+  const openAnnotationResult = async () => {
+    if (!annotationTask?.result || isOpeningAnnotationResult) return;
+    setIsOpeningAnnotationResult(true);
+    try {
+      const result = annotationTask.result;
+      await loadExistingModel(annotationTask.model_id, {
+        modelId: annotationTask.model_id, partId: annotationTask.part_id,
+        viewTab: 'smart_annotation', engine: result.candidate_engine || 'legacy_smart', drawing: result,
+      });
+    } finally { setIsOpeningAnnotationResult(false); }
   };
 
   const handleUpload = async () => {
@@ -1928,6 +2045,8 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     }
   };
 
+  const renderWorkspace = () => {
+  if (!workspaceRestored) return <div style={{ padding: 24, color: '#a3a3a3', background: '#171717', height: '100%' }}>正在恢復工作位置…</div>;
   // --- Initial Upload Page ---
   if (status === 'idle' || !status) {
     return (
@@ -2557,6 +2676,21 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                 <span>智慧特徵標註</span>
               </button>
 
+              {viewTab === 'smart_annotation' && drawingHistory.length > 0 && <select
+                aria-label="已生成圖面紀錄"
+                value={customDrawingResult?.operation_id || ''}
+                onChange={event => {
+                  const entry = drawingHistory.find(item => item.operation_id === event.target.value);
+                  if (entry) { setCustomDrawingResult(entry.result); setShowFeatureLayer(false); }
+                }}
+                style={{ maxWidth: 210, background: '#262626', border: '1px solid #404040', borderRadius: 4, color: '#d4d4d4', padding: '5px 8px', fontSize: 11 }}
+              >
+                <option value="">已生成圖面（{drawingHistory.length}）</option>
+                {drawingHistory.map(entry => <option key={entry.operation_id} value={entry.operation_id}>
+                  {new Date(entry.completed_at).toLocaleString('zh-TW', { hour12: false })}
+                </option>)}
+              </select>}
+
               <span style={{ width: 1, height: 16, background: '#333', margin: '0 4px' }} />
 
               {frontViewUrl && (
@@ -2589,7 +2723,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                         客製工程圖 ({selectedPart})
                       </span>
                       <span style={{ fontSize: 11, background: '#166534', color: '#86efac', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
-                        已套用 {selectedRuleIds.size} 處特徵標註
+                        已完成標註
                       </span>
                       <span style={{ fontSize: 10, background: '#262626', color: '#bfdbfe', padding: '2px 7px', borderRadius: 4, border: '1px solid #1e3a8a' }}>
                         {customDrawingResult.candidate_engine === 'experimental_v026' ? '新版繪圖引擎' : '現行繪圖引擎'}
@@ -4279,18 +4413,6 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
 
       </div>
 
-      {annotationJobId && (
-        <div style={{ position: 'fixed', right: 18, bottom: 18, zIndex: 1100, width: 330, maxWidth: 'calc(100vw - 36px)', padding: 14, background: '#171717', border: '1px solid #404040', borderRadius: 6, boxShadow: '0 14px 34px rgba(0,0,0,.55)', color: '#e5e5e5' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <Loader2 size={17} className="animate-spin" color="#60a5fa" />
-            <strong style={{ fontSize: 13 }}>智慧標註工作</strong>
-          </div>
-          <div style={{ color: '#a3a3a3', fontSize: 12, marginTop: 9, lineHeight: 1.5 }}>{annotationJobMessage || '正在處理'}</div>
-          <div style={{ color: '#737373', fontSize: 11, marginTop: 7 }}>
-            {annotationQueuePosition > 0 ? `等待順位：第 ${annotationQueuePosition} 位` : `執行中 · Worker 上限 ${annotationWorkerLimit}`}
-          </div>
-        </div>
-      )}
 
       {evidenceViewer && (
         <div
@@ -4412,7 +4534,40 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
       )}
     </div>
   );
+  };
+
+  return <>
+    {renderWorkspace()}
+    {(annotationJobId || annotationTask) && (
+      <div role="status" className="annotation-task">
+        <div className="annotation-task-heading">
+          {annotationTask?.status === 'error' ? <AlertTriangle size={17} /> : terminalAnnotation ? <CheckCircle size={17} /> : <Loader2 size={17} className="animate-spin" color="#60a5fa" />}
+          <strong style={{ fontSize: 13 }}>智慧標註工作</strong>
+          <span className="annotation-task-badge">{annotationTask?.status === 'completed' ? '已完成' : annotationTask?.status === 'error' ? '失敗' : annotationQueuePosition > 0 ? '排隊中' : '執行中'}</span>
+          {terminalAnnotation && <button type="button" aria-label="關閉工作通知" onClick={() => {
+            setAnnotationJobId(null); setAnnotationTask(null);
+            window.localStorage.removeItem(`cad-annotation-job:${user.id}`);
+          }} className="annotation-task-close"><X size={15} /></button>}
+        </div>
+        <div className="annotation-task-message">{annotationTask?.status === 'error' ? annotationTask.error || annotationTask.message : annotationTask?.message || annotationJobMessage || '正在處理'}</div>
+        {annotationTask?.status !== 'error' && <>
+          <div className="annotation-task-meta">
+            <span>{annotationQueuePosition > 0 ? `等待順位：第 ${annotationQueuePosition} 位` : terminalAnnotation ? '工程圖已保存' : `Worker 上限 ${annotationWorkerLimit}`}</span>
+            <span>{annotationQueuePosition > 0 ? '等待資源' : `${Math.round(taskFraction * 100)}% · 階段進度`}</span>
+          </div>
+          <div className="annotation-task-track" role="progressbar" aria-label="智慧標註進度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={annotationQueuePosition > 0 ? undefined : Math.round(taskFraction * 100)}>
+            <div className={`annotation-task-fill${annotationQueuePosition > 0 ? ' is-waiting' : ''}`} style={annotationQueuePosition > 0 ? undefined : { width: `${taskFraction * 100}%` }} />
+          </div>
+          <div className="annotation-task-steps">{['等待資源', '繪製標註', '儲存成果'].map((label, index) => <span key={label} className={taskFraction >= index / 3 && annotationQueuePosition === 0 ? 'is-done' : ''}>{label}</span>)}</div>
+        </>}
+        {annotationTask?.status === 'completed' && annotationTask.result && <button type="button" onClick={openAnnotationResult} disabled={isOpeningAnnotationResult || !workspaceRestored} className="annotation-task-action">
+          {isOpeningAnnotationResult ? '載入成果中…' : '查看工程圖成果'}
+        </button>}
+      </div>
+    )}
+  </>;
 }
+
 
 function App() {
   const [user, setUser] = useState<AuthUser | null>(null);

@@ -1,0 +1,15 @@
+.annotation-task { position: fixed; right: 20px; bottom: 20px; z-index: 1100; width: 350px; max-width: calc(100vw - 40px); box-sizing: border-box; padding: 16px; background: #171717; border: 1px solid #404040; border-radius: 8px; box-shadow: 0 8px 28px #0006; color: #e5e5e5; }
+.annotation-task-heading { display: flex; align-items: center; gap: 9px; font-size: 13px; }
+.annotation-task-badge { margin-left: auto; padding: 3px 7px; border: 1px solid #404040; border-radius: 4px; background: #262626; color: #a3a3a3; font-size: 11px; }
+.annotation-task-message { margin: 12px 0; color: #a3a3a3; font-size: 12px; line-height: 1.6; }
+.annotation-task-meta { display: flex; justify-content: space-between; color: #a3a3a3; font-size: 11px; }
+.annotation-task-track { height: 5px; margin: 10px 0 12px; background: #333; border-radius: 3px; overflow: hidden; }
+.annotation-task-fill { height: 100%; background: #2563eb; border-radius: 3px; transition: width .4s ease; }
+.annotation-task-fill.is-waiting { width: 28%; animation: annotation-wait 1.6s ease-in-out infinite alternate; }
+.annotation-task-steps { display: flex; justify-content: space-between; color: #737373; font-size: 10px; }
+.annotation-task-steps .is-done { color: #d4d4d4; }
+.annotation-task-action { width: 100%; margin-top: 14px; padding: 9px 12px; border: 1px solid #2563eb; border-radius: 4px; background: #2563eb; color: #fff; font-size: 12px; cursor: pointer; }
+.annotation-task-action:disabled { opacity: .55; cursor: wait; }
+.annotation-task-close { display: grid; place-items: center; padding: 3px; background: #262626; border: 1px solid #404040; border-radius: 3px; color: #a3a3a3; cursor: pointer; }
+@keyframes annotation-wait { from { transform: translateX(0); } to { transform: translateX(255%); } }
+@media (prefers-reduced-motion: reduce) { .annotation-task-fill { transition: none; } .annotation-task-fill.is-waiting { animation: none; } }

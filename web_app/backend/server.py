@@ -33,6 +33,8 @@ from web_app.backend.account_api import (
     router as account_router,
     store as identity_store,
 )
+from web_app.backend.candidate_cache import CandidateCache
+from web_app.backend.drawing_history import list_drawing_history
 from web_app.backend.engineer_personalization import personalize_recommendations
 from web_app.backend.identity_store import CurrentUser
 from web_app.backend.admin_log_service import load_operation_replay_source
@@ -481,6 +483,19 @@ def _active_annotation_job_for_user(user_id: str) -> Optional[tuple[str, Dict[st
             and job.get("status") in ANNOTATION_ACTIVE_STATUSES
         ]
         return min(active, key=lambda item: item[1].get("created_at", "")) if active else None
+
+
+def _register_annotation_job(job_id: str, job: Dict[str, Any]) -> None:
+    """Atomically enforce one queued/running annotation per account."""
+    with annotation_state_lock:
+        active = _active_annotation_job_for_user(job["owner_user_id"])
+        if active:
+            raise HTTPException(status_code=409, detail={
+                "code": "ANNOTATION_ALREADY_RUNNING",
+                "message": "此帳號已有標註工作進行中",
+                "job": _annotation_job_status_payload(*active),
+            })
+        annotation_jobs[job_id] = job
 
 
 def _annotation_job_status_payload(job_id: str, job: Dict[str, Any]) -> Dict[str, Any]:
@@ -3314,10 +3329,13 @@ def _submit_custom_annotation_drawing(
             }],
         }
     _write_annotation_replay_snapshot(job_id, queued_job)
-    with annotation_state_lock:
-        annotation_jobs[job_id] = queued_job
-        _persist_annotation_audit(job_id, annotation_jobs[job_id])
-    annotation_executor.submit(_run_annotation_job, job_id)
+    _register_annotation_job(job_id, queued_job)
+    try:
+        _persist_annotation_audit(job_id, queued_job)
+        annotation_executor.submit(_run_annotation_job, job_id)
+    except Exception:
+        _set_annotation_job_state(job_id, status="error", message="標註工作排程失敗")
+        raise
     return _annotation_job_status_payload(job_id, annotation_jobs[job_id])
 
 
@@ -3328,6 +3346,22 @@ def get_active_annotation_job(current_user: CurrentUser = Depends(require_user))
         "status": "ok",
         "job": _annotation_job_status_payload(active[0], active[1]) if active else None,
     }
+
+
+@app.get("/api/annotation/history/{model_id}/{part_id}")
+def get_drawing_history(
+    model_id: str,
+    part_id: str,
+    engine: Literal["legacy_smart", "experimental_v026"] = "legacy_smart",
+    current_user: CurrentUser = Depends(require_user),
+):
+    assert_model_access(current_user, model_id)
+    _safe_part_id(part_id)
+    if engine == "experimental_v026":
+        _require_experimental_engine_admin(current_user)
+    return {"drawings": list_drawing_history(
+        _safe_output_dir(model_id), current_user.id, part_id, engine,
+    )}
 
 
 @app.get("/api/annotation/jobs/{job_id}")
@@ -3798,17 +3832,10 @@ def replay_annotation_operation(
     )
 
 
-def _experimental_candidate_cache_signature(stp_path: str) -> Dict[str, Any]:
-    stat = os.stat(stp_path)
-    return {
-        "candidate_engine": "experimental_v026",
-        "candidate_schema_version": 5,
-        "step_size": stat.st_size,
-        "step_mtime_ns": stat.st_mtime_ns,
-    }
+candidate_cache = CandidateCache()
 
 
-def _read_experimental_candidate_cache(
+def _read_candidate_cache(
     cache_path: str,
     signature: Dict[str, Any],
 ) -> Optional[Dict[str, Any]]:
@@ -3826,7 +3853,7 @@ def _read_experimental_candidate_cache(
         return None
 
 
-def _write_experimental_candidate_cache(
+def _write_candidate_cache(
     cache_path: str,
     signature: Dict[str, Any],
     response: Dict[str, Any],
@@ -3872,63 +3899,62 @@ def _candidate_annotation_rules_impl(
     if not stp_path:
         raise HTTPException(status_code=404, detail=f"STEP file for {part_id} not found")
 
-    if candidate_engine == "experimental_v026":
-        signature = _experimental_candidate_cache_signature(stp_path)
-        cache_path = os.path.join(
-            output_dir,
-            "_experimental_candidates",
-            part_id,
-            "candidate_rules.json",
-        )
-        cached = None if force_refresh else _read_experimental_candidate_cache(cache_path, signature)
+    cache_path = os.path.join(
+        output_dir, "_candidate_rules", candidate_engine, part_id, "candidate_rules.json"
+    )
+    # Waiting callers recheck the disk entry after the first worker finishes.
+    # Do not consume a CAD slot for cache hits or identical waiting requests.
+    with candidate_cache.single_flight(cache_path):
+        signature = candidate_cache.signature(stp_path, candidate_engine, REPO_ROOT)
+        cached = None if force_refresh else _read_candidate_cache(cache_path, signature)
         if cached is not None:
             return cached
 
-    acquired = False
-    try:
-        if candidate_engine == "experimental_v026":
-            limiter = shadow_analysis_slots
-            limit_provider = lambda: EXPERIMENTAL_SHADOW_MAX_WORKERS
-            worker_action = "experimental_candidates"
-        else:
-            limiter = annotation_slots
-            limit_provider = _annotation_capacity
-            worker_action = "candidates"
-        limiter.acquire(limit_provider, blocking=True)
-        acquired = True
-        worker_result = _run_cad_annotation_worker(
-            {
-                "action": worker_action,
-                "step_path": stp_path,
+        acquired = False
+        try:
+            if candidate_engine == "experimental_v026":
+                limiter = shadow_analysis_slots
+                limit_provider = lambda: EXPERIMENTAL_SHADOW_MAX_WORKERS
+                worker_action = "experimental_candidates"
+            else:
+                limiter = annotation_slots
+                limit_provider = _annotation_capacity
+                worker_action = "candidates"
+            limiter.acquire(limit_provider, blocking=True)
+            acquired = True
+            worker_result = _run_cad_annotation_worker(
+                {
+                    "action": worker_action,
+                    "step_path": stp_path,
+                    "part_id": part_id,
+                },
+                os.path.join(output_dir, "_worker_jobs", f"candidates_{uuid.uuid4().hex}"),
+            )
+            response = {
+                "status": "ok",
+                "model_id": model_id,
                 "part_id": part_id,
-            },
-            os.path.join(output_dir, "_worker_jobs", f"candidates_{uuid.uuid4().hex}"),
-        )
-        response = {
-            "status": "ok",
-            "model_id": model_id,
-            "part_id": part_id,
-            "rules": worker_result.get("rules", []),
-            "worker_pid": worker_result.get("pid"),
-            "candidate_engine": worker_result.get("candidate_engine") or "legacy_smart",
-            "candidate_schema_version": worker_result.get("candidate_schema_version") or 1,
-            "analysis_method": worker_result.get("analysis_method"),
-            "summary": worker_result.get("summary") or {
-                "total": len(worker_result.get("rules", [])),
-            },
-            "cached": False,
-        }
-        if candidate_engine == "experimental_v026":
-            _write_experimental_candidate_cache(cache_path, signature, response)
-        return response
-    except Exception as e:
-        print(f"Candidate rules extraction error: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if acquired:
-            limiter.release()
+                "rules": worker_result.get("rules", []),
+                "worker_pid": worker_result.get("pid"),
+                "candidate_engine": worker_result.get("candidate_engine") or "legacy_smart",
+                "candidate_schema_version": worker_result.get("candidate_schema_version") or 1,
+                "analysis_method": worker_result.get("analysis_method"),
+                "summary": worker_result.get("summary") or {
+                    "total": len(worker_result.get("rules", [])),
+                },
+                "cached": False,
+            }
+            if signature == candidate_cache.signature(stp_path, candidate_engine, REPO_ROOT):
+                _write_candidate_cache(cache_path, signature, response)
+            return response
+        except Exception as e:
+            print(f"Candidate rules extraction error: {e}")
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            if acquired:
+                limiter.release()
 
 
 @app.get("/api/annotation/candidate-rules/{model_id}/{part_id}")
