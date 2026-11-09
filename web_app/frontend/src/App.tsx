@@ -10,6 +10,7 @@ import axios from 'axios';
 import { AnalysisCache } from './analysisCache';
 import { readWorkspace, saveWorkspace, type WorkspaceLocation } from './workspaceSession';
 import './annotationTask.css';
+import { annotationDraftKey, readAnnotationDraft, saveAnnotationDraft, draftFromRecords } from './annotationDraft';
 import { AccountDialog, LoginPage, type AuthUser } from './AccountPortal';
 import SystemStatus from './SystemStatus';
 import { Canvas, useThree } from '@react-three/fiber';
@@ -797,6 +798,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     png_url?: string;
     timestamp?: string;
     operation_id?: string;
+    annotation_settings?: any[];
     candidate_engine?: string;
     primary_view?: string;
     report_url?: string;
@@ -838,6 +840,28 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   const [analysisRefreshToken, setAnalysisRefreshToken] = useState(0);
   const forceReanalysisRef = useRef(false);
   const analysisCacheRef = useRef(new AnalysisCache());
+  const loadedDraftKeyRef = useRef<string | null>(null);
+  const draftEditRevisionRef = useRef(0);
+  const currentRulesRef = useRef<any[]>([]);
+  currentRulesRef.current = candidateRules;
+  const restoreDrawingDraft = (records: any[], modelId: string, partId: string, engine: string) => {
+    const key = annotationDraftKey(user.id, modelId, partId, engine);
+    const draft = draftFromRecords(records);
+    saveAnnotationDraft(window.sessionStorage, key, draft);
+    if (loadedDraftKeyRef.current === key) {
+      const ids = new Set(currentRulesRef.current.map(rule => rule.rule_id || rule.id));
+      setSelectedRuleIds(new Set(draft.selectedIds.filter(id => ids.has(id))));
+      setRuleConfig(previous => Object.fromEntries([...ids].map(id => [id, { ...(previous[id] || {}), ...(draft.config[id] || {}) }])));
+    }
+  };
+  useEffect(() => {
+    const modelId = results?.model_id || results?.output_dir || jobId;
+    if (!modelId || !selectedPart) return;
+    const key = annotationDraftKey(user.id, modelId, selectedPart, candidateEngine);
+    if (loadedDraftKeyRef.current === key && candidateRules.length) {
+      saveAnnotationDraft(window.sessionStorage, key, { selectedIds: [...selectedRuleIds], config: ruleConfig });
+    }
+  }, [user.id, results?.model_id, results?.output_dir, jobId, selectedPart, candidateEngine, selectedRuleIds, ruleConfig, candidateRules]);
   const restoredDrawingRef = useRef<{ partId: string | null; drawing: any } | null>(null);
   const [workspaceRestored, setWorkspaceRestored] = useState(false);
   const [annotationTask, setAnnotationTask] = useState<any>(null);
@@ -868,12 +892,17 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     const modelId = results?.model_id || results?.output_dir;
     if (!modelId || !selectedPart) { setDrawingHistory([]); return; }
     let active = true;
+    const savedDraft = readAnnotationDraft(window.sessionStorage, annotationDraftKey(user.id, modelId, selectedPart, candidateEngine));
+    const editRevision = draftEditRevisionRef.current;
     setDrawingHistory([]);
     axios.get(`${API_BASE}/api/annotation/history/${encodeURIComponent(modelId)}/${encodeURIComponent(selectedPart)}?engine=${candidateEngine}`)
       .then(response => {
         if (!active) return;
         const entries = Array.isArray(response.data?.drawings) ? response.data.drawings : [];
         setDrawingHistory(entries);
+        if (!savedDraft && editRevision === draftEditRevisionRef.current && entries[0]?.result?.annotation_settings?.length) {
+          restoreDrawingDraft(entries[0].result.annotation_settings, modelId, selectedPart, candidateEngine);
+        }
         if (entries[0]?.result) setCustomDrawingResult(current => current || entries[0].result);
       }).catch(() => undefined);
     return () => { active = false; };
@@ -1094,6 +1123,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     if (viewTab !== 'features3d') {
       setShowFeatureLayer(false);
     }
+    loadedDraftKeyRef.current = null;
     setFeatureRecords([]);
     setSelectedFeatureIds(new Set());
     setCandidateRules([]);
@@ -1229,8 +1259,12 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
           // 新版使用後端的驗證/零件類型政策；舊版維持既有核心特徵排序。
           const resolvedEngine = res.data?.candidate_engine || candidateEngine;
           const defaultSelectedIds = defaultCandidateRuleIds(rules, resolvedEngine, 15);
-          setSelectedRuleIds(new Set(defaultSelectedIds));
-          setRuleConfig(initialCfg);
+          const draftKey = annotationDraftKey(user.id, modelId, selectedPart, resolvedEngine);
+          const draft = readAnnotationDraft(window.sessionStorage, draftKey);
+          const knownIds = new Set(rules.map((rule: any) => rule.rule_id || rule.id));
+          setSelectedRuleIds(new Set(draft ? draft.selectedIds.filter(id => knownIds.has(id)) : defaultSelectedIds));
+          setRuleConfig(Object.fromEntries(Object.entries(initialCfg).map(([id, config]) => [id, { ...config, ...(draft?.config[id] || {}) }])));
+          loadedDraftKeyRef.current = draftKey;
         })
         .catch(err => {
           if (!active) return;
@@ -1360,6 +1394,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   };
 
   const toggleRule = (ruleId: string) => {
+    draftEditRevisionRef.current++;
     const rule = candidateRules.find(item => (item.rule_id || item.id) === ruleId);
     if (rule?.render_eligible === false) return;
     setSelectedRuleIds(prev => {
@@ -1399,6 +1434,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   };
 
   const selectAllRules = (ids?: string[]) => {
+    draftEditRevisionRef.current++;
     if (ids && ids.length > 0) {
       setSelectedRuleIds(prev => {
         const next = new Set(prev);
@@ -1441,6 +1477,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     tolerance_source: 'HISTORICAL_RAG' | 'ENGINEER_PERSONAL' | 'EXTERNAL_NEURAL_MODEL' | 'MANUAL';
     external_prediction_metadata: Record<string, any>;
   }>) => {
+    draftEditRevisionRef.current++;
     setRuleConfig(prev => ({
       ...prev,
       [ruleId]: {
@@ -1997,6 +2034,16 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     setIsOpeningAnnotationResult(true);
     try {
       const result = annotationTask.result;
+      const engine = result.candidate_engine || 'legacy_smart';
+      if ((results?.model_id || results?.output_dir) === annotationTask.model_id && selectedPart === annotationTask.part_id && candidateEngine === engine) {
+        setCustomDrawingResult(result);
+        setViewTab('smart_annotation');
+        setShowFeatureLayer(false);
+        return;
+      }
+      if (Array.isArray(result.annotation_settings) && result.annotation_settings.length) {
+        saveAnnotationDraft(window.sessionStorage, annotationDraftKey(user.id, annotationTask.model_id, annotationTask.part_id, engine), draftFromRecords(result.annotation_settings));
+      }
       await loadExistingModel(annotationTask.model_id, {
         modelId: annotationTask.model_id, partId: annotationTask.part_id,
         viewTab: 'smart_annotation', engine: result.candidate_engine || 'legacy_smart', drawing: result,
@@ -2701,7 +2748,10 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                 value={customDrawingResult?.operation_id || ''}
                 onChange={event => {
                   const entry = drawingHistory.find(item => item.operation_id === event.target.value);
-                  if (entry) { setCustomDrawingResult(entry.result); setShowFeatureLayer(false); }
+                  if (entry) {
+                    if (entry.result.annotation_settings?.length) restoreDrawingDraft(entry.result.annotation_settings, results?.model_id || results?.output_dir, selectedPart!, candidateEngine);
+                    setCustomDrawingResult(entry.result); setShowFeatureLayer(false);
+                  }
                 }}
                 style={{ maxWidth: 210, background: '#262626', border: '1px solid #404040', borderRadius: 4, color: '#d4d4d4', padding: '5px 8px', fontSize: 11 }}
               >
@@ -3672,6 +3722,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                       return (
                         <div
                           key={rId || idx}
+                          data-rule-id={rId}
                           ref={(element) => { ruleCardRefs.current[rId] = element; }}
                           onMouseEnter={() => setHoveredFeatureId(rId)}
                           onMouseLeave={() => setHoveredFeatureId(null)}
@@ -3978,12 +4029,16 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                                       <button
                                         key={v.id}
                                         type="button"
+                                        aria-label={`標註視圖 ${v.id}`}
+                                        aria-pressed={isViewActive}
+                                        disabled={!isViewActive && candidateEngine === 'experimental_v026' && !!rule.supported_views && !rule.supported_views.includes(v.id)}
+                                        title={candidateEngine === 'experimental_v026' && !!rule.supported_views && !rule.supported_views.includes(v.id) ? '此尺寸在該視圖無法以真實長度或既有幾何契約繪製' : v.label}
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           const nextViews = isViewActive
                                             ? currentViews.filter((x: string) => x !== v.id)
                                             : [...currentViews, v.id];
-                                          updateRuleConfig(rId, { views: nextViews, target_views: nextViews });
+                                          updateRuleConfig(rId, { views: nextViews, target_views: nextViews, preferred_view: nextViews[0] || v.id });
                                         }}
                                         style={{
                                           fontSize: 10,
@@ -4018,6 +4073,8 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                                       <button
                                         key={s.id}
                                         type="button"
+                                        aria-label={`標註側向 ${s.id}`}
+                                        aria-pressed={isSideActive}
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           const nextSides = isSideActive

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from auto_2d_drawing.smart_extractors.selected_view_geometry import supported_intent_views
 from typing import Any, Mapping
 
 from auto_2d_drawing.smart_extractors.experimental_family_policy import (
@@ -11,7 +12,7 @@ from auto_2d_drawing.smart_extractors.experimental_family_policy import (
 
 
 ENGINE_ID = "experimental_v026"
-CANDIDATE_SCHEMA_VERSION = 5
+CANDIDATE_SCHEMA_VERSION = 6
 EXPECTED_METHOD = "DRAWING_EXPERIMENTAL_MAIN_V0_26"
 
 
@@ -90,6 +91,7 @@ def _intent_rule(intent: Mapping[str, Any]) -> dict[str, Any]:
         "unit": unit,
         "preferred_view": view,
         "target_views": [view],
+        "supported_views": supported_intent_views(intent),
         "views": [view],
         "side": "BOTTOM",
         "sides": ["BOTTOM"],
@@ -156,6 +158,10 @@ def _radial_rules(report: Mapping[str, Any]) -> list[dict[str, Any]]:
             "render_block_reason": None,
             "enabled": False,
         })
+        source_view = str(rule.get("preferred_view") or rule.get("view") or best_view.get("view") or "front")
+        rule["preferred_view"] = source_view
+        rule["target_views"] = [source_view]
+        rule["supported_views"] = [source_view]
         if pattern.get("reference_radius") is not None:
             rule["pattern_reference_radius"] = float(pattern["reference_radius"])
         if pattern.get("reference_radius_ratio") is not None:
@@ -290,6 +296,20 @@ def build_experimental_selection_config(
         if not rule.get("render_eligible") or group not in config or not feature_id:
             rejected.append({"rule_id": rule_id, "reason": "EXPERIMENTAL_RULE_NOT_RENDERABLE"})
             continue
+        views = submitted.get("target_views", submitted.get("views"))
+        if views is None:
+            views = [submitted.get("preferred_view") or rule.get("preferred_view") or "front"]
+        sides = submitted.get("sides")
+        if sides == rule.get("sides") and submitted.get("side") and submitted.get("side") != rule.get("side"):
+            sides = [submitted["side"]]
+        if sides is None:
+            sides = [submitted.get("side") or rule.get("side") or "BOTTOM"]
+        views = list(dict.fromkeys(views if isinstance(views, list) else [views]))
+        sides = list(dict.fromkeys(sides if isinstance(sides, list) else [sides]))
+        allowed_views = rule.get("supported_views") or [rule.get("preferred_view") or rule.get("view") or "front"]
+        if not views or not sides or any(view not in allowed_views for view in views) or any(str(side).upper() not in {"TOP", "BOTTOM", "LEFT", "RIGHT"} for side in sides):
+            rejected.append({"rule_id": rule_id, "reason": "UNSUPPORTED_OR_EMPTY_VIEW_SIDE_SELECTION", "views": views, "supported_views": allowed_views})
+            continue
         item: dict[str, Any] = {
             "feature_id": feature_id,
             "view": str(
@@ -307,7 +327,9 @@ def build_experimental_selection_config(
             tolerance = str(submitted.get("tolerance") or "").strip()
             label = f"{prefix}{nominal:.2f}{tolerance}"
         item["label"] = str(label)
-        config[group].append(item)
+        for view in views:
+            for side in sides:
+                config[group].append({**item, "view": view, "side": str(side).upper()})
 
     config["selection_summary"] = {
         "requested": len(submitted_by_id),

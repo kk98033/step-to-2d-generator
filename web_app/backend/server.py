@@ -3035,6 +3035,7 @@ def _run_annotation_job(job_id: str) -> None:
                     else None
                 ),
             })
+        result["annotation_settings"] = [_compact_annotation_record_for_audit(record) for record in job["feature_records"]]
         _set_annotation_job_state(
             job_id,
             status="completed",
@@ -3187,7 +3188,7 @@ def _submit_custom_annotation_drawing(
                 "product_family": body.get("product_family"),
                 "candidate_engine": candidate_engine,
                 "include_half_section": bool(body.get("include_half_section")),
-                "drawing_layout_schema": 2 if candidate_engine == "experimental_v026" else 1,
+                "drawing_layout_schema": 3 if candidate_engine == "experimental_v026" else 1,
             },
             sort_keys=True,
             ensure_ascii=False,
@@ -3341,6 +3342,7 @@ def _submit_custom_annotation_drawing(
                             for view_name in ("front", "top", "right")
                         },
                     })
+                cached_result["annotation_settings"] = [_compact_annotation_record_for_audit(record) for record in feature_records]
                 cached_job["result"] = cached_result
                 _write_annotation_replay_snapshot(job_id, cached_job)
                 _persist_annotation_audit(job_id, cached_job)

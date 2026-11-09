@@ -12,6 +12,7 @@ import ezdxf
 from ezdxf import bbox as ezdxf_bbox
 
 from auto_2d_drawing.smart_annotation_engine import SmartAnnotationEngine
+from auto_2d_drawing.smart_extractors.selected_view_geometry import reproject_measurement
 from auto_2d_drawing.pdf_exporter import export_pdf, export_png
 from auto_2d_drawing.step_reader import load_step
 from auto_2d_drawing.view_projector import ViewProjector
@@ -786,13 +787,19 @@ def render_minimal_multiview_drawing(
     if annular_selections:
         annular_result = extract_annular_composites(shape)
         annular_by_id = {str(item["id"]): item for item in annular_result["dimensions"]}
+        annular_features = {str(item["id"]): item for item in annular_result["features"]}
         for selection in annular_selections:
             feature_id = str(selection.get("feature_id") or selection.get("id") or "")
             candidate = annular_by_id.get(feature_id)
             if candidate is None:
                 annular_rejections.append({"feature_id": feature_id, "reason": "UNKNOWN_ANNULAR_DIMENSION"})
                 continue
-            task = copy.deepcopy(candidate)
+            try:
+                task = reproject_measurement(candidate, str(selection.get("view") or candidate["view"]),
+                    annular_feature=annular_features.get(str(candidate.get("composite_feature_id"))))
+            except ValueError as error:
+                annular_rejections.append({"feature_id": feature_id, "view": selection.get("view"), "reason": str(error)})
+                continue
             task["feature_id"] = feature_id
             task["view"] = str(selection.get("view") or task["view"])
             task["side"] = str(selection.get("side") or task.get("side") or "TOP").upper()
@@ -853,6 +860,12 @@ def render_minimal_multiview_drawing(
             else:
                 task = copy.deepcopy(candidate)
                 task["feature_id"] = feature_id
+                if family == "shaft":
+                    try:
+                        task = reproject_measurement(task, str(selection.get("view") or task.get("view") or "front"))
+                    except ValueError as error:
+                        specialized_rejections.append({"feature_id": feature_id, "view": selection.get("view"), "reason": str(error)})
+                        continue
                 task["view"] = str(selection.get("view") or task.get("view") or hole_result.get("view") or "front")
                 if family == "shaft":
                     is_diameter = str(task["dim_type"]).upper() == "DIAMETER"

@@ -31,7 +31,8 @@ def list_drawing_history(output_dir, user_id, part_id, engine, limit=30):
                     'operation_id': operation_id,
                     'completed_at': record.get('completed_at') or record.get('created_at'),
                     'candidate_engine': engine,
-                    'result': {**result, 'operation_id': operation_id},
+                    'result': {**result, 'operation_id': operation_id,
+                               'annotation_settings': result.get('annotation_settings', request.get('feature_records') or [])},
                 })
                 if len(items) >= limit:
                     return items

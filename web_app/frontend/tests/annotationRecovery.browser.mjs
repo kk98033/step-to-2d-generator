@@ -15,12 +15,15 @@ let generation = 1;
 let modelLoads = 0;
 let experimentalRecommendations = 0;
 const testRole = process.env.CAD_TEST_ROLE || 'ENGINEER';
+let activeEngine = 'legacy_smart';
+let lastRenderPayload = null;
 const errors = [];
 const job = () => ({ job_id: 'annotation-fixture-' + generation, status: completed ? 'completed' : 'queued',
   model_id: 'model-fixture', part_id: 'shaft', message: completed ? 'Drawing completed' : 'Queued',
   queue_position: completed ? 0 : 2, progress: { current: completed ? 3 : 0, total: 3 }, worker_limit: 1,
-  ...(completed ? { result: { png_url: '/mock.svg', candidate_engine: 'legacy_smart', timestamp: 'fixture-' + generation } } : {}) });
-const server = createServer((req, res) => {
+  ...(completed ? { result: { png_url: '/mock.svg', candidate_engine: activeEngine, timestamp: 'fixture-' + generation,
+    annotation_settings: lastRenderPayload?.feature_records || [] } } : {}) });
+const server = createServer(async (req, res) => {
   const path = new URL(req.url, 'http://localhost').pathname;
   if (path.startsWith('/api/')) {
     let payload = { status: 'ok' };
@@ -35,10 +38,14 @@ const server = createServer((req, res) => {
     }
     else if (path === '/api/annotation/jobs/active') payload = { job: completed ? null : job() };
     else if (path.startsWith('/api/annotation/jobs/annotation-fixture-')) payload = job();
-    else if (path === '/api/annotation/render' && req.method === 'POST') { generation++; completed = false; payload = job(); }
-    else if (path.startsWith('/api/annotation/history/')) payload = { drawings: completed ? [{
+    else if (path === '/api/annotation/render' && req.method === 'POST') {
+      let body = ''; for await (const chunk of req) body += chunk;
+      lastRenderPayload = JSON.parse(body); activeEngine = lastRenderPayload.candidate_engine;
+      generation++; completed = false; payload = job();
+    }
+    else if (path.startsWith('/api/annotation/history/')) payload = { drawings: completed && new URL(req.url, 'http://localhost').searchParams.get('engine') === activeEngine ? [{
       operation_id: 'saved-drawing', completed_at: '2026-11-09T08:00:00Z', candidate_engine: 'legacy_smart',
-      result: { png_url: '/mock.svg', candidate_engine: 'legacy_smart', operation_id: 'saved-drawing', timestamp: 'saved' },
+      result: { png_url: '/mock.svg', candidate_engine: activeEngine, operation_id: 'saved-drawing', timestamp: 'saved', annotation_settings: lastRenderPayload?.feature_records || [] },
     }] : [] };
     else if (path === '/api/jobs/active') payload = { job: null };
     else if (path === '/api/model/model-fixture') {
@@ -46,7 +53,13 @@ const server = createServer((req, res) => {
       payload = { model_id: 'model-fixture', output_dir: 'model-fixture',
         tree: { name: 'Shaft model', file_prefix: 'shaft', children: [] },
         parts_map: { shaft: { name: 'Shaft' } } };
-    } else if (path.includes('/candidate-rules/')) payload = { rules: [{ rule_id: 'fixture-rule', category: 'shaft', nominal_value: 21.4, render_eligible: true, default_selected: true, verification_status: 'AUTO_VERIFIED', target_views: ['front'] }], candidate_engine: new URL(req.url, origin).searchParams.get('engine') || 'legacy_smart' };
+    } else if (path.includes('/candidate-rules/')) {
+      const engine = new URL(req.url, origin).searchParams.get('engine') || 'legacy_smart';
+      const first = { rule_id: 'fixture-rule', category: 'shaft', nominal_value: 21.4, render_eligible: true,
+        default_selected: true, verification_status: 'AUTO_VERIFIED', target_views: ['front'], sides: ['BOTTOM'],
+        source_engine: engine, supported_views: ['front', 'right'] };
+      payload = { rules: engine === 'experimental_v026' ? [first, { ...first, rule_id: 'fixture-second' }] : [first], candidate_engine: engine };
+    }
     else if (path.startsWith('/api/features/')) payload = { records: [] };
     else if (path.includes('templates')) payload = { templates: [] };
     else if (path.includes('tags')) payload = { tags: [] };
@@ -137,6 +150,32 @@ try {
     await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.includes('一鍵智慧推薦公差')).click()");
     await waitFor("document.body.innerText.includes('已完成 1 條規則推薦')");
     assert.equal(experimentalRecommendations, 1);
+    await evaluate("{ const rule = document.querySelector('[data-rule-id=\"fixture-rule\"]'); const expand = rule.querySelector('button[title=\"展開特徵設定\"]'); expand?.click(); }");
+    await waitFor("!!document.querySelector('[data-rule-id=\"fixture-rule\"] button[aria-label=\"標註視圖 right\"]')");
+    await evaluate("{ const rule = document.querySelector('[data-rule-id=\"fixture-rule\"]'); rule.querySelector('button[aria-label=\"標註視圖 front\"]').click(); }");
+    await evaluate("document.querySelector('[data-rule-id=\"fixture-rule\"] button[aria-label=\"標註視圖 right\"]').click()");
+    await evaluate("document.querySelector('[data-rule-id=\"fixture-rule\"] button[aria-label=\"標註側向 BOTTOM\"]').click()");
+    await evaluate("document.querySelector('[data-rule-id=\"fixture-rule\"] button[aria-label=\"標註側向 TOP\"]').click()");
+    await evaluate("document.querySelector('[data-rule-id=\"fixture-second\"] input[type=checkbox]').click()");
+    await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.includes('產出標註工程圖')).click()");
+    await waitFor("document.querySelector('.annotation-task-badge')?.textContent === '排隊中'");
+    const chosen = lastRenderPayload.feature_records.filter(rule => rule.enabled);
+    assert.equal(chosen.length, 1);
+    assert.deepEqual(chosen[0].target_views, ['right']);
+    assert.deepEqual(chosen[0].sides, ['TOP']);
+    completed = true;
+    await waitFor("document.querySelector('.annotation-task-badge')?.textContent === '已完成'");
+    const loadsBeforeResult = modelLoads;
+    await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.includes('查看工程圖成果')).click()");
+    await waitFor("!!document.querySelector('img[src*=\"mock.svg\"]')");
+    assert.equal(modelLoads, loadsBeforeResult, 'same drawing should not reload candidate defaults');
+    assert.equal(await evaluate("document.querySelector('[data-rule-id=\"fixture-rule\"] button[aria-label=\"標註視圖 right\"]').getAttribute('aria-pressed')"), 'true');
+    await send('Page.reload');
+    await waitFor("!!document.querySelector('[data-rule-id=\"fixture-second\"] input[type=checkbox]')");
+    assert.equal(await evaluate("document.querySelector('[data-rule-id=\"fixture-second\"] input[type=checkbox]').checked"), false);
+    await evaluate("document.querySelector('[data-rule-id=\"fixture-rule\"] button[title=\"展開特徵設定\"]')?.click()");
+    await waitFor("document.querySelector('[data-rule-id=\"fixture-rule\"] button[aria-label=\"標註視圖 right\"]')?.getAttribute('aria-pressed') === 'true'");
+    assert.equal(await evaluate("document.querySelector('[data-rule-id=\"fixture-rule\"] button[aria-label=\"標註側向 TOP\"]').getAttribute('aria-pressed')"), 'true');
   } else {
     assert.equal(await evaluate("!!document.querySelector('select[aria-label=\"公差推薦引擎\"]')"), false);
   }
@@ -144,7 +183,7 @@ try {
   assert.deepEqual(errors, []);
   const snapshot = await send('Page.captureScreenshot', { format: 'png' });
   writeFileSync(resolve(root, '.codex_runtime/annotation-recovery-browser.png'), Buffer.from(snapshot.data, 'base64'));
-  console.log(JSON.stringify({ role: testRole, experimentalRecommendations, passed: ['home task card', 'reload active job', 'completion button', 'open correct model/part/drawing', 'reload completed job and workspace', 'auto-open same drawing on completion', 'server history restores missing browser preview', 'experimental tolerance admin visibility/routing'], modelLoads, errors }));
+  console.log(JSON.stringify({ role: testRole, experimentalRecommendations, passed: ['home task card', 'reload active job', 'completion button', 'open correct model/part/drawing', 'reload completed job and workspace', 'auto-open same drawing on completion', 'server history restores missing browser preview', 'experimental tolerance admin visibility/routing', ...(testRole === 'ADMIN' ? ['right view and top side submitted', 'result opens without resetting controls', 'reload preserves selected features/views/sides'] : [])], modelLoads, errors }));
 } catch (error) {
   console.error(JSON.stringify({ errors, modelLoads }));
   throw error;

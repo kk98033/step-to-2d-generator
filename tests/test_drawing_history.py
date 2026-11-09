@@ -22,7 +22,8 @@ class DrawingHistoryTests(unittest.TestCase):
                 payload.update(changes)
                 (root / (name + '.json')).write_text(json.dumps(payload), encoding='utf-8')
             write('01')
-            write('02')
+            saved_settings = [{'rule_id': 'length', 'enabled': True, 'target_views': ['right'], 'sides': ['TOP']}]
+            write('02', request={'part_id': 'shaft', 'candidate_engine': 'legacy_smart', 'feature_records': saved_settings})
             write('03', status='error')
             write('04', request={'part_id': 'other', 'candidate_engine': 'legacy_smart'})
             write('05', engineer={'id': 'user-b'})
@@ -30,6 +31,7 @@ class DrawingHistoryTests(unittest.TestCase):
             records = list_drawing_history(temporary, 'user-a', 'shaft', 'legacy_smart')
             self.assertEqual([item['operation_id'] for item in records], ['02', '01'])
             self.assertEqual(records[0]['result']['png_url'], '/api/files/02.png')
+            self.assertEqual(records[0]['result']['annotation_settings'], saved_settings)
             self.assertEqual(len(list_drawing_history(temporary, 'user-a', 'shaft', 'legacy_smart', limit=1)), 1)
             self.assertEqual(list_drawing_history(temporary, 'user-b', 'shaft', 'legacy_smart'), [])
             self.assertEqual(list_drawing_history(temporary, 'user-a', 'shaft', 'experimental_v026'), [])
