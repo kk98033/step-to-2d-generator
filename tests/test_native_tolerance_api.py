@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import patch, mock_open
 
 from fastapi import HTTPException
 from web_app.backend import server
@@ -23,7 +23,7 @@ class NativeToleranceApiTests(unittest.TestCase):
             root = Path(temporary)
             (root / '_parts').mkdir()
             (root / '_parts/shaft.stp').write_text('fixture')
-            with patch.object(server, 'assert_model_access') as authorize, patch.object(server, '_safe_output_dir', return_value=temporary), patch.object(
+            with patch('builtins.open', mock_open(read_data='{"status":"PASS_FOR_ADMIN_TEST_ONLY","engine_sha256":"validated"}')), patch.object(server, '_file_sha256', return_value='validated'), patch.object(server, 'assert_model_access') as authorize, patch.object(server, '_safe_output_dir', return_value=temporary), patch.object(
                 server.identity_store, 'validate_recommendation_tag_ids', return_value=['tag-a']
             ), patch.object(server.identity_store, 'company_case_ids_for_tags', return_value={'case-a'}), patch.object(
                 server, '_run_cad_annotation_worker', return_value={'status': 'ok', 'recommendations': {}}
@@ -47,7 +47,7 @@ class NativeToleranceApiTests(unittest.TestCase):
 
     def test_stale_validation_blocks_admin_test(self):
         admin = SimpleNamespace(is_admin=True, id='admin')
-        with patch.object(server, 'assert_model_access'), patch.object(server, '_file_sha256', return_value='changed-engine'), patch.object(server, '_run_cad_annotation_worker') as worker:
+        with patch('builtins.open', mock_open(read_data='{"status":"PASS_FOR_ADMIN_TEST_ONLY","engine_sha256":"validated"}')), patch.object(server, 'assert_model_access'), patch.object(server, '_file_sha256', return_value='changed-engine'), patch.object(server, '_run_cad_annotation_worker') as worker:
             with self.assertRaises(HTTPException) as raised:
                 server.recommend_experimental_tolerances({'model_id': 'model', 'part_id': 'shaft'}, admin)
             self.assertEqual(raised.exception.status_code, 503)
