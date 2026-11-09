@@ -2566,6 +2566,25 @@ def delete_external_tolerance_predictions(
     return {"status": "ok", "model_id": model_id, "part_id": part_id}
 
 
+def _attach_tolerance_source_drawings(rec_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Expose original drawing viewers only for evidence with an existing DXF."""
+    for recommendation in (rec_result.get("recommendations") or {}).values():
+        for evidence in recommendation.get("evidence_cases") or []:
+            source_model = os.path.splitext(os.path.basename(str(
+                evidence.get("source_model") or evidence.get("drawing") or ""
+            )))[0]
+            paths = lookup_drawing_paths(source_model) if source_model else None
+            has_dxf = bool(paths and paths.get("dxf") and os.path.isfile(paths["dxf"]))
+            evidence["source_model"] = source_model
+            evidence["has_source_drawing"] = has_dxf
+            evidence["drawing_urls"] = ({
+                "pdf": f"/api/tolerance/drawing-pdf/{source_model}",
+                "svg": f"/api/tolerance/drawing-svg/{source_model}",
+                "details": f"/api/tolerance/drawing-details/{source_model}",
+            } if has_dxf else None)
+    return rec_result
+
+
 @app.post("/api/tolerance/experimental/recommend")
 def recommend_experimental_tolerances(
     body: Dict[str, Any] = Body(...),
@@ -2608,7 +2627,7 @@ def recommend_experimental_tolerances(
     # Bound concurrent experimental CAD work using the existing experimental pool.
     shadow_analysis_slots.acquire(lambda: EXPERIMENTAL_SHADOW_MAX_WORKERS, blocking=True)
     try:
-        return _run_cad_annotation_worker({
+        result = _run_cad_annotation_worker({
             "action": "experimental_tolerance", "step_path": step_path,
             "part_type": body.get("part_category") or "GENERAL",
             "product_family": body.get("product_family") or FeatureCaseBase.infer_product_family(part_id),
@@ -2616,6 +2635,7 @@ def recommend_experimental_tolerances(
             "requested_ids": [str(rule.get("rule_id") or rule.get("id") or "")
                               for rule in body.get("candidate_rules") or []],
         }, os.path.join(output_dir, "_worker_jobs", "native_tolerance_" + uuid.uuid4().hex))
+        return _attach_tolerance_source_drawings(result)
     except Exception as error:
         raise HTTPException(status_code=422, detail="Experimental tolerance analysis failed: " + str(error)) from error
     finally:
@@ -2718,22 +2738,7 @@ def recommend_tolerances(
             tag_match_mode=recommendation_tag_match,
         )
 
-        # Attach traceable drawing links only when the referenced source DXF
-        # really exists.  Seed/rule-only cases remain visible but non-clickable.
-        for recommendation in (rec_result.get("recommendations") or {}).values():
-            for evidence in recommendation.get("evidence_cases") or []:
-                source_model = os.path.splitext(os.path.basename(str(
-                    evidence.get("source_model") or evidence.get("drawing") or ""
-                )))[0]
-                paths = lookup_drawing_paths(source_model) if source_model else None
-                has_dxf = bool(paths and paths.get("dxf") and os.path.exists(paths["dxf"]))
-                evidence["source_model"] = source_model
-                evidence["has_source_drawing"] = has_dxf
-                evidence["drawing_urls"] = ({
-                    "pdf": f"/api/tolerance/drawing-pdf/{source_model}",
-                    "svg": f"/api/tolerance/drawing-svg/{source_model}",
-                    "details": f"/api/tolerance/drawing-details/{source_model}",
-                } if has_dxf else None)
+        _attach_tolerance_source_drawings(rec_result)
 
         return {
             "status": "ok",

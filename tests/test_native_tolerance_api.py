@@ -28,8 +28,10 @@ class NativeToleranceApiTests(unittest.TestCase):
             ), patch.object(server.identity_store, 'company_case_ids_for_tags', return_value={'case-a'}), patch.object(
                 server, '_run_cad_annotation_worker', return_value={'status': 'ok', 'recommendations': {}}
             ) as worker:
-                server.recommend_experimental_tolerances({'model_id': 'model', 'part_id': 'shaft',
-                    'candidate_rules': [{'rule_id': 'native-one'}], 'recommendation_tag_ids': ['tag-a']}, admin)
+                with patch.object(server, '_attach_tolerance_source_drawings', wraps=server._attach_tolerance_source_drawings) as attach:
+                    server.recommend_experimental_tolerances({'model_id': 'model', 'part_id': 'shaft',
+                        'candidate_rules': [{'rule_id': 'native-one'}], 'recommendation_tag_ids': ['tag-a']}, admin)
+                    attach.assert_called_once()
                 authorize.assert_called_once_with(admin, 'model')
                 payload = worker.call_args.args[0]
                 self.assertEqual(payload['action'], 'experimental_tolerance')
@@ -52,3 +54,29 @@ class NativeToleranceApiTests(unittest.TestCase):
                 server.recommend_experimental_tolerances({'model_id': 'model', 'part_id': 'shaft'}, admin)
             self.assertEqual(raised.exception.status_code, 503)
             worker.assert_not_called()
+
+    def test_existing_source_drawing_is_clickable_and_evidence_is_preserved(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            drawing = Path(temporary) / 'source.dxf'
+            drawing.write_text('fixture')
+            evidence = {'source_model': 'source.dxf', 'case_id': 'case-1', 'entity_handle': 'A1', 'used_for_decision': False}
+            result = {'recommendations': {'rule-1': {'evidence_cases': [evidence]}}}
+            with patch.object(server, 'lookup_drawing_paths', return_value={'dxf': str(drawing)}):
+                server._attach_tolerance_source_drawings(result)
+            self.assertTrue(evidence['has_source_drawing'])
+            self.assertEqual(evidence['drawing_urls']['svg'], '/api/tolerance/drawing-svg/source')
+            self.assertEqual(evidence['entity_handle'], 'A1')
+            self.assertFalse(evidence['used_for_decision'])
+
+    def test_missing_source_has_no_invented_viewer_link(self):
+        evidence = {'drawing': 'missing.dxf'}
+        with patch.object(server, 'lookup_drawing_paths', return_value={'dxf': 'does-not-exist.dxf'}):
+            server._attach_tolerance_source_drawings({'recommendations': {'rule': {'evidence_cases': [evidence]}}})
+        self.assertFalse(evidence['has_source_drawing'])
+        self.assertIsNone(evidence['drawing_urls'])
+
+    def test_abstained_recommendations_do_not_acquire_unrelated_sources(self):
+        result = {'recommendations': {'blocked': {'recommended_mode': 'NONE', 'evidence_cases': []}}}
+        with patch.object(server, 'lookup_drawing_paths') as lookup:
+            self.assertIs(server._attach_tolerance_source_drawings(result), result)
+            lookup.assert_not_called()

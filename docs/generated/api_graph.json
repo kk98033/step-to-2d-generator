@@ -701,6 +701,11 @@
       "type": "configures_worker_action"
     },
     {
+      "from": "backend:server:_attach_tolerance_source_drawings",
+      "to": "backend:server:lookup_drawing_paths",
+      "type": "calls"
+    },
+    {
       "from": "backend:server:_build_drawing_package",
       "to": "backend:server:_annotation_path",
       "type": "calls"
@@ -1492,6 +1497,11 @@
     },
     {
       "from": "backend:server:recommend_experimental_tolerances",
+      "to": "backend:server:_attach_tolerance_source_drawings",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:recommend_experimental_tolerances",
       "to": "backend:server:_file_sha256",
       "type": "calls"
     },
@@ -1527,6 +1537,11 @@
     },
     {
       "from": "backend:server:recommend_tolerances",
+      "to": "backend:server:_attach_tolerance_source_drawings",
+      "type": "calls"
+    },
+    {
+      "from": "backend:server:recommend_tolerances",
       "to": "backend:server:_load_external_prediction_set",
       "type": "calls"
     },
@@ -1538,11 +1553,6 @@
     {
       "from": "backend:server:recommend_tolerances",
       "to": "backend:server:_safe_part_id",
-      "type": "calls"
-    },
-    {
-      "from": "backend:server:recommend_tolerances",
-      "to": "backend:server:lookup_drawing_paths",
       "type": "calls"
     },
     {
@@ -3283,7 +3293,7 @@
       "path": "/admin",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5275,
+        "line": 5280,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3294,7 +3304,7 @@
       "path": "/admin/",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5275,
+        "line": 5280,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3305,7 +3315,7 @@
       "path": "/admin/accounts",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5275,
+        "line": 5280,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3316,7 +3326,7 @@
       "path": "/admin/accounts/import",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5275,
+        "line": 5280,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3327,7 +3337,7 @@
       "path": "/admin/accounts/passwords",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5275,
+        "line": 5280,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3338,7 +3348,7 @@
       "path": "/admin/api-graph",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5283,
+        "line": 5288,
         "symbol": "admin_api_graph_page"
       }
     },
@@ -3349,7 +3359,7 @@
       "path": "/admin/logs",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5275,
+        "line": 5280,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3360,7 +3370,7 @@
       "path": "/admin/operations/{operation_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5295,
+        "line": 5300,
         "symbol": "admin_operation_replay_page"
       }
     },
@@ -3371,7 +3381,7 @@
       "path": "/admin/presence",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5275,
+        "line": 5280,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3382,7 +3392,7 @@
       "path": "/admin/service-control",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5275,
+        "line": 5280,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3393,7 +3403,7 @@
       "path": "/admin/settings",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5275,
+        "line": 5280,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3404,7 +3414,7 @@
       "path": "/admin/stress-test",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5287,
+        "line": 5292,
         "symbol": "admin_stress_test_page"
       }
     },
@@ -3415,7 +3425,7 @@
       "path": "/admin/system",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5291,
+        "line": 5296,
         "symbol": "admin_system_page"
       }
     },
@@ -3426,7 +3436,7 @@
       "path": "/admin/tags",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5275,
+        "line": 5280,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3437,7 +3447,7 @@
       "path": "/admin/trash",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5275,
+        "line": 5280,
         "symbol": "admin_accounts_page"
       }
     },
@@ -3547,7 +3557,7 @@
       "path": "/api/admin/operation-logs/{operation_id}/replay",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3846,
+        "line": 3851,
         "symbol": "replay_annotation_operation"
       }
     },
@@ -3602,7 +3612,7 @@
       "path": "/api/admin/runtime",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3508,
+        "line": 3513,
         "symbol": "admin_runtime_status"
       }
     },
@@ -3613,7 +3623,7 @@
       "path": "/api/admin/runtime/maintenance",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3664,
+        "line": 3669,
         "symbol": "admin_set_runtime_maintenance"
       }
     },
@@ -3624,7 +3634,7 @@
       "path": "/api/admin/runtime/restart",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3683,
+        "line": 3688,
         "symbol": "admin_restart_runtime"
       }
     },
@@ -3679,7 +3689,7 @@
       "path": "/api/admin/stress-tests",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3723,
+        "line": 3728,
         "symbol": "admin_list_stress_tests"
       }
     },
@@ -3690,7 +3700,7 @@
       "path": "/api/admin/stress-tests",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3728,
+        "line": 3733,
         "symbol": "admin_start_stress_test"
       }
     },
@@ -3701,7 +3711,7 @@
       "path": "/api/admin/stress-tests/config",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3709,
+        "line": 3714,
         "symbol": "admin_stress_test_config"
       }
     },
@@ -3712,7 +3722,7 @@
       "path": "/api/admin/stress-tests/{run_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3774,
+        "line": 3779,
         "symbol": "admin_delete_stress_test"
       }
     },
@@ -3723,7 +3733,7 @@
       "path": "/api/admin/stress-tests/{run_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3766,
+        "line": 3771,
         "symbol": "admin_get_stress_test"
       }
     },
@@ -3734,7 +3744,7 @@
       "path": "/api/admin/stress-tests/{run_id}/apply-recommendation",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3793,
+        "line": 3798,
         "symbol": "admin_apply_stress_recommendation"
       }
     },
@@ -3745,7 +3755,7 @@
       "path": "/api/admin/stress-tests/{run_id}/restore-settings",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3829,
+        "line": 3834,
         "symbol": "admin_restore_stress_settings"
       }
     },
@@ -3756,7 +3766,7 @@
       "path": "/api/admin/stress-tests/{run_id}/stop",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3785,
+        "line": 3790,
         "symbol": "admin_stop_stress_test"
       }
     },
@@ -3921,7 +3931,7 @@
       "path": "/api/admin/workforce",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3533,
+        "line": 3538,
         "symbol": "admin_workforce_dashboard"
       }
     },
@@ -3932,7 +3942,7 @@
       "path": "/api/annotation/apply-template",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2888,
+        "line": 2893,
         "symbol": "apply_annotation_template"
       }
     },
@@ -3943,7 +3953,7 @@
       "path": "/api/annotation/candidate-rules/{model_id}/{part_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4017,
+        "line": 4022,
         "symbol": "get_candidate_annotation_rules"
       }
     },
@@ -3954,7 +3964,7 @@
       "path": "/api/annotation/history/{model_id}/{part_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3408,
+        "line": 3413,
         "symbol": "get_drawing_history"
       }
     },
@@ -3965,7 +3975,7 @@
       "path": "/api/annotation/jobs/active",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3399,
+        "line": 3404,
         "symbol": "get_active_annotation_job"
       }
     },
@@ -3976,7 +3986,7 @@
       "path": "/api/annotation/jobs/{job_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3424,
+        "line": 3429,
         "symbol": "get_annotation_job"
       }
     },
@@ -3987,7 +3997,7 @@
       "path": "/api/annotation/render",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3087,
+        "line": 3092,
         "symbol": "submit_custom_annotation_drawing"
       }
     },
@@ -3998,7 +4008,7 @@
       "path": "/api/annotation/templates",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2851,
+        "line": 2856,
         "symbol": "get_annotation_templates"
       }
     },
@@ -4009,7 +4019,7 @@
       "path": "/api/annotation/templates",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2858,
+        "line": 2863,
         "symbol": "save_annotation_template"
       }
     },
@@ -4020,7 +4030,7 @@
       "path": "/api/annotation/templates/{template_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2871,
+        "line": 2876,
         "symbol": "delete_annotation_template"
       }
     },
@@ -4086,7 +4096,7 @@
       "path": "/api/compare",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4807,
+        "line": 4812,
         "symbol": "compare_files"
       }
     },
@@ -4097,7 +4107,7 @@
       "path": "/api/drawings/{model_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4910,
+        "line": 4915,
         "symbol": "get_drawing_package"
       }
     },
@@ -4108,7 +4118,7 @@
       "path": "/api/drawings/{model_id}/parts/{part_id}/annotations",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4953,
+        "line": 4958,
         "symbol": "get_part_annotations"
       }
     },
@@ -4119,7 +4129,7 @@
       "path": "/api/drawings/{model_id}/parts/{part_id}/annotations",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4977,
+        "line": 4982,
         "symbol": "save_part_annotations"
       }
     },
@@ -4130,7 +4140,7 @@
       "path": "/api/drawings/{model_id}/parts/{part_id}/features",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4920,
+        "line": 4925,
         "symbol": "get_drawing_part_features"
       }
     },
@@ -4251,7 +4261,7 @@
       "path": "/api/examples",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5133,
+        "line": 5138,
         "symbol": "list_examples"
       }
     },
@@ -4262,7 +4272,7 @@
       "path": "/api/features/{model_id}/{part_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4038,
+        "line": 4043,
         "symbol": "get_part_features"
       }
     },
@@ -4273,7 +4283,7 @@
       "path": "/api/health",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5179,
+        "line": 5184,
         "symbol": "health_check"
       }
     },
@@ -4306,7 +4316,7 @@
       "path": "/api/jobs/active",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4705,
+        "line": 4710,
         "symbol": "get_active_job"
       }
     },
@@ -4317,7 +4327,7 @@
       "path": "/api/model/{model_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4886,
+        "line": 4891,
         "symbol": "get_model"
       }
     },
@@ -4328,7 +4338,7 @@
       "path": "/api/models",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4866,
+        "line": 4871,
         "symbol": "list_models"
       }
     },
@@ -4339,7 +4349,7 @@
       "path": "/api/models/{model_id}/reanalyze",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4634,
+        "line": 4639,
         "symbol": "reanalyze_model"
       }
     },
@@ -4361,7 +4371,7 @@
       "path": "/api/processed/fan-20260625",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5159,
+        "line": 5164,
         "symbol": "list_processed_fan_20260625"
       }
     },
@@ -4383,7 +4393,7 @@
       "path": "/api/results/{job_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4714,
+        "line": 4719,
         "symbol": "get_results"
       }
     },
@@ -4394,7 +4404,7 @@
       "path": "/api/status/{job_id}",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4690,
+        "line": 4695,
         "symbol": "get_status"
       }
     },
@@ -4405,7 +4415,7 @@
       "path": "/api/system/status",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 3462,
+        "line": 3467,
         "symbol": "system_status"
       }
     },
@@ -4449,7 +4459,7 @@
       "path": "/api/tolerance/confirm-feature-case",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2763,
+        "line": 2768,
         "symbol": "confirm_feature_tolerance_case"
       }
     },
@@ -4537,7 +4547,7 @@
       "path": "/api/tolerance/experimental/recommend",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2570,
+        "line": 2589,
         "symbol": "recommend_experimental_tolerances"
       }
     },
@@ -4592,7 +4602,7 @@
       "path": "/api/tolerance/recommend",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2626,
+        "line": 2646,
         "symbol": "recommend_tolerances"
       }
     },
@@ -4603,7 +4613,7 @@
       "path": "/api/tolerance/save-case",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 2822,
+        "line": 2827,
         "symbol": "save_tolerance_case"
       }
     },
@@ -4625,7 +4635,7 @@
       "path": "/api/tolerances",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5206,
+        "line": 5211,
         "symbol": "get_tolerances"
       }
     },
@@ -4636,7 +4646,7 @@
       "path": "/api/tolerances",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5212,
+        "line": 5217,
         "symbol": "update_tolerances"
       }
     },
@@ -4647,7 +4657,7 @@
       "path": "/api/upload",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 4578,
+        "line": 4583,
         "symbol": "upload_file"
       }
     },
@@ -4658,7 +4668,7 @@
       "path": "/tolerance-audit-v2.html",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5249,
+        "line": 5254,
         "symbol": "tolerance_audit_v2_page"
       }
     },
@@ -4669,7 +4679,7 @@
       "path": "/tolerance-inspector.html",
       "source": {
         "file": "web_app/backend/server.py",
-        "line": 5231,
+        "line": 5236,
         "symbol": "tolerance_inspector_page"
       }
     }
