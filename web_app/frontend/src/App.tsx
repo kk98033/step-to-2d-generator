@@ -942,8 +942,20 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   const [externalPredictionsByRule, setExternalPredictionsByRule] = useState<Record<string, any>>({});
   const [externalPredictionMeta, setExternalPredictionMeta] = useState<Record<string, any> | null>(null);
   const [isRecommendingTolerances, setIsRecommendingTolerances] = useState<boolean>(false);
+  const [experimentalTolerance, setExperimentalTolerance] = useState(false);
+  const recommendationRequestRef = useRef(0);
   const [toleranceStats, setToleranceStats] = useState<{ total_cases: number; categories: Record<string, number> } | null>(null);
   const [recommendSummary, setRecommendSummary] = useState<{ total_rules: number; high_confidence_count: number; product_family?: string; part_type?: string } | null>(null);
+  useEffect(() => {
+    recommendationRequestRef.current++;
+    setAiRecommendations({});
+    setRecommendSummary(null);
+    setIsRecommendingTolerances(false);
+    setRuleConfig(previous => Object.fromEntries(Object.entries(previous).map(([id, config]) => [id,
+      ['HISTORICAL_RAG', 'ENGINEER_PERSONAL'].includes(config.tolerance_source || '')
+        ? { ...config, tolerance: '', tolerance_config: { mode: 'NONE' }, tolerance_source: 'MANUAL' as const } : config,
+    ])));
+  }, [candidateEngine, experimentalTolerance, selectedPart, results?.model_id]);
   const [recommendationTags, setRecommendationTags] = useState<any[]>([]);
   const [recommendationTagIds, setRecommendationTagIds] = useState<Set<string>>(new Set());
   const [storageTagIds, setStorageTagIds] = useState<Set<string>>(new Set());
@@ -1478,15 +1490,21 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
       return;
     }
 
+    const requestVersion = ++recommendationRequestRef.current;
+    const usingNative = user.role === 'ADMIN' && candidateEngine === 'experimental_v026' && experimentalTolerance;
     setIsRecommendingTolerances(true);
     try {
-      const res = await axios.post(`${API_BASE}/api/tolerance/recommend`, {
+      const recommendationPayload = {
         model_id: modelId,
         part_id: selectedPart,
         candidate_rules: candidateRules,
         recommendation_tag_ids: Array.from(recommendationTagIds),
         recommendation_tag_match: recommendationTagMatch,
-      });
+      };
+      const res = usingNative
+        ? await axios.post(`${API_BASE}/api/tolerance/experimental/recommend`, recommendationPayload)
+        : await axios.post(`${API_BASE}/api/tolerance/recommend`, recommendationPayload);
+      if (requestVersion !== recommendationRequestRef.current) return;
 
       if (res.data?.status === 'ok') {
         const recs: Record<string, any> = res.data.recommendations || {};
@@ -1518,6 +1536,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
             // adopted.  The engineer must inspect its source drawing and use
             // the explicit adoption control on the recommendation card.
             if (['TIER_REVIEW_CANDIDATE', 'NOT_APPLICABLE'].includes(rec.tier_level)) return;
+            if (usingNative && (rec.decision_status === 'REVIEW_REQUIRED' || (rec.confidence || 0) < .85)) return;
             nextCfg[rId] = {
               ...existing,
               ...(existing.tolerance_source === 'EXTERNAL_NEURAL_MODEL' ? {} : {
@@ -1551,10 +1570,11 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
         }
       }
     } catch (err: any) {
+      if (requestVersion !== recommendationRequestRef.current) return;
       console.error('AI tolerance recommendation error:', err);
       alert(`AI 智慧推薦公差失敗: ${err?.response?.data?.detail || err.message}`);
     } finally {
-      setIsRecommendingTolerances(false);
+      if (requestVersion === recommendationRequestRef.current) setIsRecommendingTolerances(false);
     }
   };
 
@@ -3313,6 +3333,17 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
 
                   {!collapsedControllerSections.has('cad-rag') && (
                     <>
+                  {user.role === 'ADMIN' && candidateEngine === 'experimental_v026' && <div style={{ padding: 8, border: '1px solid #404040', borderRadius: 4, background: '#171717', fontSize: 11 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span>公差推薦引擎</span>
+                      <select aria-label="公差推薦引擎" value={experimentalTolerance ? 'native_v1' : 'current'} disabled={isRecommendingTolerances}
+                        onChange={event => { setExperimentalTolerance(event.target.value === 'native_v1'); setAiRecommendations({}); setRecommendSummary(null); }}
+                        style={{ background: '#262626', color: '#d4d4d4', border: '1px solid #404040', padding: 5, borderRadius: 3 }}>
+                        <option value="current">現行推薦（比較基準）</option><option value="native_v1">原生尺寸推薦 V1（實驗）</option>
+                      </select>
+                    </label>
+                    {experimentalTolerance && <p style={{ color: '#a3a3a3', lineHeight: 1.5, marginBottom: 0 }}>直接分析新版尺寸意圖，僅使用公司案例；不套用個人歷史。角度與未驗證關係尺寸保留人工確認。尚未證明未知零件的推薦精準度。</p>}
+                  </div>}
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, padding: '6px 8px', borderRadius: 4, border: '1px solid #78350f', background: '#211a12', color: '#fcd34d', fontSize: 10, lineHeight: 1.45 }}>
                     <AlertTriangle size={13} style={{ flex: '0 0 auto', marginTop: 1 }} />
                     <span>Beta 決策輔助：推薦結果與歷史案例必須經工程師覆核，不可直接作為正式製造公差。</span>

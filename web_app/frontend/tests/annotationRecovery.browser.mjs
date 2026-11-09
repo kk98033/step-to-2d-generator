@@ -13,6 +13,8 @@ mkdirSync(profile, { recursive: true });
 let completed = false;
 let generation = 1;
 let modelLoads = 0;
+let experimentalRecommendations = 0;
+const testRole = process.env.CAD_TEST_ROLE || 'ENGINEER';
 const errors = [];
 const job = () => ({ job_id: 'annotation-fixture-' + generation, status: completed ? 'completed' : 'queued',
   model_id: 'model-fixture', part_id: 'shaft', message: completed ? 'Drawing completed' : 'Queued',
@@ -22,7 +24,15 @@ const server = createServer((req, res) => {
   const path = new URL(req.url, 'http://localhost').pathname;
   if (path.startsWith('/api/')) {
     let payload = { status: 'ok' };
-    if (path === '/api/auth/me') payload = { user: { id: 'browser-engineer', role: 'ENGINEER', display_name: 'Test engineer' } };
+    if (path === '/api/auth/me') payload = { user: { id: 'browser-engineer', role: testRole, display_name: 'Test engineer' } };
+    else if (path === '/api/tolerance/experimental/recommend') {
+      experimentalRecommendations++;
+      payload = { status: 'ok', total_rules: 1, recommendations: { 'fixture-rule': {
+        rule_id: 'fixture-rule', recommended_mode: 'NONE', tier_level: 'NOT_APPLICABLE',
+        decision_status: 'NOT_APPLICABLE', confidence: 0, tolerance_config: { mode: 'NONE' },
+        reasoning_description: 'Native geometry evidence is insufficient', evidence_cases: [],
+      } } };
+    }
     else if (path === '/api/annotation/jobs/active') payload = { job: completed ? null : job() };
     else if (path.startsWith('/api/annotation/jobs/annotation-fixture-')) payload = job();
     else if (path === '/api/annotation/render' && req.method === 'POST') { generation++; completed = false; payload = job(); }
@@ -36,7 +46,7 @@ const server = createServer((req, res) => {
       payload = { model_id: 'model-fixture', output_dir: 'model-fixture',
         tree: { name: 'Shaft model', file_prefix: 'shaft', children: [] },
         parts_map: { shaft: { name: 'Shaft' } } };
-    } else if (path.includes('/candidate-rules/')) payload = { rules: [{ rule_id: 'fixture-rule', category: 'shaft', nominal_value: 21.4, render_eligible: true, target_views: ['front'] }], candidate_engine: 'legacy_smart' };
+    } else if (path.includes('/candidate-rules/')) payload = { rules: [{ rule_id: 'fixture-rule', category: 'shaft', nominal_value: 21.4, render_eligible: true, default_selected: true, verification_status: 'AUTO_VERIFIED', target_views: ['front'] }], candidate_engine: new URL(req.url, origin).searchParams.get('engine') || 'legacy_smart' };
     else if (path.startsWith('/api/features/')) payload = { records: [] };
     else if (path.includes('templates')) payload = { templates: [] };
     else if (path.includes('tags')) payload = { tags: [] };
@@ -118,11 +128,23 @@ try {
   await evaluate("{ const key = 'cad-workspace:browser-engineer'; const saved = JSON.parse(sessionStorage.getItem(key)); saved.drawing = null; sessionStorage.setItem(key, JSON.stringify(saved)); localStorage.removeItem('cad-annotation-job:browser-engineer'); }");
   await send('Page.reload');
   await waitFor("!!document.querySelector('img[src*=\"saved\"]') && !!document.querySelector('select[aria-label=\"已生成圖面紀錄\"]')");
+  if (testRole === 'ADMIN') {
+    await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '新版繪圖引擎').click()");
+    await waitFor("!!document.querySelector('select[aria-label=\"公差推薦引擎\"]')");
+    await evaluate("{ const selector = document.querySelector('select[aria-label=\"公差推薦引擎\"]'); selector.value = 'native_v1'; selector.dispatchEvent(new Event('change', { bubbles: true })); }");
+    await waitFor("document.body.innerText.includes('尚未證明未知零件的推薦精準度')");
+    await waitFor("[...document.querySelectorAll('button')].some(b => b.textContent.includes('一鍵智慧推薦公差') && !b.disabled)");
+    await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.includes('一鍵智慧推薦公差')).click()");
+    await waitFor("document.body.innerText.includes('已完成 1 條規則推薦')");
+    assert.equal(experimentalRecommendations, 1);
+  } else {
+    assert.equal(await evaluate("!!document.querySelector('select[aria-label=\"公差推薦引擎\"]')"), false);
+  }
   assert.ok(modelLoads >= 2);
   assert.deepEqual(errors, []);
   const snapshot = await send('Page.captureScreenshot', { format: 'png' });
   writeFileSync(resolve(root, '.codex_runtime/annotation-recovery-browser.png'), Buffer.from(snapshot.data, 'base64'));
-  console.log(JSON.stringify({ passed: ['home task card', 'reload active job', 'completion button', 'open correct model/part/drawing', 'reload completed job and workspace', 'auto-open same drawing on completion', 'server history restores missing browser preview'], modelLoads, errors }));
+  console.log(JSON.stringify({ role: testRole, experimentalRecommendations, passed: ['home task card', 'reload active job', 'completion button', 'open correct model/part/drawing', 'reload completed job and workspace', 'auto-open same drawing on completion', 'server history restores missing browser preview', 'experimental tolerance admin visibility/routing'], modelLoads, errors }));
 } catch (error) {
   console.error(JSON.stringify({ errors, modelLoads }));
   throw error;

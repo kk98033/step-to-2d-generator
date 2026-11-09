@@ -2566,6 +2566,62 @@ def delete_external_tolerance_predictions(
     return {"status": "ok", "model_id": model_id, "part_id": part_id}
 
 
+@app.post("/api/tolerance/experimental/recommend")
+def recommend_experimental_tolerances(
+    body: Dict[str, Any] = Body(...),
+    current_user: CurrentUser = Depends(require_admin),
+):
+    _require_experimental_engine_admin(current_user)
+    _reject_heavy_work_during_exclusive_stress_test()
+    model_id, part_id = str(body.get("model_id") or ""), str(body.get("part_id") or "")
+    if not model_id or not part_id:
+        raise HTTPException(status_code=400, detail="model_id and part_id are required")
+    assert_model_access(current_user, model_id)
+    _safe_part_id(part_id)
+    experiment = os.path.join(REPO_ROOT, "experimental_lab", "tolerance_extraction_audit", "TOLERANCE_V1_EXPERIMENT")
+    try:
+        with open(os.path.join(experiment, "validation_report.json"), encoding="utf-8") as source:
+            validation = json.load(source)
+        if (validation.get("status") != "PASS_FOR_ADMIN_TEST_ONLY"
+                or validation.get("engine_sha256") != _file_sha256(os.path.join(experiment, "engine.py"))):
+            raise ValueError("Experiment validation is missing or stale")
+        for relative_path, expected_hash in (validation.get("validated_sources") or {}).items():
+            if _file_sha256(os.path.join(REPO_ROOT, relative_path)) != expected_hash:
+                raise ValueError("Validated tolerance dependency changed")
+    except (OSError, ValueError) as error:
+        raise HTTPException(status_code=503, detail="Run the native tolerance experiment validation first") from error
+    output_dir = _safe_output_dir(model_id)
+    paths = [os.path.join(output_dir, folder, part_id + extension)
+             for folder in ("_parts", "") for extension in (".stp", ".step")]
+    step_path = next((path for path in paths if os.path.isfile(path)), None)
+    if step_path is None:
+        raise HTTPException(status_code=404, detail="STEP part not found")
+    tags = list(dict.fromkeys(str(value) for value in body.get("recommendation_tag_ids") or [] if value))
+    match_mode = str(body.get("recommendation_tag_match") or "ANY").upper()
+    if match_mode not in {"ANY", "ALL"}:
+        raise HTTPException(status_code=400, detail="Invalid recommendation tag match mode")
+    try:
+        tags = identity_store.validate_recommendation_tag_ids(tags)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    allowed = identity_store.company_case_ids_for_tags(tags, match_mode)
+    # Bound concurrent experimental CAD work using the existing experimental pool.
+    shadow_analysis_slots.acquire(lambda: EXPERIMENTAL_SHADOW_MAX_WORKERS, blocking=True)
+    try:
+        return _run_cad_annotation_worker({
+            "action": "experimental_tolerance", "step_path": step_path,
+            "part_type": body.get("part_category") or "GENERAL",
+            "product_family": body.get("product_family") or FeatureCaseBase.infer_product_family(part_id),
+            "allowed_case_ids": sorted(allowed) if allowed is not None else None,
+            "requested_ids": [str(rule.get("rule_id") or rule.get("id") or "")
+                              for rule in body.get("candidate_rules") or []],
+        }, os.path.join(output_dir, "_worker_jobs", "native_tolerance_" + uuid.uuid4().hex))
+    except Exception as error:
+        raise HTTPException(status_code=422, detail="Experimental tolerance analysis failed: " + str(error)) from error
+    finally:
+        shadow_analysis_slots.release()
+
+
 @app.post("/api/tolerance/recommend")
 def recommend_tolerances(
     body: Dict[str, Any] = Body(...),

@@ -283,6 +283,15 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
         raise FileNotFoundError(f"STEP file not found: {step_path}")
 
     action = job.get("action", "render")
+    if action == "experimental_tolerance":
+        from experimental_lab.tolerance_extraction_audit.TOLERANCE_V1_EXPERIMENT.engine import recommend_step
+        result = recommend_step(
+            step_path, part_type=str(job.get("part_type") or "GENERAL"),
+            product_family=job.get("product_family"),
+            allowed_case_ids=set(job["allowed_case_ids"]) if job.get("allowed_case_ids") is not None else None,
+            requested_ids=job.get("requested_ids"),
+        )
+        return {**result, "pid": os.getpid(), "elapsed_seconds": time.perf_counter() - started}
     if action == "experimental_shadow_analysis":
         return _run_experimental_shadow_analysis(job, step_path, started)
     if action == "experimental_candidates":
