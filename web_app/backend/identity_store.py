@@ -396,6 +396,10 @@ credential_notifications = Table(
 )
 
 
+from web_app.backend.case_library_schema import define_case_library_tables
+case_library_tables = define_case_library_tables(metadata)
+
+
 class IdentityStore:
     def __init__(self, database_url: Optional[str] = None):
         default_db = Path(__file__).resolve().parent / "data" / "forcecon_identity.db"
@@ -993,6 +997,13 @@ class IdentityStore:
                 raise ValueError("At least one active administrator account must remain")
 
             deleted_users = [self._public_user_row(row) for row in target_rows]
+            if conn.execute(select(case_library_tables.payloads.c.case_record_id).where(
+                case_library_tables.payloads.c.owner_user_id.in_(target_ids)
+            ).limit(1)).first():
+                raise ValueError('此帳號保有新版案例來源證據，請改為停用帳號以保留追溯資料')
+            conn.execute(update(case_library_tables.shares).where(
+                case_library_tables.shares.c.reviewed_by.in_(target_ids)
+            ).values(reviewed_by=None))
             artifact_ids = list(conn.execute(select(annotation_artifacts.c.id).where(
                 annotation_artifacts.c.owner_user_id.in_(target_ids)
             )).scalars().all())
@@ -1309,6 +1320,8 @@ class IdentityStore:
         part_type: Optional[str] = None,
         product_family: Optional[str] = None,
         tag_ids: Optional[Iterable[str]] = None,
+        learn_cases: bool = True,
+        source_metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         artifact_id = str(uuid.uuid4())
         now = _utcnow()
@@ -1323,7 +1336,7 @@ class IdentityStore:
                 part_id=part_id,
                 title=title or f"{part_id} annotation",
                 status="COMPLETED",
-                input_snapshot_json=_json({"feature_records": records}),
+                input_snapshot_json=_json({"feature_records": records, "source_metadata": source_metadata or {}}),
                 output_files_json=_json(output_files),
                 created_at=now,
                 updated_at=now,
@@ -1333,6 +1346,8 @@ class IdentityStore:
                     artifact_id=artifact_id, tag_id=tag_id
             ))
             for record in records:
+                if not learn_cases:
+                    break
                 if record.get("enabled") is False:
                     continue
                 tolerance = record.get("tolerance_config") or {}
@@ -1570,6 +1585,9 @@ class IdentityStore:
                 return False
             if not user.is_admin and row._mapping["owner_user_id"] != user.id:
                 raise PermissionError("Artifact belongs to another engineer")
+            if conn.execute(select(case_library_tables.payloads.c.case_record_id).where(
+                case_library_tables.payloads.c.artifact_id == artifact_id)).first():
+                raise ValueError('此成果是案例庫的來源證據，不能刪除；可先從推薦中移除案例，來源紀錄仍需保留')
             case_rows = conn.execute(select(engineer_tolerance_cases).where(
                 engineer_tolerance_cases.c.artifact_id == artifact_id
             )).all()

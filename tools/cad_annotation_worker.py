@@ -283,14 +283,35 @@ def run_job(job: dict[str, Any]) -> dict[str, Any]:
         raise FileNotFoundError(f"STEP file not found: {step_path}")
 
     action = job.get("action", "render")
+    if action == "native_case_payloads":
+        import hashlib
+        from auto_2d_drawing.tolerance.native_case_contract import build_native_cases
+        digest = hashlib.sha256()
+        with step_path.open('rb') as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b''): digest.update(chunk)
+        if digest.hexdigest() != job['source_sha256']:
+            raise ValueError('來源 STEP 已變更，請重新產圖後加入案例庫')
+        report = _load_experimental_main_module().analyse_step(step_path)
+        payloads = build_native_cases(report, job['records'], owner_id=job['owner_id'],
+            source_sha256=job['source_sha256'], artifact_id=job['artifact_id'],
+            model_id=job['model_id'], part_id=job['part_id'], operation_id=job.get('operation_id'))
+        return {'status': 'ok', 'cases': payloads, 'pid': os.getpid()}
     if action == "experimental_tolerance":
+        from auto_2d_drawing.tolerance.case_base import FeatureCaseBase
+        from auto_2d_drawing.tolerance.native_case_contract import merge_compatible_cases
         from experimental_lab.tolerance_extraction_audit.TOLERANCE_V1_EXPERIMENT.engine import recommend_step
+        company = FeatureCaseBase().cases if job.get('case_source', 'COMPANY') in {'COMPANY', 'BOTH'} else []
+        scoped = merge_compatible_cases(company, job.get('extra_cases') or []) if 'case_source' in job else None
         result = recommend_step(
             step_path, part_type=str(job.get("part_type") or "GENERAL"),
+            case_base=scoped,
             product_family=job.get("product_family"),
             allowed_case_ids=set(job["allowed_case_ids"]) if job.get("allowed_case_ids") is not None else None,
             requested_ids=job.get("requested_ids"),
         )
+        if scoped is not None:
+            result['case_source'] = job['case_source']
+            result['personal_history_policy'] = 'EXPLICIT_CURATED_CASES_ONLY'
         return {**result, "pid": os.getpid(), "elapsed_seconds": time.perf_counter() - started}
     if action == "experimental_shadow_analysis":
         return _run_experimental_shadow_analysis(job, step_path, started)

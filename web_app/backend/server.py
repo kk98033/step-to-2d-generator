@@ -34,6 +34,7 @@ from web_app.backend.account_api import (
     store as identity_store,
 )
 from web_app.backend.candidate_cache import CandidateCache
+from web_app.backend.case_library_api import router as case_library_router, library as case_library
 from web_app.backend.drawing_history import list_drawing_history
 from web_app.backend.engineer_personalization import personalize_recommendations
 from web_app.backend.identity_store import CurrentUser
@@ -69,6 +70,7 @@ app.add_middleware(
 )
 app.add_middleware(AuthenticationMiddleware)
 app.include_router(account_router)
+app.include_router(case_library_router)
 
 @app.middleware("http")
 async def add_no_cache_header(request, call_next):
@@ -2566,10 +2568,21 @@ def delete_external_tolerance_predictions(
     return {"status": "ok", "model_id": model_id, "part_id": part_id}
 
 
-def _attach_tolerance_source_drawings(rec_result: Dict[str, Any]) -> Dict[str, Any]:
+def _attach_tolerance_source_drawings(rec_result: Dict[str, Any], current_user=None) -> Dict[str, Any]:
     """Expose original drawing viewers only for evidence with an existing DXF."""
     for recommendation in (rec_result.get("recommendations") or {}).values():
         for evidence in recommendation.get("evidence_cases") or []:
+            case_id = str(evidence.get('case_id') or '')
+            if case_id.startswith(('NATIVE_', 'SHARED_')) and current_user is not None:
+                from web_app.backend.case_library_api import source_path
+                try:
+                    source_path(current_user, case_id, 'pdf')
+                    evidence['has_source_drawing'] = True
+                    evidence['drawing_urls'] = {kind: f'/api/case-library/sources/{case_id}/{kind}' for kind in ('pdf', 'svg')}
+                    evidence['drawing_urls']['details'] = f'/api/case-library/sources/{case_id}/pdf'
+                except KeyError:
+                    evidence['has_source_drawing'], evidence['drawing_urls'] = False, None
+                continue
             source_model = os.path.splitext(os.path.basename(str(
                 evidence.get("source_model") or evidence.get("drawing") or ""
             )))[0]
@@ -2624,6 +2637,20 @@ def recommend_experimental_tolerances(
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     allowed = identity_store.company_case_ids_for_tags(tags, match_mode)
+    case_source = str(body.get('case_source') or 'COMPANY').upper()
+    if case_source not in {'COMPANY', 'PERSONAL', 'BOTH'}:
+        raise HTTPException(400, detail='案例來源必須是 COMPANY、PERSONAL 或 BOTH')
+    try:
+        extras = case_library.published(tags, match_mode) if case_source in {'COMPANY', 'BOTH'} else []
+        if case_source in {'PERSONAL', 'BOTH'}:
+            extras += [row['case'] for row in case_library.cases(current_user.id,
+                body.get('collection_ids') or [], tags, match_mode, limit=2001)]
+    except (KeyError, ValueError) as error:
+        raise HTTPException(404, detail=str(error)) from error
+    if len(extras) > 2000:
+        raise HTTPException(400, detail='選取範圍超過 2000 筆案例，請選擇更明確的案例集或分類後推薦')
+    if allowed is not None or case_source == 'PERSONAL':
+        allowed = (allowed or set()) | {case['case_id'] for case in extras}
     # Bound concurrent experimental CAD work using the existing experimental pool.
     shadow_analysis_slots.acquire(lambda: EXPERIMENTAL_SHADOW_MAX_WORKERS, blocking=True)
     try:
@@ -2632,10 +2659,12 @@ def recommend_experimental_tolerances(
             "part_type": body.get("part_category") or "GENERAL",
             "product_family": body.get("product_family") or FeatureCaseBase.infer_product_family(part_id),
             "allowed_case_ids": sorted(allowed) if allowed is not None else None,
+            "case_source": case_source, "extra_cases": extras,
             "requested_ids": [str(rule.get("rule_id") or rule.get("id") or "")
                               for rule in body.get("candidate_rules") or []],
         }, os.path.join(output_dir, "_worker_jobs", "native_tolerance_" + uuid.uuid4().hex))
-        return _attach_tolerance_source_drawings(result)
+        result['recommendation_scope'] = {'case_source': case_source, 'collection_ids': body.get('collection_ids') or [], 'tag_ids': tags}
+        return _attach_tolerance_source_drawings(result, current_user)
     except Exception as error:
         raise HTTPException(status_code=422, detail="Experimental tolerance analysis failed: " + str(error)) from error
     finally:
@@ -2967,6 +2996,9 @@ def _run_annotation_job(job_id: str) -> None:
                 product_family=job.get("product_family")
                 or FeatureCaseBase.infer_product_family(job["part_id"]),
                 tag_ids=job["storage_tag_ids"],
+                learn_cases=False,
+                source_metadata={"candidate_engine": job["candidate_engine"],
+                    "step_sha256": (job.get("model_fingerprint") or {}).get("sha256") or _file_sha256(job["step_path"]), "operation_id": job_id},
             )
         timestamp = uuid.uuid4().hex[:8]
         manifest_temp_path = f"{job['manifest_path']}.{uuid.uuid4().hex}.tmp"
@@ -3189,6 +3221,7 @@ def _submit_custom_annotation_drawing(
                 "candidate_engine": candidate_engine,
                 "include_half_section": bool(body.get("include_half_section")),
                 "drawing_layout_schema": 3 if candidate_engine == "experimental_v026" else 1,
+                "source_step_sha256": _file_sha256(stp_path),
             },
             sort_keys=True,
             ensure_ascii=False,
@@ -3343,6 +3376,12 @@ def _submit_custom_annotation_drawing(
                         },
                     })
                 cached_result["annotation_settings"] = [_compact_annotation_record_for_audit(record) for record in feature_records]
+                cached_result.update(identity_store.record_artifact_and_cases(
+                    user=current_user, model_id=model_id, part_id=part_id, feature_records=feature_records,
+                    output_files={key: value for key, value in cached_result.items() if key.endswith('_url')},
+                    title=(title_info or {}).get('part_name'), tag_ids=storage_tag_ids, learn_cases=False,
+                    source_metadata={'candidate_engine': candidate_engine, 'step_sha256': _file_sha256(stp_path), 'operation_id': job_id},
+                ))
                 cached_job["result"] = cached_result
                 _write_annotation_replay_snapshot(job_id, cached_job)
                 _persist_annotation_audit(job_id, cached_job)

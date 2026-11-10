@@ -10,6 +10,7 @@ from collections import Counter
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 from auto_2d_drawing.tolerance.case_base import FeatureCaseBase
+from auto_2d_drawing.tolerance.native_case_contract import merge_compatible_cases
 from auto_2d_drawing.tolerance.benchmark import BenchmarkDataset, ToleranceBenchmarkRunner, _case_group, _record_node, tolerance_equal
 from auto_2d_drawing.tolerance.tolerance_decision_service import ToleranceDecisionService
 from experimental_lab.tolerance_extraction_audit.TOLERANCE_V1_EXPERIMENT.engine import NativeToleranceEngine, recommend_step, ENGINE_VERSION
@@ -39,7 +40,7 @@ def run():
         old = ToleranceDecisionService(base)._evaluate_recommendation(
             record.benchmark_id, ToleranceBenchmarkRunner._service_category(record), kind == 'DIAMETER', nominal,
             node, q['part_type'], q.get('product_family'), dimension_category=kind).to_dict()
-        new = NativeToleranceEngine(base).recommend_measurement(
+        new = NativeToleranceEngine(merge_compatible_cases(base.cases, [])).recommend_measurement(
             node, record.benchmark_id, nominal, kind, q.get('inferred_role') or '', q['part_type'], q.get('product_family'))
         rows.append({'id': record.benchmark_id, 'baseline_correct': tolerance_equal(old['tolerance_config'], record.expected['tolerance_config']),
                      'experimental_correct': tolerance_equal(new['tolerance_config'], record.expected['tolerance_config']),
@@ -70,7 +71,7 @@ def run():
             float(q['nominal_value']), _record_node(record), q['part_type'], q.get('product_family'),
             dimension_category=q['dimension_category']).to_dict()
         baseline_replay_correct += tolerance_equal(reference['tolerance_config'], record.expected['tolerance_config'])
-        rec = NativeToleranceEngine(eligible).recommend_measurement(
+        rec = NativeToleranceEngine(merge_compatible_cases(eligible.cases, [])).recommend_measurement(
             _record_node(record), record.benchmark_id, float(q['nominal_value']), q['dimension_category'],
             q.get('inferred_role') or '', q['part_type'], q.get('product_family'))
         replay_correct += tolerance_equal(rec['tolerance_config'], record.expected['tolerance_config'])
@@ -85,7 +86,7 @@ def run():
         ROOT / 'models/BLADE_ASSY-1AC085000H-R01.stp',
     ]
     for path in paths:
-        result = recommend_step(path)
+        result = recommend_step(path, case_base=merge_compatible_cases(FeatureCaseBase().cases, []))
         recs = list(result['recommendations'].values())
         models.append({'model': path.name, 'rules': len(recs), 'native_measurements': len(result['native_measurements']),
                        'tiers': dict(Counter(item['tier_level'] for item in recs)),
@@ -99,6 +100,7 @@ def run():
                   'auto_2d_drawing/tolerance/case_base.py',
                   'auto_2d_drawing/tolerance/iso_tolerance_table.py',
                   'auto_2d_drawing/smart_extractors/experimental_candidate_adapter.py',
+                  'auto_2d_drawing/tolerance/native_case_contract.py',
               ]},
               'protocol': 'LEAVE_ONE_PART_GROUP_OUT; same frozen SILVER snapshot; policy-stage comparison, not end-to-end GOLD accuracy',
               'metrics': metrics, 'gates': gates, 'real_models': models,

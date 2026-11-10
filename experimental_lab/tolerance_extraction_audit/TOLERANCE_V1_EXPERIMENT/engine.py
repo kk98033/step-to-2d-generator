@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import math
+import hashlib
+import json
 from pathlib import Path
 
 from auto_2d_drawing.smart_extractors.experimental_candidate_adapter import build_experimental_candidate_rules
@@ -29,11 +31,51 @@ class NativeToleranceEngine:
 
     def recommend_measurement(self, node, rule_id, nominal, kind, role, part_type,
                               product_family=None, allowed_case_ids=None):
-        return self.policy._evaluate_recommendation(
+        result = self.policy._evaluate_recommendation(
             rule_id, measurement_category(role, kind), kind == 'DIAMETER', nominal,
             node, part_type, product_family, dimension_category=kind,
             allowed_case_ids=allowed_case_ids,
         ).to_dict()
+        if not getattr(self.policy.case_base, 'strict_native_conflicts', False):
+            return result
+        source_hash = (node.source_info or {}).get('source_step_sha256')
+        exact = [case for case in self.policy.case_base.cases if source_hash
+            and case.is_verified_extraction()
+            and case.source_metadata.get('case_contract') == 'NATIVE_MEASUREMENT_V1'
+            and case.source_metadata.get('source_step_sha256') == source_hash
+            and case.source_metadata.get('native_intent_id') == node.id
+            and case.source_metadata.get('dimension_category') == kind
+            and case.source_metadata.get('measurement_role') == role
+            and (allowed_case_ids is None or case.case_id in allowed_case_ids)]
+        groups = {}
+        for case in exact:
+            signature = json.dumps(case.tolerance_config, sort_keys=True)
+            groups.setdefault(signature, []).append(case)
+        conflict = len(groups) > 1 or bool((result.get('retrieval_trace') or {}).get('consensus', {}).get('near_top_conflict'))
+        if exact:
+            result['evidence_cases'] = [{'case_id': case.case_id, 'source_scope': case.source_metadata.get('scope'),
+                'source_model': case.source_metadata.get('part_id'), 'similarity': 1.0,
+                'verification_status': case.verification_status, 'nominal_dimensions': case.nominal_dimensions,
+                'tolerance_config': case.tolerance_config, 'used_for_decision': not conflict,
+                'evidence_role': 'CONFLICTING_NATIVE_CASE' if conflict else 'ADOPTED_NATIVE_CASE'} for case in exact]
+        if conflict:
+            result.update(recommended_mode='NONE', tolerance_config={'mode': 'NONE'}, tolerance_str='',
+                confidence=0.0, tier_level='TIER_REVIEW_CANDIDATE', decision_status='REVIEW_REQUIRED',
+                reasoning_description='找到相似且互斥的公差，不依重複保存次數或資料順序自動採用。請核對用途與來源後選擇。')
+            result['alternatives'] = [{'tolerance_config': json.loads(signature), 'case_ids': [case.case_id for case in cases]}
+                                      for signature, cases in groups.items()]
+        elif exact:
+            chosen = exact[0]
+            config = chosen.tolerance_config
+            dev = float(config.get('dev') or 0)
+            result = ToleranceRecommendation(rule_id=rule_id, feature_type=node.feature_type, inferred_role=role,
+                nominal_value=nominal, recommended_mode=config['mode'], fit_class=config.get('fit_class'),
+                upper_dev=float(config.get('upper_dev', dev)), lower_dev=float(config.get('lower_dev', -dev)),
+                is_hole=bool(config.get('is_hole')), confidence=.95, tier_level='TIER_1_RAG_MATCH',
+                decision_status='EVIDENCE_SUPPORTED_RECOMMENDATION', confidence_basis='EXACT_NATIVE_SOURCE_IDENTITY',
+                evidence_cases=result['evidence_cases'], retrieval_trace={'decision_source': 'EXPLICIT_CURATED_NATIVE_CASE'},
+                reasoning_description='來源 STEP、原生尺寸身分與已確認公差一致，且未發現互斥版本。').to_dict()
+        return result
 
     @staticmethod
     def blocked(rule, reason):
@@ -114,6 +156,7 @@ class NativeToleranceEngine:
                 axial_span=sorted(positions), center_axial=sum(positions) / 2,
                 inferred_role=role,
                 source_info={'native_feature_id': feature.get('feature_id'),
+                             'source_step_sha256': report.get('source_step_sha256'),
                              'topology_refs': feature.get('topology_refs'),
                              'measurement_semantic': measurement.get('semantic')},
             )
@@ -134,6 +177,12 @@ class NativeToleranceEngine:
         }
 
 
-def recommend_step(step_path, **options):
+def recommend_step(step_path, case_base=None, **options):
     from experimental_lab.tolerance_extraction_audit.DRAWING_CURRENT_FINAL.experimental_main import analyse_step
-    return NativeToleranceEngine().recommend_report(analyse_step(Path(step_path)), **options)
+    step_path = Path(step_path)
+    report = analyse_step(step_path)
+    digest = hashlib.sha256()
+    with step_path.open('rb') as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b''): digest.update(chunk)
+    report['source_step_sha256'] = digest.hexdigest()
+    return NativeToleranceEngine(case_base).recommend_report(report, **options)

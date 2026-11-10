@@ -421,6 +421,8 @@ def delete_artifact(artifact_id: str, user: CurrentUser = Depends(require_user))
         found = store.delete_artifact(user, artifact_id)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not found:
         raise HTTPException(status_code=404, detail="Artifact not found")
     return {"status": "ok"}

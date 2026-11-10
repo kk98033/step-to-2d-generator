@@ -17,6 +17,7 @@ let experimentalRecommendations = 0;
 const testRole = process.env.CAD_TEST_ROLE || 'ENGINEER';
 let activeEngine = 'legacy_smart';
 let lastRenderPayload = null;
+const libraryCustomers = [], libraryCollections = [], libraryCases = [];
 const errors = [];
 const job = () => ({ job_id: 'annotation-fixture-' + generation, status: completed ? 'completed' : 'queued',
   model_id: 'model-fixture', part_id: 'shaft', message: completed ? 'Drawing completed' : 'Queued',
@@ -36,6 +37,31 @@ const server = createServer(async (req, res) => {
         reasoning_description: 'Native geometry evidence is insufficient', evidence_cases: [],
       } } };
     }
+    else if (path === '/api/case-library/collections') {
+      if (req.method === 'POST') {
+        let body = ''; for await (const chunk of req) body += chunk;
+        libraryCollections.push({ ...JSON.parse(body), id: 'private-collection', case_count: 0 });
+      }
+      payload = { collections: libraryCollections, customers: libraryCustomers };
+    }
+    else if (path === '/api/case-library/customers') {
+      let body = ''; for await (const chunk of req) body += chunk;
+      libraryCustomers.push({ ...JSON.parse(body), id: 'private-customer' }); payload = libraryCustomers.at(-1);
+    }
+    else if (path === '/api/case-library/artifacts') payload = { artifacts: [{ id: 'native-artifact', title: 'Native shaft',
+      created_at: '2026-11-10T08:00:00Z', can_curate: true,
+      features: [{ rule_id: 'fixture-rule', nominal_value: 21.4, tolerance_config: { mode: 'CUSTOM_SYMMETRIC', dev: .1 } }] }] };
+    else if (path === '/api/case-library/artifacts/native-artifact/cases') {
+      let body = ''; for await (const chunk of req) body += chunk;
+      const saved = JSON.parse(body); assert.equal(saved.confirmed, true);
+      assert.deepEqual(saved.rule_ids, ['fixture-rule']); assert.deepEqual(saved.collection_ids, ['private-collection']);
+      libraryCases.push({ id: 'native-case-record', collection_ids: saved.collection_ids, case: { case_id: 'NATIVE_fixture',
+        nominal_dimensions: { length: 21.4 }, tolerance_config: { mode: 'CUSTOM_SYMMETRIC', dev: .1 },
+        source_metadata: { part_id: 'shaft', measurement_role: 'OVERALL_LENGTH' } } });
+      libraryCollections[0].case_count = 1; payload = { case_count: 1 };
+    }
+    else if (path === '/api/case-library/cases') payload = { cases: libraryCases, count: libraryCases.length, has_more: false };
+    else if (path === '/api/case-library/share-requests') payload = { requests: [] };
     else if (path === '/api/annotation/jobs/active') payload = { job: completed ? null : job() };
     else if (path.startsWith('/api/annotation/jobs/annotation-fixture-')) payload = job();
     else if (path === '/api/annotation/render' && req.method === 'POST') {
@@ -179,6 +205,31 @@ try {
   } else {
     assert.equal(await evaluate("!!document.querySelector('select[aria-label=\"公差推薦引擎\"]')"), false);
   }
+  assert.equal(libraryCases.length, 0, 'rendering must not implicitly learn cases');
+  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '我的推薦案例庫').click()");
+  await waitFor("!!document.querySelector('[aria-label=\"私人客戶名稱\"]')");
+  const fill = async (label, value) => evaluate(`{ const input = document.querySelector('[aria-label="${label}"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(value)}); input.dispatchEvent(new Event('input', { bubbles: true })); }`);
+  await fill('私人客戶名稱', 'Private client');
+  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '建立私人客戶').click()");
+  await waitFor("document.body.innerText.includes('私人客戶已建立')");
+  await fill('案例集名稱', 'Private project');
+  await evaluate("{ const select = document.querySelector('[aria-label=\"案例集所屬客戶\"]'); select.value = 'private:private-customer'; select.dispatchEvent(new Event('change', { bubbles: true })); }");
+  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '建立案例集').click()");
+  await waitFor("document.body.innerText.includes('案例集已建立')");
+  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '從成果加入').click()");
+  await evaluate("{ const select = document.querySelector('[aria-label=\"選擇產圖成果\"]'); select.value = 'native-artifact'; select.dispatchEvent(new Event('change', { bubbles: true })); }");
+  await waitFor("!!document.querySelector('.case-library-confirm')");
+  assert.equal(await evaluate("document.querySelector('.case-library-primary').disabled"), true);
+  await evaluate("{ const inputs = [...document.querySelectorAll('.case-library-list input')]; inputs.at(-1).click(); document.querySelector('.case-library-confirm input').click(); }");
+  await waitFor("!document.querySelector('.case-library-primary').disabled");
+  await evaluate("document.querySelector('.case-library-primary').click()");
+  await waitFor("document.body.innerText.includes('已加入推薦案例庫')");
+  assert.equal(libraryCases.length, 1);
+  console.log(JSON.stringify({ caseLibrary: 'PASS', privateCustomers: libraryCustomers.length,
+    privateCollections: libraryCollections.length, explicitCases: libraryCases.length }));
+  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '已加入案例').click()");
+  await waitFor("document.body.innerText.includes('OVERALL_LENGTH')");
+  await evaluate("document.querySelector('[aria-label=\"關閉案例庫\"]').click()");
   assert.ok(modelLoads >= 2);
   assert.deepEqual(errors, []);
   const snapshot = await send('Page.captureScreenshot', { format: 'png' });

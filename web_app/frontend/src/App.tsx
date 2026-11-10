@@ -11,6 +11,7 @@ import { AnalysisCache } from './analysisCache';
 import { readWorkspace, saveWorkspace, type WorkspaceLocation } from './workspaceSession';
 import './annotationTask.css';
 import { annotationDraftKey, readAnnotationDraft, saveAnnotationDraft, draftFromRecords } from './annotationDraft';
+import CaseLibraryPanel from './CaseLibraryPanel';
 import { AccountDialog, LoginPage, type AuthUser } from './AccountPortal';
 import SystemStatus from './SystemStatus';
 import { Canvas, useThree } from '@react-three/fiber';
@@ -798,6 +799,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     png_url?: string;
     timestamp?: string;
     operation_id?: string;
+    artifact_id?: string;
     annotation_settings?: any[];
     candidate_engine?: string;
     primary_view?: string;
@@ -972,6 +974,17 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   const [externalPredictionMeta, setExternalPredictionMeta] = useState<Record<string, any> | null>(null);
   const [isRecommendingTolerances, setIsRecommendingTolerances] = useState<boolean>(false);
   const [experimentalTolerance, setExperimentalTolerance] = useState(false);
+  const [caseSource, setCaseSource] = useState<'COMPANY' | 'PERSONAL' | 'BOTH'>('COMPANY');
+  const [caseCollections, setCaseCollections] = useState<any[]>([]);
+  const [sourceCollectionIds, setSourceCollectionIds] = useState<string[]>([]);
+  const [caseLibraryOpen, setCaseLibraryOpen] = useState(false);
+  const [libraryArtifactId, setLibraryArtifactId] = useState<string | undefined>();
+  const refreshCaseCollections = () => axios.get(`${API_BASE}/api/case-library/collections`).then(response => {
+    const collections = response.data.collections || [];
+    setCaseCollections(collections);
+    setSourceCollectionIds(previous => { const valid = previous.filter(id => collections.some((item: any) => item.id === id)); return valid.length === previous.length ? previous : valid; });
+  }).catch(() => undefined);
+  useEffect(() => { refreshCaseCollections(); }, [user.id]);
   const recommendationRequestRef = useRef(0);
   const [toleranceStats, setToleranceStats] = useState<{ total_cases: number; categories: Record<string, number> } | null>(null);
   const [recommendSummary, setRecommendSummary] = useState<{ total_rules: number; high_confidence_count: number; product_family?: string; part_type?: string } | null>(null);
@@ -984,7 +997,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
       ['HISTORICAL_RAG', 'ENGINEER_PERSONAL'].includes(config.tolerance_source || '')
         ? { ...config, tolerance: '', tolerance_config: { mode: 'NONE' }, tolerance_source: 'MANUAL' as const } : config,
     ])));
-  }, [candidateEngine, experimentalTolerance, selectedPart, results?.model_id]);
+  }, [candidateEngine, experimentalTolerance, selectedPart, results?.model_id, caseSource, sourceCollectionIds]);
   const [recommendationTags, setRecommendationTags] = useState<any[]>([]);
   const [recommendationTagIds, setRecommendationTagIds] = useState<Set<string>>(new Set());
   const [storageTagIds, setStorageTagIds] = useState<Set<string>>(new Set());
@@ -1535,6 +1548,8 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
         model_id: modelId,
         part_id: selectedPart,
         candidate_rules: candidateRules,
+        case_source: caseSource,
+        collection_ids: sourceCollectionIds,
         recommendation_tag_ids: Array.from(recommendationTagIds),
         recommendation_tag_match: recommendationTagMatch,
       };
@@ -1770,6 +1785,8 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
           svg_url: res.data.svg_url,
           png_url: res.data.png_url,
           timestamp: res.data.timestamp,
+          operation_id: res.data.operation_id,
+          artifact_id: res.data.artifact_id,
           candidate_engine: res.data.candidate_engine,
           primary_view: res.data.primary_view,
           report_url: res.data.report_url,
@@ -2792,6 +2809,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                       <span style={{ fontSize: 12, fontWeight: 700, color: '#f5f5f5' }}>
                         客製工程圖 ({selectedPart})
                       </span>
+                      {customDrawingResult.candidate_engine === 'experimental_v026' && <button type="button" onClick={() => { setLibraryArtifactId(customDrawingResult.artifact_id); setCaseLibraryOpen(true); }} style={{ background: '#262626', border: '1px solid #404040', borderRadius: 4, color: '#d4d4d4', padding: '5px 9px', fontSize: 11 }}>加入我的推薦案例庫</button>}
                       <span style={{ fontSize: 11, background: '#166534', color: '#86efac', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>
                         已完成標註
                       </span>
@@ -3392,7 +3410,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                         <option value="current">現行推薦（比較基準）</option><option value="native_v1">原生尺寸推薦 V1（實驗）</option>
                       </select>
                     </label>
-                    {experimentalTolerance && <p style={{ color: '#a3a3a3', lineHeight: 1.5, marginBottom: 0 }}>直接分析新版尺寸意圖，僅使用公司案例；不套用個人歷史。角度與未驗證關係尺寸保留人工確認。尚未證明未知零件的推薦精準度。</p>}
+                    {experimentalTolerance && <p style={{ color: '#a3a3a3', lineHeight: 1.5, marginBottom: 0 }}>依下方來源搜尋公司歷史與明確加入的新版案例，不使用個人權重。互斥公差需確認；未驗證尺寸停止推薦。目前尚未證明未知零件的推薦精準度。</p>}
                   </div>}
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, padding: '6px 8px', borderRadius: 4, border: '1px solid #78350f', background: '#211a12', color: '#fcd34d', fontSize: 10, lineHeight: 1.45 }}>
                     <AlertTriangle size={13} style={{ flex: '0 0 auto', marginTop: 1 }} />
@@ -3406,13 +3424,19 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                         <option value="ANY">符合任一標籤</option><option value="ALL">符合全部標籤</option>
                       </select>
                     </div>
+                    {user.role === 'ADMIN' && candidateEngine === 'experimental_v026' && experimentalTolerance && <div style={{ marginBottom: 9 }}>
+                      <select aria-label="推薦案例來源" value={caseSource} onChange={event => setCaseSource(event.target.value as typeof caseSource)} style={{ background: '#262626', border: '1px solid #404040', borderRadius: 3, color: '#ddd', padding: 6, width: '100%' }}>
+                        <option value="COMPANY">公司主資料庫（歷史＋核准共享）</option><option value="PERSONAL">我的推薦案例庫</option><option value="BOTH">公司與我的推薦案例</option>
+                      </select>
+                      {caseSource !== 'COMPANY' && <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 6 }}>{caseCollections.map(collection => <label key={collection.id} style={{ fontSize: 10 }}><input type="checkbox" checked={sourceCollectionIds.includes(collection.id)} onChange={() => setSourceCollectionIds(previous => previous.includes(collection.id) ? previous.filter(id => id !== collection.id) : [...previous, collection.id])} />{collection.name}</label>)}<span style={{ color: '#737373', fontSize: 10 }}>未指定案例集時，搜尋自己已加入的全部案例。</span></div>}
+                    </div>}
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                       {recommendationTags.map(tag => {
                         const active = recommendationTagIds.has(tag.id);
                         return <button key={`recommend-${tag.id}`} type="button" onClick={() => setRecommendationTagIds(previous => { const next = new Set(previous); active ? next.delete(tag.id) : next.add(tag.id); return next; })} style={{ border: `1px solid ${active ? '#2563eb' : '#444'}`, background: active ? '#1e3a8a' : '#262626', color: active ? '#bfdbfe' : '#aaa', padding: '4px 6px', fontSize: 9, cursor: 'pointer' }}>{tag.name}</button>;
                       })}
                     </div>
-                    <div style={{ fontSize: 9, color: '#737373', marginTop: 7 }}>未選標籤時搜尋全部；選取後只使用符合範圍的公司與個人案例。</div>
+                    <div style={{ fontSize: 9, color: '#737373', marginTop: 7 }}>未選標籤時搜尋所選來源的全部可用案例；選取後僅使用符合範圍的案例。標籤不是權限或核准證明。</div>
                   </div>
 
                   <div style={{ border: '1px solid #333', background: '#171717', padding: 8, borderRadius: 4 }}>
@@ -3839,6 +3863,11 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                                     ? `決策來源：規則推論；案例 ${rec.retrieval_trace?.context_case_id || ''} 僅供情境參考`
                                     : '決策來源：一般規則；未採用任何歷史案例'}
                               </div>
+                              {rec.alternatives?.length > 0 && <div style={{ border: '1px solid #78350f', borderRadius: 4, padding: 7, fontSize: 10 }}>
+                                <div style={{ color: '#fbbf24', marginBottom: 6 }}>同一量測存在互斥公差，請核對來源用途後明確採用。</div>
+                                {rec.alternatives.map((option: any, index: number) => <button key={index} type="button" onClick={() => updateRuleConfig(rId, { tolerance_config: option.tolerance_config, tolerance: formatHistoricalTolerance(option.tolerance_config), tolerance_source: 'MANUAL' })}
+                                  style={{ background: '#262626', border: '1px solid #404040', borderRadius: 3, color: '#ddd', padding: 5, marginRight: 5 }}>採用方案 {index + 1}：{formatHistoricalTolerance(option.tolerance_config)}</button>)}
+                              </div>}
                               {rec.evidence_cases && rec.evidence_cases.length > 0 && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 3 }}>
                                   <div style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700 }}>查找案例與相似原因</div>
@@ -4626,6 +4655,8 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
 
   return <>
     {renderWorkspace()}
+    <button type="button" onClick={() => { setLibraryArtifactId(undefined); setCaseLibraryOpen(true); }} style={{ position: 'fixed', left: 18, bottom: 18, zIndex: 1050, display: 'flex', gap: 7, alignItems: 'center', background: '#262626', border: '1px solid #404040', borderRadius: 4, color: '#ddd', padding: '9px 12px', fontSize: 12 }}><Database size={15} />我的推薦案例庫</button>
+    {caseLibraryOpen && <CaseLibraryPanel initialArtifactId={libraryArtifactId} isAdmin={user.role === 'ADMIN'} onClose={() => setCaseLibraryOpen(false)} onChanged={refreshCaseCollections} />}
     {(annotationJobId || annotationTask) && (
       <div role="status" className="annotation-task">
         <div className="annotation-task-heading">

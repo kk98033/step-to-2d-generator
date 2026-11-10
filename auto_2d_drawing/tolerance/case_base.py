@@ -257,9 +257,9 @@ class FeatureCaseBase:
             c_len = self.nominal_length(c_nom)
             c_neighbors = set(case.neighbor_types or [])
             case_part = (case.part_type or "GENERAL").upper()
-            case_family = self.infer_product_family(
+            case_family = str(case_metadata.get('product_family') or self.infer_product_family(
                 (case.source_metadata or {}).get("drawing_file") or case.evidence_source
-            )
+            ) or '').upper()
 
             part_score = 1.0 if case_part == query_part else (0.6 if case_part in {"GENERAL", "MECHANICAL_PART"} else 0.3)
             if not query_family:
