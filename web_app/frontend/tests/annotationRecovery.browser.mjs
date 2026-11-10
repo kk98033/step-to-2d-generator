@@ -282,6 +282,19 @@ try {
     assert.deepEqual(lastRecommendationPayload.collection_ids, ['private-collection']);
     assert.deepEqual(lastRecommendationPayload.recommendation_tag_ids, []);
     console.log(JSON.stringify({ inlineCollectionAdd: 'PASS', privateCustomerRecommendationScope: 'PASS' }));
+    await evaluate("document.querySelector('[aria-label=\"搜尋公司案例\"]').click()");
+    await evaluate("[...document.querySelectorAll('summary')].find(s => s.textContent.includes('公司案例分類')).click()");
+    await evaluate("document.querySelector('[aria-label=\"公司分類 軸類零件\"]').click()");
+    await evaluate("{ const select = document.querySelector('[aria-label=\"公司分類符合方式\"]'); select.value = 'ALL'; select.dispatchEvent(new Event('change', { bubbles: true })); }");
+    const requestsBeforeReload = experimentalRecommendations;
+    await send('Page.reload');
+    await waitFor("document.querySelector('[aria-label=\"搜尋公司案例\"]')?.checked && document.querySelector('[aria-label=\"搜尋我的案例\"]')?.checked");
+    await waitFor("document.querySelector('[aria-label=\"推薦私人客戶\"]').value === 'private-customer' && document.querySelector('[aria-label=\"推薦案例集 Private project\"]')?.checked");
+    assert.equal(await evaluate("document.querySelector('[aria-label=\"公司分類 軸類零件\"]').checked"), true);
+    assert.equal(await evaluate("document.querySelector('[aria-label=\"公司分類符合方式\"]').value"), 'ALL');
+    assert.equal(await evaluate("document.querySelector('[aria-label=\"公差推薦引擎\"]').value"), 'native_v1');
+    assert.equal(experimentalRecommendations, requestsBeforeReload, 'restoring scope must not start a CAD recommendation');
+    console.log(JSON.stringify({ scopeReload: 'PASS', noAutomaticRecommendation: true }));
   }
   await evaluate("document.querySelector('button[title=\"工程師帳號與偏好\"]').click()");
   await waitFor("document.body.innerText.includes('舊版推薦偏好') && document.body.innerText.includes('私人客戶與案例集')");

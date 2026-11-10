@@ -13,6 +13,7 @@ import './annotationTask.css';
 import { annotationDraftKey, readAnnotationDraft, saveAnnotationDraft, draftFromRecords } from './annotationDraft';
 import CaseLibraryPanel from './CaseLibraryPanel';
 import RecommendationScopePanel from './RecommendationScopePanel';
+import { readRecommendationScope, saveRecommendationScope } from './recommendationScopeStorage';
 import { AccountDialog, LoginPage, type AuthUser } from './AccountPortal';
 import SystemStatus from './SystemStatus';
 import { Canvas, useThree } from '@react-three/fiber';
@@ -974,12 +975,13 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   const [externalPredictionsByRule, setExternalPredictionsByRule] = useState<Record<string, any>>({});
   const [externalPredictionMeta, setExternalPredictionMeta] = useState<Record<string, any> | null>(null);
   const [isRecommendingTolerances, setIsRecommendingTolerances] = useState<boolean>(false);
-  const [experimentalTolerance, setExperimentalTolerance] = useState(false);
-  const [caseSource, setCaseSource] = useState<'COMPANY' | 'PERSONAL' | 'BOTH'>('COMPANY');
+  const [savedRecommendationScope] = useState(() => readRecommendationScope(user.id));
+  const [experimentalTolerance, setExperimentalTolerance] = useState(user.role === 'ADMIN' && savedRecommendationScope.nativeEnabled);
+  const [caseSource, setCaseSource] = useState(savedRecommendationScope.caseSource);
   const [caseCollections, setCaseCollections] = useState<any[]>([]);
   const [caseCustomers, setCaseCustomers] = useState<any[]>([]);
-  const [sourceCustomerId, setSourceCustomerId] = useState('');
-  const [sourceCollectionIds, setSourceCollectionIds] = useState<string[]>([]);
+  const [sourceCustomerId, setSourceCustomerId] = useState(savedRecommendationScope.customerId);
+  const [sourceCollectionIds, setSourceCollectionIds] = useState<string[]>(savedRecommendationScope.collectionIds);
   const [caseLibraryOpen, setCaseLibraryOpen] = useState(false);
   const [libraryArtifactId, setLibraryArtifactId] = useState<string | undefined>();
   const refreshCaseCollections = () => axios.get(`${API_BASE}/api/case-library/collections`).then(response => {
@@ -1010,9 +1012,13 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     ])));
   }, [candidateEngine, experimentalTolerance, selectedPart, results?.model_id, caseSource, sourceCollectionIds, sourceCustomerId]);
   const [recommendationTags, setRecommendationTags] = useState<any[]>([]);
-  const [recommendationTagIds, setRecommendationTagIds] = useState<Set<string>>(new Set());
+  const [recommendationTagIds, setRecommendationTagIds] = useState<Set<string>>(() => new Set(savedRecommendationScope.tagIds));
   const [storageTagIds, setStorageTagIds] = useState<Set<string>>(new Set());
-  const [recommendationTagMatch, setRecommendationTagMatch] = useState<'ANY' | 'ALL'>('ANY');
+  const [recommendationTagMatch, setRecommendationTagMatch] = useState(savedRecommendationScope.match);
+  useEffect(() => {
+    saveRecommendationScope(user.id, { caseSource, customerId: sourceCustomerId, collectionIds: sourceCollectionIds,
+      tagIds: [...recommendationTagIds], match: recommendationTagMatch, nativeEnabled: experimentalTolerance });
+  }, [user.id, caseSource, sourceCustomerId, sourceCollectionIds, recommendationTagIds, recommendationTagMatch, experimentalTolerance]);
   const [evidenceViewer, setEvidenceViewer] = useState<{
     caseId: string;
     modelName: string;
@@ -1091,7 +1097,14 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
       .catch(err => console.error('Failed to load tolerance stats:', err));
 
     axios.get(`${API_BASE}/api/recommendation-tags`)
-      .then(res => setRecommendationTags(res.data?.tags || []))
+      .then(res => {
+        const tags = res.data?.tags || [];
+        setRecommendationTags(tags);
+        setRecommendationTagIds(previous => {
+          const valid = [...previous].filter(id => tags.some((tag: any) => tag.id === id));
+          return valid.length === previous.size ? previous : new Set(valid);
+        });
+      })
       .catch(err => console.error('Failed to load recommendation tags:', err));
   }, []);
 
@@ -4745,7 +4758,7 @@ function App() {
         </button>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
-        <WorkspaceApp user={user} />
+        <WorkspaceApp key={user.id} user={user} />
       </div>
       {accountOpen && (
         <AccountDialog

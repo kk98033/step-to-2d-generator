@@ -48,5 +48,6 @@ export default function RecommendationScopePanel(props: Props) {
       <button type="button" onClick={props.onManage} style={{ ...field, width: 'auto', cursor: 'pointer' }}>管理私人客戶與案例集</button>
     </div>
     <p role="status" style={{ ...note, marginBottom: 0 }}>目前搜尋：{company && personal ? '公司與我的案例' : company ? '公司案例' : '我的案例'}。至少選擇一個來源。</p>
+    <p style={{ ...note, marginBottom: 0 }}>選擇會依帳號自動記憶於此瀏覽器。</p>
   </section>;
 }
