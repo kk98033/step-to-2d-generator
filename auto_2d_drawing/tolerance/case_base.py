@@ -257,7 +257,10 @@ class FeatureCaseBase:
             c_len = self.nominal_length(c_nom)
             c_neighbors = set(case.neighbor_types or [])
             case_part = (case.part_type or "GENERAL").upper()
-            case_family = str(case_metadata.get('product_family') or self.infer_product_family(
+            # Historical product_family may contain a batch/customer label.
+            # Keep the proven drawing-number rule; native cases have a typed contract.
+            native_family = case_metadata.get('product_family') if case_metadata.get('case_contract') == 'NATIVE_MEASUREMENT_V1' else None
+            case_family = str(native_family or self.infer_product_family(
                 (case.source_metadata or {}).get("drawing_file") or case.evidence_source
             ) or '').upper()
 

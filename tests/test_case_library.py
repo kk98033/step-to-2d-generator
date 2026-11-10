@@ -8,6 +8,7 @@ from pathlib import Path
 from web_app.backend.identity_store import IdentityStore
 from web_app.backend.case_library_store import CaseLibraryStore
 from auto_2d_drawing.tolerance.case_base import ToleranceCase, FeatureCaseBase
+from auto_2d_drawing.tolerance.feature_graph import FeatureNode
 from auto_2d_drawing.tolerance.native_case_contract import build_native_cases, historical_compatibility, merge_compatible_cases
 from experimental_lab.tolerance_extraction_audit.TOLERANCE_V1_EXPERIMENT.test_engine import fixture
 from experimental_lab.tolerance_extraction_audit.TOLERANCE_V1_EXPERIMENT.engine import NativeToleranceEngine
@@ -123,6 +124,27 @@ class CaseLibraryTests(unittest.TestCase):
         rec = result['recommendations']['native-overall']
         self.assertEqual(rec['tolerance_config'], {'mode': 'CUSTOM_SYMMETRIC', 'dev': .1})
         self.assertEqual(rec['confidence_basis'], 'EXACT_NATIVE_SOURCE_IDENTITY')
+
+    def test_historical_family_uses_drawing_number_despite_batch_label_metadata(self):
+        payload = copy.deepcopy(self.payloads[0])
+        payload['source_metadata'].pop('case_contract')
+        payload['source_metadata'].update(product_family='UNRELATED_BATCH_LABEL', drawing_file='2AL0W5010H-R01.dxf')
+        base = merge_compatible_cases([ToleranceCase(**payload)], [])
+        node = FeatureNode(id='query', feature_type=payload['feature_type'], nominal=payload['nominal_dimensions'],
+            inferred_role=payload['inferred_role'], axial_span=(0, 1), center_axial=.5, source_info={})
+        match = base.search_similar_cases_detailed(node, part_type='GENERAL', product_family='AL0W', dimension_category='LINEAR')[0]
+        self.assertEqual(match['product_family'], 'AL0W')
+        self.assertTrue(match['same_product_family'])
+        self.assertEqual(match['score_breakdown']['product_family'], 1.0)
+
+    def test_native_family_uses_explicit_contract_without_drawing_number(self):
+        payload = copy.deepcopy(self.payloads[0])
+        payload['source_metadata'].update(product_family='AL0W', drawing_file='NATIVE_hash.dxf')
+        base = merge_compatible_cases([], [payload])
+        node = FeatureNode(id='query', feature_type=payload['feature_type'], nominal=payload['nominal_dimensions'],
+            inferred_role=payload['inferred_role'], axial_span=(0, 1), center_axial=.5, source_info={})
+        match = base.search_similar_cases_detailed(node, part_type='GENERAL', product_family='AL0W', dimension_category='LINEAR')[0]
+        self.assertTrue(match['same_product_family'])
 
     def test_id_collision_stops_merge_and_unverified_native_geometry_is_rejected(self):
         company = ToleranceCase(**self.payloads[0]); company.tolerance_config = {'mode': 'CUSTOM_SYMMETRIC', 'dev': .8}

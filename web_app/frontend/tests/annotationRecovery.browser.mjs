@@ -230,6 +230,11 @@ try {
   await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '已加入案例').click()");
   await waitFor("document.body.innerText.includes('OVERALL_LENGTH')");
   await evaluate("document.querySelector('[aria-label=\"關閉案例庫\"]').click()");
+  await evaluate("document.querySelector('button[title=\"工程師帳號與偏好\"]').click()");
+  await waitFor("document.body.innerText.includes('舊版推薦偏好') && document.body.innerText.includes('私人客戶與案例集')");
+  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '私人客戶與案例集').click()");
+  await waitFor("!!document.querySelector('[aria-label=\"私人客戶名稱\"]') && document.body.innerText.includes('Private client')");
+  await evaluate("document.querySelector('[aria-label=\"關閉案例庫\"]').click()");
   assert.ok(modelLoads >= 2);
   assert.deepEqual(errors, []);
   const snapshot = await send('Page.captureScreenshot', { format: 'png' });

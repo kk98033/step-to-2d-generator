@@ -984,7 +984,12 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     setCaseCollections(collections);
     setSourceCollectionIds(previous => { const valid = previous.filter(id => collections.some((item: any) => item.id === id)); return valid.length === previous.length ? previous : valid; });
   }).catch(() => undefined);
-  useEffect(() => { refreshCaseCollections(); }, [user.id]);
+  useEffect(() => {
+    const refresh = () => { void refreshCaseCollections(); };
+    refresh();
+    window.addEventListener('cad-case-library-changed', refresh);
+    return () => window.removeEventListener('cad-case-library-changed', refresh);
+  }, [user.id]);
   const recommendationRequestRef = useRef(0);
   const [toleranceStats, setToleranceStats] = useState<{ total_cases: number; categories: Record<string, number> } | null>(null);
   const [recommendSummary, setRecommendSummary] = useState<{ total_rules: number; high_confidence_count: number; product_family?: string; part_type?: string } | null>(null);

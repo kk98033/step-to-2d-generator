@@ -1,7 +1,8 @@
 import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
 import axios from 'axios';
+import CaseLibraryPanel from './CaseLibraryPanel';
 import {
-  ArchiveRestore, FileBox, History, KeyRound, LockKeyhole, LogIn,
+  ArchiveRestore, Database, FileBox, History, KeyRound, LockKeyhole, LogIn,
   LogOut, RotateCcw, Save, Settings, ShieldCheck, Trash2, UserRound, X,
 } from 'lucide-react';
 
@@ -114,7 +115,7 @@ type Preferences = {
 
 export function AccountDialog({ user, onClose, onLogout }: { user: AuthUser; onClose: () => void; onLogout: () => void }) {
   const requiresPasswordChange = user.role !== 'ADMIN' && user.must_change_password;
-  const [tab, setTab] = useState<'preferences' | 'cases' | 'artifacts' | 'trash' | 'security'>(requiresPasswordChange ? 'security' : 'preferences');
+  const [tab, setTab] = useState<'preferences' | 'library' | 'cases' | 'artifacts' | 'trash' | 'security'>(requiresPasswordChange ? 'security' : 'preferences');
   const [preferences, setPreferences] = useState<Preferences | null>(null);
   const [artifacts, setArtifacts] = useState<any[]>([]);
   const [personalCases, setPersonalCases] = useState<any[]>([]);
@@ -177,7 +178,8 @@ export function AccountDialog({ user, onClose, onLogout }: { user: AuthUser; onC
   };
 
   const tabs = [
-    { id: 'preferences', label: '推薦偏好', icon: Settings },
+    { id: 'preferences', label: '舊版推薦偏好', icon: Settings },
+    { id: 'library', label: '私人客戶與案例集', icon: Database },
     { id: 'cases', label: '個人公差案例', icon: History },
     { id: 'artifacts', label: '標註成品', icon: FileBox },
     { id: 'trash', label: '回收桶', icon: ArchiveRestore },
@@ -185,6 +187,9 @@ export function AccountDialog({ user, onClose, onLogout }: { user: AuthUser; onC
       ? [{ id: 'security', label: '登入安全', icon: ShieldCheck }]
       : []),
   ];
+
+  if (tab === 'library') return <CaseLibraryPanel isAdmin={user.role === 'ADMIN'} onClose={() => setTab('preferences')}
+    onChanged={() => window.dispatchEvent(new Event('cad-case-library-changed'))} />;
 
   return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.72)', zIndex: 5000, display: 'grid', placeItems: 'center', padding: 20 }}>
     <div style={{ position: 'relative', width: 1040, maxWidth: '100%', height: 700, maxHeight: '92vh', background: '#171717', border: '1px solid #333', borderRadius: 8, display: 'flex', overflow: 'hidden' }}>
