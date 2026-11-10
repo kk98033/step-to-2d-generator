@@ -55,6 +55,50 @@ class CaseLibraryTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             self.library.cases(self.two.id, [self.collection['id']])
 
+    def test_customer_rename_keeps_links_and_owner_isolation(self):
+        renamed = self.library.update_customer(self.one.id, self.customer['id'], 'Renamed customer')
+        self.assertEqual(renamed['name'], 'Renamed customer')
+        self.assertEqual(self.library.collections(self.one.id)[0]['private_customer_id'], self.customer['id'])
+        for action in (lambda: self.library.update_customer(self.two.id, self.customer['id'], 'Forbidden'),
+                       lambda: self.library.delete_customer(self.two.id, self.customer['id'])):
+            with self.assertRaises(KeyError): action()
+        self.assertEqual(self.library.customers(self.one.id)[0]['name'], 'Renamed customer')
+
+    def test_customer_delete_detaches_active_and_archived_collections_but_keeps_cases(self):
+        self.add()
+        archived = self.library.create_collection(self.one.id, {'name': 'Archived', 'private_customer_id': self.customer['id']})
+        self.library.update_collection(self.one.id, archived['id'], {'is_active': False})
+        before = self.library.cases(self.one.id)[0]['case']
+        result = self.library.delete_customer(self.one.id, self.customer['id'])
+        self.assertEqual(result['detached_collection_count'], 2)
+        self.assertEqual(self.library.customers(self.one.id), [])
+        self.assertIsNone(self.library.collections(self.one.id)[0]['private_customer_id'])
+        self.library.update_collection(self.one.id, archived['id'], {'is_active': True})
+        self.assertTrue(all(row['private_customer_id'] is None for row in self.library.collections(self.one.id)))
+        self.assertEqual(self.library.cases(self.one.id)[0]['case'], before)
+        self.assertEqual(self.library.artifact(self.one.id, self.artifact)['id'], self.artifact)
+        with self.assertRaises(KeyError): self.library.delete_customer(self.one.id, self.customer['id'])
+
+    def test_customer_crud_http_api_validates_names_duplicates_and_ownership(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from web_app.backend import case_library_api as api
+        app = FastAPI(); app.include_router(api.router)
+        app.dependency_overrides[api.require_user] = lambda: self.one
+        with patch.object(api, 'library', self.library), TestClient(app) as client:
+            customer = client.post('/api/case-library/customers', json={'name': 'API client'})
+            self.assertEqual(customer.status_code, 201)
+            path = '/api/case-library/customers/' + customer.json()['id']
+            self.assertEqual(client.patch(path, json={'name': 'Updated'}).json()['name'], 'Updated')
+            for name in ('', ' ' * 3, 'x' * 161, self.customer['name']):
+                self.assertEqual(client.patch(path, json={'name': name}).status_code, 409)
+            app.dependency_overrides[api.require_user] = lambda: self.two
+            self.assertEqual(client.patch(path, json={'name': 'Not mine'}).status_code, 404)
+            self.assertEqual(client.delete(path).status_code, 404)
+            app.dependency_overrides[api.require_user] = lambda: self.one
+            self.assertEqual(client.delete(path).status_code, 200)
+            self.assertEqual(client.delete(path).status_code, 404)
+
     def test_repeated_add_and_multiple_collections_reference_one_case(self):
         second = self.library.create_collection(self.one.id, {'name': 'Project B'})
         first = self.add()

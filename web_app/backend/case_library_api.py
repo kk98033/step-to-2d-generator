@@ -39,6 +39,16 @@ def create_collection(body: dict = Body(...), user: CurrentUser = Depends(requir
     return call(library.create_collection, user.id, body)
 
 
+@router.patch('/customers/{customer_id}')
+def update_customer(customer_id: str, body: dict = Body(...), user: CurrentUser = Depends(require_user)):
+    return call(library.update_customer, user.id, customer_id, body.get('name'))
+
+
+@router.delete('/customers/{customer_id}')
+def delete_customer(customer_id: str, user: CurrentUser = Depends(require_user)):
+    return call(library.delete_customer, user.id, customer_id)
+
+
 @router.patch('/collections/{collection_id}')
 def update_collection(collection_id: str, body: dict = Body(...), user: CurrentUser = Depends(require_user)):
     return call(library.update_collection, user.id, collection_id, body)

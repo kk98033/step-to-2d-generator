@@ -29,4 +29,8 @@
 .case-library-collection-form label { display:flex; flex-direction:column; gap:8px; min-width:0; color:#a3a3a3; font-size:12px; }
 .case-library .case-library-collection-form input,.case-library .case-library-collection-form select { width:100%; min-width:0; box-sizing:border-box; }
 .case-library select { cursor:pointer; color-scheme:dark; }
+.case-library-customer { flex-wrap:wrap; }
+.case-library-customer form { width:100%; }
+.case-library-delete-confirm { flex-basis:100%; padding:12px; border:1px solid #78350f; background:#262626; }
+.case-library-delete-confirm p { margin:0 0 12px; color:#d4d4d4; line-height:1.6; }
 @media(max-width:900px) { .case-library form.case-library-collection-form { grid-template-columns:minmax(0,1fr); } }

@@ -49,6 +49,16 @@ const server = createServer(async (req, res) => {
       let body = ''; for await (const chunk of req) body += chunk;
       libraryCustomers.push({ ...JSON.parse(body), id: 'private-customer' }); payload = libraryCustomers.at(-1);
     }
+    else if (path === '/api/case-library/customers/private-customer') {
+      if (req.method === 'PATCH') {
+        let body = ''; for await (const chunk of req) body += chunk;
+        libraryCustomers[0].name = JSON.parse(body).name; payload = libraryCustomers[0];
+      } else if (req.method === 'DELETE') {
+        libraryCustomers.splice(0);
+        libraryCollections.forEach(collection => { if (collection.private_customer_id === 'private-customer') collection.private_customer_id = null; });
+        payload = { status: 'deleted', detached_collection_count: libraryCollections.length };
+      }
+    }
     else if (path === '/api/case-library/artifacts') payload = { artifacts: [{ id: 'native-artifact', title: 'Native shaft',
       created_at: '2026-11-10T08:00:00Z', can_curate: true,
       features: [{ rule_id: 'fixture-rule', nominal_value: 21.4, tolerance_config: { mode: 'CUSTOM_SYMMETRIC', dev: .1 } }] }] };
@@ -265,6 +275,24 @@ try {
   await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '建立案例集').click()");
   await waitFor("document.body.innerText.includes('Account project')");
   assert.equal(libraryCollections[1].private_customer_id, 'private-customer');
+  await evaluate("document.querySelector('[data-customer-id=\"private-customer\"] button').click()");
+  await fill('修改私人客戶名稱', 'Renamed private client');
+  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '儲存名稱').click()");
+  await waitFor("document.body.innerText.includes('私人客戶名稱已更新')");
+  assert.equal(libraryCustomers[0].name, 'Renamed private client');
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"案例集所屬客戶\"]').selectedOptions[0].textContent"), 'Renamed private client');
+  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '刪除客戶').click()");
+  await waitFor("!!document.querySelector('[aria-label=\"刪除私人客戶確認\"]')");
+  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '取消刪除').click()");
+  assert.equal(libraryCustomers.length, 1);
+  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '刪除客戶').click()");
+  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '確認刪除客戶').click()");
+  await waitFor("document.body.innerText.includes('私人客戶已刪除')");
+  assert.equal(libraryCustomers.length, 0);
+  assert.equal(libraryCollections.length, 2);
+  assert.ok(libraryCollections.every(collection => collection.private_customer_id === null));
+  assert.equal(libraryCases.length, 1, 'deleting a customer keeps saved cases');
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"案例集所屬客戶\"]').value"), '');
   const inlineScreenshot = await send('Page.captureScreenshot', { format: 'png' });
   writeFileSync(resolve(root, '.codex_runtime/case-library-settings-' + testRole + '.png'), Buffer.from(inlineScreenshot.data, 'base64'));
   await evaluate("document.querySelector('[aria-label=\"關閉帳號設定\"]').click()");

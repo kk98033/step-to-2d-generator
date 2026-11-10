@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
-import { X, FolderPlus, Database, ExternalLink, Check, Archive } from 'lucide-react';
+import { X, FolderPlus, Database, ExternalLink, Check, Archive, Pencil, Trash2 } from 'lucide-react';
 import './caseLibrary.css';
 
 const API = import.meta.env.VITE_API_BASE_URL || '';
@@ -18,6 +18,9 @@ export default function CaseLibraryPanel({ onClose, isAdmin, initialArtifactId, 
   const [customerName, setCustomerName] = useState('');
   const [collectionName, setCollectionName] = useState('');
   const [customerLink, setCustomerLink] = useState('');
+  const [editingCustomer, setEditingCustomer] = useState<string | null>(null);
+  const [editedCustomerName, setEditedCustomerName] = useState('');
+  const [deletingCustomer, setDeletingCustomer] = useState<string | null>(null);
   const [artifactId, setArtifactId] = useState(initialArtifactId || '');
   const [ruleIds, setRuleIds] = useState<string[]>([]);
   const [collectionIds, setCollectionIds] = useState<string[]>([]);
@@ -39,6 +42,9 @@ export default function CaseLibraryPanel({ onClose, isAdmin, initialArtifactId, 
     setData((previous: any) => ({ ...previous, ...responses[0].data, ...responses[1].data, ...responses[2].data, ...responses[3].data }));
   };
   useEffect(() => { load().catch(error => setMessage(errorMessage(error))); }, []);
+  useEffect(() => {
+    if (customerLink.startsWith('private:') && !data.customers.some((item: any) => `private:${item.id}` === customerLink)) setCustomerLink('');
+  }, [data.customers]);
   useEffect(() => {
     const artifact = data.artifacts.find((item: any) => item.id === artifactId);
     if (!artifact || initializedArtifact.current === artifactId) return;
@@ -67,7 +73,23 @@ export default function CaseLibraryPanel({ onClose, isAdmin, initialArtifactId, 
         <form onSubmit={event => { event.preventDefault(); execute(async () => { const response = await axios.post(`${API}/api/case-library/customers`, { name: customerName }); setCustomerName(''); setCustomerLink(`private:${response.data.id}`); }, '私人客戶已建立'); }}>
           <input aria-label="私人客戶名稱" value={customerName} onChange={event => setCustomerName(event.target.value)} placeholder="私人客戶名稱" required maxLength={160} /><button disabled={busy}>建立私人客戶</button>
         </form>
-        <div className="case-library-chips">{data.customers.map((item: any) => <span key={item.id}>{item.name}</span>)}</div>
+        {data.customers.map((item: any) => <article key={item.id} data-customer-id={item.id} className="case-library-customer">
+          {editingCustomer === item.id ? <form onSubmit={event => { event.preventDefault(); execute(async () => {
+            await axios.patch(`${API}/api/case-library/customers/${item.id}`, { name: editedCustomerName }); setEditingCustomer(null);
+          }, '私人客戶名稱已更新'); }}>
+            <input aria-label="修改私人客戶名稱" value={editedCustomerName} onChange={event => setEditedCustomerName(event.target.value)} required maxLength={160} autoFocus />
+            <button disabled={busy}><Check size={14} />儲存名稱</button><button type="button" disabled={busy} onClick={() => setEditingCustomer(null)}>取消修改</button>
+          </form> : <><strong>{item.name}</strong><div className="case-library-actions">
+            <button disabled={busy} onClick={() => { setEditingCustomer(item.id); setEditedCustomerName(item.name); setDeletingCustomer(null); }}><Pencil size={14} />修改名稱</button>
+            <button disabled={busy} onClick={() => { setDeletingCustomer(item.id); setEditingCustomer(null); }}><Trash2 size={14} />刪除客戶</button>
+          </div></>}
+          {deletingCustomer === item.id && <div className="case-library-delete-confirm" role="alert" aria-label="刪除私人客戶確認">
+            <p>確定刪除「{item.name}」？關聯案例集將改為不指定客戶，既有案例與工程圖會保留。</p>
+            <div className="case-library-actions"><button disabled={busy} onClick={() => execute(async () => {
+              await axios.delete(`${API}/api/case-library/customers/${item.id}`); setDeletingCustomer(null);
+            }, '私人客戶已刪除，案例集與原始成果保留')}>確認刪除客戶</button><button disabled={busy} onClick={() => setDeletingCustomer(null)}>取消刪除</button></div>
+          </div>}
+        </article>)}
         <h3>建立案例集</h3><form className="case-library-collection-form" onSubmit={event => { event.preventDefault(); execute(async () => {
           const [kind, id] = customerLink.split(':');
           await axios.post(`${API}/api/case-library/collections`, { name: collectionName, private_customer_id: kind === 'private' ? id : null, customer_tag_id: kind === 'global' ? id : null }); setCollectionName('');
@@ -79,7 +101,7 @@ export default function CaseLibraryPanel({ onClose, isAdmin, initialArtifactId, 
           </select></label><button disabled={busy}><FolderPlus size={15} />建立案例集</button>
         </form>
         {!data.customers.length && !data.tags.some((item: any) => item.dimension === 'CUSTOMER') && <p className="case-library-note">尚無可選客戶。請先在上方建立私人客戶，或選擇不指定客戶；公司客戶分類由管理員建立。</p>}
-        {data.collections.map((item: any) => <article key={item.id}><div><strong>{item.name}</strong><small>{item.case_count} 個尺寸案例 · {item.private_customer_id ? '私人客戶' : item.customer_tag_id ? '引用全局客戶分類，資料仍私人' : '私人案例集'}</small></div>
+        {data.collections.map((item: any) => <article key={item.id}><div><strong>{item.name}</strong><small>{item.case_count} 個尺寸案例 · {item.private_customer_id ? `私人客戶：${data.customers.find((customer: any) => customer.id === item.private_customer_id)?.name || ''}` : item.customer_tag_id ? '引用全局客戶分類，資料仍私人' : '私人案例集'}</small></div>
           <button disabled={busy} onClick={() => execute(() => axios.patch(`${API}/api/case-library/collections/${item.id}`, { is_active: false }), '案例集已封存，原始成果保留')}><Archive size={14} />封存</button></article>)}
       </>}
       {tab === 'artifacts' && <>

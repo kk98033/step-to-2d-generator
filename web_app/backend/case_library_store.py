@@ -46,6 +46,22 @@ class CaseLibraryStore:
             conn.execute(insert(T.customers).values(**value))
         return value
 
+    def update_customer(self, owner, customer_id, name):
+        name = self._name(name)
+        with self.engine.begin() as conn:
+            value = self._owned(conn, T.customers, customer_id, owner)
+            conn.execute(update(T.customers).where(T.customers.c.id == customer_id).values(name=name))
+        return {**value, 'name': name}
+
+    def delete_customer(self, owner, customer_id):
+        with self.engine.begin() as conn:
+            self._owned(conn, T.customers, customer_id, owner)
+            detached = conn.execute(update(T.collections).where(and_(
+                T.collections.c.owner_user_id == owner, T.collections.c.private_customer_id == customer_id
+            )).values(private_customer_id=None, updated_at=now())).rowcount
+            conn.execute(delete(T.customers).where(T.customers.c.id == customer_id))
+        return {'status': 'deleted', 'detached_collection_count': detached}
+
     def collections(self, owner):
         with self.engine.connect() as conn:
             rows = [dict(row) for row in conn.execute(select(T.collections).where(and_(T.collections.c.owner_user_id == owner, T.collections.c.is_active.is_(True))).order_by(T.collections.c.name)).mappings()]
