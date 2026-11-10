@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import axios from 'axios';
+import CaseLibraryPanel from './CaseLibraryPanel';
 import { AuditRequestDetails, auditActionLabels, requestInfo } from './AuditRequestDetails';
 import {
   Activity, AlertCircle, ArchiveRestore, CheckCircle2, Clock3, Download,
@@ -368,6 +369,7 @@ export default function AdminAccountPage({ section = 'accounts' }: { section?: A
           <div style={panelStyle}><h3>公司 Email 網域</h3><form onSubmit={addDomain} style={{ display: 'flex', gap: 9, marginBottom: 16 }}><input required placeholder="company.example" value={newDomain} onChange={event => setNewDomain(event.target.value)} style={fieldStyle} /><button style={buttonStyle}><Plus size={15} />新增網域</button></form>{domains.map(domain => <div key={domain} style={rowStyle}>{editingDomain === domain ? <><input value={editedDomain} onChange={event => setEditedDomain(event.target.value)} style={fieldStyle} /><div style={{ display: 'flex', gap: 8 }}><button onClick={() => saveDomain(domain)} style={buttonStyle}><Save size={15} />儲存</button><button onClick={() => setEditingDomain(null)} style={{ ...buttonStyle, background: '#262626', borderColor: '#555' }}><X size={15} />取消</button></div></> : <><strong>@{domain}</strong><div style={{ display: 'flex', gap: 8 }}><button onClick={() => { setEditingDomain(domain); setEditedDomain(domain); }} style={buttonStyle}><Pencil size={15} />修改</button><button onClick={() => deleteDomain(domain)} style={{ ...buttonStyle, background: '#3f1d1d', borderColor: '#7f1d1d' }}><Trash2 size={15} />刪除</button></div></>}</div>)}</div>
           <div style={{ ...panelStyle, maxWidth: 520 }}><h3>回收桶</h3><label style={{ display: 'block', color: '#aaa', fontSize: 12, marginBottom: 7 }}>保留天數（1–3650）</label><input type="number" min={1} max={3650} value={retentionDays} onChange={event => setRetentionDays(Number(event.target.value))} style={fieldStyle} /><button onClick={saveRetention} style={{ ...buttonStyle, marginTop: 12 }}><Save size={15} />儲存設定</button></div>
         </section>}
+        {tab === 'settings' && <div style={panelStyle}><CaseLibraryPanel embedded mode="review" isAdmin /></div>}
       </main>
   </div>;
 }

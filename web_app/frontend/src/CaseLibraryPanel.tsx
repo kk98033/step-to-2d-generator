@@ -6,10 +6,12 @@ import './caseLibrary.css';
 const API = import.meta.env.VITE_API_BASE_URL || '';
 const errorMessage = (error: any) => typeof error?.response?.data?.detail === 'string' ? error.response.data.detail : error.message || '操作失敗';
 
-export default function CaseLibraryPanel({ onClose, isAdmin, initialArtifactId, onChanged }: {
-  onClose: () => void; isAdmin: boolean; initialArtifactId?: string; onChanged?: () => void;
+export default function CaseLibraryPanel({ onClose, isAdmin, initialArtifactId, onChanged, embedded = false, mode = 'personal' }: {
+  onClose?: () => void; isAdmin: boolean; initialArtifactId?: string; onChanged?: () => void;
+  embedded?: boolean; mode?: 'personal' | 'review';
 }) {
-  const [tab, setTab] = useState<'artifacts' | 'collections' | 'cases' | 'review'>(initialArtifactId ? 'artifacts' : 'collections');
+  const reviewing = mode === 'review' && isAdmin;
+  const [tab, setTab] = useState<'artifacts' | 'collections' | 'cases' | 'review'>(reviewing ? 'review' : initialArtifactId ? 'artifacts' : 'collections');
   const [data, setData] = useState<any>({ collections: [], customers: [], artifacts: [], cases: [], tags: [], requests: [] });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -25,12 +27,16 @@ export default function CaseLibraryPanel({ onClose, isAdmin, initialArtifactId, 
   const initializedArtifact = useRef('');
 
   const load = async () => {
+    if (reviewing) {
+      const [requests, tags] = await Promise.all([axios.get(`${API}/api/case-library/share-requests`), axios.get(`${API}/api/recommendation-tags`)]);
+      setData((previous: any) => ({ ...previous, ...requests.data, ...tags.data }));
+      return;
+    }
     const responses = await Promise.all([
       axios.get(`${API}/api/case-library/collections`), axios.get(`${API}/api/case-library/artifacts`),
       axios.get(`${API}/api/case-library/cases`), axios.get(`${API}/api/recommendation-tags`),
-      isAdmin ? axios.get(`${API}/api/case-library/share-requests`) : Promise.resolve({ data: { requests: [] } }),
     ]);
-    setData({ ...responses[0].data, ...responses[1].data, ...responses[2].data, ...responses[3].data, ...responses[4].data });
+    setData((previous: any) => ({ ...previous, ...responses[0].data, ...responses[1].data, ...responses[2].data, ...responses[3].data }));
   };
   useEffect(() => { load().catch(error => setMessage(errorMessage(error))); }, []);
   useEffect(() => {
@@ -50,28 +56,29 @@ export default function CaseLibraryPanel({ onClose, isAdmin, initialArtifactId, 
   const toggle = (values: string[], value: string) => values.includes(value) ? values.filter(item => item !== value) : [...values, value];
   const artifact = data.artifacts.find((item: any) => item.id === artifactId);
 
-  return <div className="case-library-backdrop"><section className="case-library" role="dialog" aria-modal="true" aria-label="我的推薦案例庫">
-    <header><div><Database size={19} /><strong>我的推薦案例庫</strong></div><button aria-label="關閉案例庫" onClick={onClose}><X size={18} /></button></header>
-    <p className="case-library-note">工程圖成果自動保存。只有你確認並加入的新版尺寸案例才會進入此推薦案例庫；既有圖面與舊個人紀錄不會被刪除或自動轉換。</p>
-    <nav>{([['collections', '案例集與客戶'], ['artifacts', '從成果加入'], ['cases', '已加入案例'], ...(isAdmin ? [['review', '公司共享審核']] : [])] as const).map(([id, label]) => <button key={id} aria-pressed={tab === id} onClick={() => setTab(id as typeof tab)}>{label}</button>)}</nav>
+  const content = <section className={`case-library${embedded ? ' case-library-embedded' : ''}`} role={embedded ? 'region' : 'dialog'} aria-modal={embedded ? undefined : true} aria-label={reviewing ? '公司共享審核' : '我的推薦案例庫'}>
+    <header><div><Database size={19} /><strong>{reviewing ? '公司共享審核' : embedded ? '私人客戶與案例集' : '我的推薦案例庫'}</strong></div>{!embedded && <button aria-label="關閉案例庫" onClick={onClose}><X size={18} /></button>}</header>
+    {!reviewing && <><p className="case-library-note">工程圖成果自動保存。只有你確認並加入的新版尺寸案例才會進入此推薦案例庫；既有圖面與舊個人紀錄不會被刪除或自動轉換。</p>
+    <nav>{([['collections', '案例集與客戶'], ['artifacts', '從成果加入'], ['cases', '已加入案例']] as const).map(([id, label]) => <button key={id} aria-pressed={tab === id} onClick={() => setTab(id)}>{label}</button>)}</nav></>}
     {message && <div className="case-library-message" role="status">{message}</div>}
-    <main>
+    <div className="case-library-content">
       {tab === 'collections' && <>
         <h3>私人客戶</h3><p className="case-library-note">僅自己可見，不會自動連結或公開至公司客戶。</p>
-        <form onSubmit={event => { event.preventDefault(); execute(async () => { await axios.post(`${API}/api/case-library/customers`, { name: customerName }); setCustomerName(''); }, '私人客戶已建立'); }}>
+        <form onSubmit={event => { event.preventDefault(); execute(async () => { const response = await axios.post(`${API}/api/case-library/customers`, { name: customerName }); setCustomerName(''); setCustomerLink(`private:${response.data.id}`); }, '私人客戶已建立'); }}>
           <input aria-label="私人客戶名稱" value={customerName} onChange={event => setCustomerName(event.target.value)} placeholder="私人客戶名稱" required maxLength={160} /><button disabled={busy}>建立私人客戶</button>
         </form>
         <div className="case-library-chips">{data.customers.map((item: any) => <span key={item.id}>{item.name}</span>)}</div>
-        <h3>建立案例集</h3><form onSubmit={event => { event.preventDefault(); execute(async () => {
+        <h3>建立案例集</h3><form className="case-library-collection-form" onSubmit={event => { event.preventDefault(); execute(async () => {
           const [kind, id] = customerLink.split(':');
           await axios.post(`${API}/api/case-library/collections`, { name: collectionName, private_customer_id: kind === 'private' ? id : null, customer_tag_id: kind === 'global' ? id : null }); setCollectionName('');
         }, '案例集已建立'); }}>
-          <input aria-label="案例集名稱" value={collectionName} onChange={event => setCollectionName(event.target.value)} placeholder="案例集／專案名稱" required maxLength={160} />
-          <select aria-label="案例集所屬客戶" value={customerLink} onChange={event => setCustomerLink(event.target.value)}><option value="">不指定客戶</option>
+          <label>案例集名稱<input aria-label="案例集名稱" value={collectionName} onChange={event => setCollectionName(event.target.value)} placeholder="案例集／專案名稱" required maxLength={160} /></label>
+          <label>指定客戶<select aria-label="案例集所屬客戶" value={customerLink} onChange={event => setCustomerLink(event.target.value)}><option value="">不指定客戶</option>
             <optgroup label="我的私人客戶">{data.customers.map((item: any) => <option key={item.id} value={`private:${item.id}`}>{item.name}</option>)}</optgroup>
             <optgroup label="公司全局客戶分類">{data.tags.filter((item: any) => item.dimension === 'CUSTOMER').map((item: any) => <option key={item.id} value={`global:${item.id}`}>{item.name}</option>)}</optgroup>
-          </select><button disabled={busy}><FolderPlus size={15} />建立案例集</button>
+          </select></label><button disabled={busy}><FolderPlus size={15} />建立案例集</button>
         </form>
+        {!data.customers.length && !data.tags.some((item: any) => item.dimension === 'CUSTOMER') && <p className="case-library-note">尚無可選客戶。請先在上方建立私人客戶，或選擇不指定客戶；公司客戶分類由管理員建立。</p>}
         {data.collections.map((item: any) => <article key={item.id}><div><strong>{item.name}</strong><small>{item.case_count} 個尺寸案例 · {item.private_customer_id ? '私人客戶' : item.customer_tag_id ? '引用全局客戶分類，資料仍私人' : '私人案例集'}</small></div>
           <button disabled={busy} onClick={() => execute(() => axios.patch(`${API}/api/case-library/collections/${item.id}`, { is_active: false }), '案例集已封存，原始成果保留')}><Archive size={14} />封存</button></article>)}
       </>}
@@ -110,7 +117,7 @@ export default function CaseLibraryPanel({ onClose, isAdmin, initialArtifactId, 
           setData((previous: any) => ({ ...previous, cases: [...previous.cases, ...response.data.cases], has_more: response.data.has_more }));
         } catch (error) { setMessage(errorMessage(error)); } finally { setBusy(false); }
       }}>載入更多案例</button>}
-      {tab === 'review' && isAdmin && <>
+      {tab === 'review' && reviewing && <>
         <h3>公司共享申請</h3><p className="case-library-warning">核准會公開此尺寸案例及其來源圖面。私人客戶分類不會自動公開；請明確選擇公司分類標籤。</p>
         <button disabled={busy} onClick={() => execute(async () => { setCompatibility((await axios.get(`${API}/api/case-library/compatibility`)).data); }, '歷史相容性檢查完成，原檔未修改')}>檢查既有歷史庫相容性</button>
         {compatibility && <p>歷史 {compatibility.historical_count} 筆；原可推薦 {compatibility.eligible_before} 筆；新版契約可推薦 {compatibility.eligible_after} 筆。無法確認者僅作待覆核證據，原檔保留。</p>}
@@ -121,6 +128,7 @@ export default function CaseLibraryPanel({ onClose, isAdmin, initialArtifactId, 
           <div className="case-library-actions"><button disabled={busy} onClick={() => execute(() => axios.post(`${API}/api/case-library/share-requests/${item.id}/review`, { approve: true, tag_ids: reviewTags[item.id] || [] }), '案例已核准並發布公司共用快照')}>核准發布</button>
           <button disabled={busy} onClick={() => execute(() => axios.post(`${API}/api/case-library/share-requests/${item.id}/review`, { approve: false }), '已拒絕申請，私人案例保留')}>拒絕</button></div></article>)}
       </>}
-    </main>
-  </section></div>;
+    </div>
+  </section>;
+  return embedded ? content : <div className="case-library-backdrop">{content}</div>;
 }

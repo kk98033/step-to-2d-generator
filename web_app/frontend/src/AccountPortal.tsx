@@ -188,9 +188,6 @@ export function AccountDialog({ user, onClose, onLogout }: { user: AuthUser; onC
       : []),
   ];
 
-  if (tab === 'library') return <CaseLibraryPanel isAdmin={user.role === 'ADMIN'} onClose={() => setTab('preferences')}
-    onChanged={() => window.dispatchEvent(new Event('cad-case-library-changed'))} />;
-
   return <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.72)', zIndex: 5000, display: 'grid', placeItems: 'center', padding: 20 }}>
     <div style={{ position: 'relative', width: 1040, maxWidth: '100%', height: 700, maxHeight: '92vh', background: '#171717', border: '1px solid #333', borderRadius: 8, display: 'flex', overflow: 'hidden' }}>
       <aside style={{ width: 240, flexShrink: 0, background: '#111', borderRight: '1px solid #2b2b2b', padding: 18, boxSizing: 'border-box', overflowY: 'auto' }}>
@@ -203,6 +200,8 @@ export function AccountDialog({ user, onClose, onLogout }: { user: AuthUser; onC
         {!requiresPasswordChange && <button onClick={onClose} title="關閉" aria-label="關閉帳號設定" style={{ position: 'absolute', right: 18, top: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0, boxSizing: 'border-box', background: '#262626', border: '1px solid #444', color: '#ddd', width: 34, height: 34, borderRadius: 4, cursor: 'pointer', zIndex: 1 }}><X size={17} style={{ display: 'block', flexShrink: 0 }} /></button>}
         {message && <div style={{ padding: 10, border: '1px solid #1d4ed8', color: '#bfdbfe', background: '#172554', marginBottom: 18, fontSize: 13 }}>{message}</div>}
 
+        {tab === 'library' && <CaseLibraryPanel embedded isAdmin={user.role === 'ADMIN'}
+          onChanged={() => window.dispatchEvent(new Event('cad-case-library-changed'))} />}
         {tab === 'preferences' && preferences && <section><h2 style={{ marginTop: 0 }}>工程師公差推薦偏好</h2><p style={{ color: '#999' }}>以下模式適用現行比較流程。新版原生推薦請在標註控制台直接選擇案例來源、案例集與標籤，不使用個人權重。</p>
           <label style={{ display: 'block', margin: '22px 0 7px', color: '#aaa', fontSize: 12 }}>推薦模式</label>
           <select style={fieldStyle} value={preferences.recommendation_mode} onChange={event => setPreferences({ ...preferences, recommendation_mode: event.target.value as any })}><option value="BALANCED">平衡：顯示公司與個人證據</option><option value="PERSONAL_FIRST">個人優先：達門檻時採用個人案例</option><option value="COMPANY_ONLY">僅使用公司資料庫</option></select>

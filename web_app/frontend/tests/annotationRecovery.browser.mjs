@@ -18,6 +18,7 @@ const testRole = process.env.CAD_TEST_ROLE || 'ENGINEER';
 let activeEngine = 'legacy_smart';
 let lastRenderPayload = null;
 const libraryCustomers = [], libraryCollections = [], libraryCases = [];
+let shareRequestsRead = 0, shareApproved = false;
 const errors = [];
 const job = () => ({ job_id: 'annotation-fixture-' + generation, status: completed ? 'completed' : 'queued',
   model_id: 'model-fixture', part_id: 'shaft', message: completed ? 'Drawing completed' : 'Queued',
@@ -40,7 +41,7 @@ const server = createServer(async (req, res) => {
     else if (path === '/api/case-library/collections') {
       if (req.method === 'POST') {
         let body = ''; for await (const chunk of req) body += chunk;
-        libraryCollections.push({ ...JSON.parse(body), id: 'private-collection', case_count: 0 });
+        libraryCollections.push({ ...JSON.parse(body), id: libraryCollections.length ? 'private-collection-2' : 'private-collection', case_count: 0 });
       }
       payload = { collections: libraryCollections, customers: libraryCustomers };
     }
@@ -61,7 +62,15 @@ const server = createServer(async (req, res) => {
       libraryCollections[0].case_count = 1; payload = { case_count: 1 };
     }
     else if (path === '/api/case-library/cases') payload = { cases: libraryCases, count: libraryCases.length, has_more: false };
-    else if (path === '/api/case-library/share-requests') payload = { requests: [] };
+    else if (path === '/api/case-library/share-requests') {
+      shareRequestsRead++;
+      payload = { requests: shareApproved ? [] : [{ id: 'share-fixture', case: { case_id: 'NATIVE_fixture',
+        tolerance_config: { mode: 'CUSTOM_SYMMETRIC', dev: .1 }, source_metadata: { part_id: 'shaft', measurement_role: 'OVERALL_LENGTH' } } }] };
+    }
+    else if (path === '/api/case-library/share-requests/share-fixture/review') {
+      let body = ''; for await (const chunk of req) body += chunk;
+      assert.equal(JSON.parse(body).approve, true); shareApproved = true; payload = { status: 'APPROVED' };
+    }
     else if (path === '/api/annotation/jobs/active') payload = { job: completed ? null : job() };
     else if (path.startsWith('/api/annotation/jobs/annotation-fixture-')) payload = job();
     else if (path === '/api/annotation/render' && req.method === 'POST') {
@@ -99,7 +108,7 @@ const server = createServer(async (req, res) => {
     res.end('<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200"><rect width="300" height="200" fill="#171717"/></svg>');
     return;
   }
-  const file = resolve(root, 'web_app/frontend/dist', path === '/' ? 'index.html' : '.' + path);
+  const file = resolve(root, 'web_app/frontend/dist', path === '/' || path.startsWith('/admin') ? 'index.html' : '.' + path);
   if (!existsSync(file)) { res.writeHead(404); res.end(); return; }
   res.writeHead(200, { 'Content-Type': ({ '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html' })[extname(file)] || 'application/octet-stream' });
   res.end(readFileSync(file));
@@ -212,6 +221,7 @@ try {
   await fill('私人客戶名稱', 'Private client');
   await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '建立私人客戶').click()");
   await waitFor("document.body.innerText.includes('私人客戶已建立')");
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"案例集所屬客戶\"]').value"), 'private:private-customer', 'new customer is selected automatically');
   await fill('案例集名稱', 'Private project');
   await evaluate("{ const select = document.querySelector('[aria-label=\"案例集所屬客戶\"]'); select.value = 'private:private-customer'; select.dispatchEvent(new Event('change', { bubbles: true })); }");
   await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '建立案例集').click()");
@@ -232,9 +242,44 @@ try {
   await evaluate("document.querySelector('[aria-label=\"關閉案例庫\"]').click()");
   await evaluate("document.querySelector('button[title=\"工程師帳號與偏好\"]').click()");
   await waitFor("document.body.innerText.includes('舊版推薦偏好') && document.body.innerText.includes('私人客戶與案例集')");
+  await evaluate("window.fixtureSettings = document.querySelector('[aria-label=\"關閉帳號設定\"]').closest('main').parentElement; true");
   await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '私人客戶與案例集').click()");
   await waitFor("!!document.querySelector('[aria-label=\"私人客戶名稱\"]') && document.body.innerText.includes('Private client')");
-  await evaluate("document.querySelector('[aria-label=\"關閉案例庫\"]').click()");
+  assert.equal(await evaluate("window.fixtureSettings === document.querySelector('[aria-label=\"關閉帳號設定\"]').closest('main').parentElement"), true, 'account settings shell is preserved');
+  assert.equal(await evaluate("document.querySelectorAll('.case-library-backdrop').length"), 0, 'no nested case library dialog');
+  assert.equal(shareRequestsRead, 0, 'private settings do not load admin reviews');
+  assert.equal(await evaluate("document.body.innerText.includes('公司共享審核')"), false);
+  const selectRect = await evaluate("{ const s = document.querySelector('[aria-label=\"案例集所屬客戶\"]'); s.scrollIntoView({ block: 'center' }); const r = s.getBoundingClientRect(); ({ x: r.x + r.width / 2, y: r.y + r.height / 2, hit: document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === s }); }");
+  assert.equal(selectRect.hit, true, 'customer selector is not covered');
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: selectRect.x, y: selectRect.y, button: 'left', clickCount: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: selectRect.x, y: selectRect.y, button: 'left', clickCount: 1 });
+  const key = async (name, code) => {
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: name, code: name, windowsVirtualKeyCode: code });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code: name, windowsVirtualKeyCode: code });
+  };
+  await key('Home', 36); await key('Enter', 13);
+  await waitFor("document.querySelector('[aria-label=\"案例集所屬客戶\"]').value === ''");
+  await key('ArrowDown', 40); await key('Enter', 13);
+  await waitFor("document.querySelector('[aria-label=\"案例集所屬客戶\"]').value === 'private:private-customer'");
+  await fill('案例集名稱', 'Account project');
+  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '建立案例集').click()");
+  await waitFor("document.body.innerText.includes('Account project')");
+  assert.equal(libraryCollections[1].private_customer_id, 'private-customer');
+  const inlineScreenshot = await send('Page.captureScreenshot', { format: 'png' });
+  writeFileSync(resolve(root, '.codex_runtime/case-library-settings-' + testRole + '.png'), Buffer.from(inlineScreenshot.data, 'base64'));
+  await evaluate("document.querySelector('[aria-label=\"關閉帳號設定\"]').click()");
+  await send('Page.navigate', { url: origin + '/admin/settings' });
+  if (testRole === 'ADMIN') {
+    await waitFor("document.body.innerText.includes('公司共享審核') && document.body.innerText.includes('核准發布')");
+    assert.ok(shareRequestsRead > 0);
+    assert.equal(await evaluate("document.querySelectorAll('.case-library-backdrop').length"), 0);
+    await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '核准發布').click()");
+    await waitFor("document.body.innerText.includes('案例已核准並發布公司共用快照')");
+    assert.equal(shareApproved, true);
+  } else {
+    await waitFor("document.body.innerText.includes('需要管理員權限')");
+    assert.equal(shareRequestsRead, 0);
+  }
   assert.ok(modelLoads >= 2);
   assert.deepEqual(errors, []);
   const snapshot = await send('Page.captureScreenshot', { format: 'png' });
