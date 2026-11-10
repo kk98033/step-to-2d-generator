@@ -19,6 +19,10 @@ const testRole = process.env.CAD_TEST_ROLE || 'ENGINEER';
 let activeEngine = 'legacy_smart';
 let lastRenderPayload = null;
 const libraryCustomers = [], libraryCollections = [], libraryCases = [];
+const categoryTags = [
+  { id: 'company-global', key: 'company:global', name: '公司共用資料庫', dimension: 'COMPANY_DATABASE' },
+  { id: 'type-shaft', key: 'type:shaft', name: '軸類零件', dimension: 'PART_TYPE' },
+];
 let shareRequestsRead = 0, shareApproved = false;
 const errors = [];
 const job = () => ({ job_id: 'annotation-fixture-' + generation, status: completed ? 'completed' : 'queued',
@@ -110,7 +114,7 @@ const server = createServer(async (req, res) => {
     }
     else if (path.startsWith('/api/features/')) payload = { records: [] };
     else if (path.includes('templates')) payload = { templates: [] };
-    else if (path.includes('tags')) payload = { tags: [] };
+    else if (path.includes('tags')) payload = { tags: categoryTags };
     else if (path === '/api/models') payload = { models: [] };
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(payload));
@@ -194,10 +198,21 @@ try {
     await waitFor("!!document.querySelector('select[aria-label=\"公差推薦引擎\"]')");
     await evaluate("{ const selector = document.querySelector('select[aria-label=\"公差推薦引擎\"]'); selector.value = 'native_v1'; selector.dispatchEvent(new Event('change', { bubbles: true })); }");
     await waitFor("document.body.innerText.includes('尚未證明未知零件的推薦精準度')");
+    await waitFor("!!document.querySelector('[aria-label=\"搜尋公司案例\"]')");
+    assert.equal(await evaluate("!!document.querySelector('[aria-label=\"推薦案例來源\"]')"), false, 'there are two source toggles instead of three dropdown entries');
+    assert.equal(await evaluate("document.body.innerText.includes('公司共用資料庫')"), false, 'the legacy company source marker is hidden');
+    await evaluate("[...document.querySelectorAll('summary')].find(s => s.textContent.includes('公司案例分類')).click()");
+    await evaluate("document.querySelector('[aria-label=\"公司分類 軸類零件\"]').click()");
+    await evaluate("document.querySelector('[aria-label=\"搜尋我的案例\"]').click()");
+    assert.equal(await evaluate("document.querySelector('[aria-label=\"搜尋公司案例\"]').checked && document.querySelector('[aria-label=\"搜尋我的案例\"]').checked"), true);
     await waitFor("[...document.querySelectorAll('button')].some(b => b.textContent.includes('一鍵智慧推薦公差') && !b.disabled)");
     await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.includes('一鍵智慧推薦公差')).click()");
     await waitFor("document.body.innerText.includes('已完成 1 條規則推薦')");
     assert.equal(experimentalRecommendations, 1);
+    assert.equal(lastRecommendationPayload.case_source, 'BOTH');
+    assert.deepEqual(lastRecommendationPayload.recommendation_tag_ids, ['type-shaft']);
+    await evaluate("document.querySelector('[aria-label=\"搜尋我的案例\"]').click()");
+    await evaluate("document.querySelector('[aria-label=\"公司分類 軸類零件\"]').click()");
     await evaluate("{ const rule = document.querySelector('[data-rule-id=\"fixture-rule\"]'); const expand = rule.querySelector('button[title=\"展開特徵設定\"]'); expand?.click(); }");
     await waitFor("!!document.querySelector('[data-rule-id=\"fixture-rule\"] button[aria-label=\"標註視圖 right\"]')");
     await evaluate("{ const rule = document.querySelector('[data-rule-id=\"fixture-rule\"]'); rule.querySelector('button[aria-label=\"標註視圖 front\"]').click(); }");
@@ -258,7 +273,7 @@ try {
     await evaluate("{ const select = document.querySelector('[aria-label=\"公差推薦引擎\"]'); select.value = 'native_v1'; select.dispatchEvent(new Event('change', { bubbles: true })); }");
     await waitFor("!!document.querySelector('[aria-label=\"推薦私人客戶\"] option[value=\"private-customer\"]')");
     await evaluate("{ const select = document.querySelector('[aria-label=\"推薦私人客戶\"]'); select.value = 'private-customer'; select.dispatchEvent(new Event('change', { bubbles: true })); }");
-    await waitFor("document.querySelector('[aria-label=\"推薦案例來源\"]').value === 'PERSONAL'");
+    await waitFor("document.querySelector('[aria-label=\"搜尋我的案例\"]').checked && !document.querySelector('[aria-label=\"搜尋公司案例\"]').checked");
     await evaluate("document.querySelector('[aria-label=\"推薦案例集 Private project\"]').click()");
     await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.includes('一鍵智慧推薦公差')).click()");
     await waitFor("document.body.innerText.includes('已完成 1 條規則推薦')");
@@ -273,22 +288,18 @@ try {
   await evaluate("window.fixtureSettings = document.querySelector('[aria-label=\"關閉帳號設定\"]').closest('main').parentElement; true");
   await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '私人客戶與案例集').click()");
   await waitFor("!!document.querySelector('[aria-label=\"私人客戶名稱\"]') && document.body.innerText.includes('Private client')");
+  await waitFor("!!document.querySelector('[aria-label=\"案例集所屬客戶\"] option[value=\"private:private-customer\"]')");
   assert.equal(await evaluate("window.fixtureSettings === document.querySelector('[aria-label=\"關閉帳號設定\"]').closest('main').parentElement"), true, 'account settings shell is preserved');
   assert.equal(await evaluate("document.querySelectorAll('.case-library-backdrop').length"), 0, 'no nested case library dialog');
   assert.equal(shareRequestsRead, 0, 'private settings do not load admin reviews');
   assert.equal(await evaluate("document.body.innerText.includes('公司共享審核')"), false);
   const selectRect = await evaluate("{ const s = document.querySelector('[aria-label=\"案例集所屬客戶\"]'); s.scrollIntoView({ block: 'center' }); const r = s.getBoundingClientRect(); ({ x: r.x + r.width / 2, y: r.y + r.height / 2, hit: document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === s }); }");
   assert.equal(selectRect.hit, true, 'customer selector is not covered');
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: selectRect.x, y: selectRect.y, button: 'left', clickCount: 1 });
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: selectRect.x, y: selectRect.y, button: 'left', clickCount: 1 });
-  const key = async (name, code) => {
-    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: name, code: name, windowsVirtualKeyCode: code });
-    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: name, code: name, windowsVirtualKeyCode: code });
-  };
-  await key('Home', 36); await key('Enter', 13);
+  // Exercise React selection and the saved API payload without opening the
+  // OS-owned menu, whose delayed change events vary in Windows headless mode.
+  await evaluate("{ const select = document.querySelector('[aria-label=\"案例集所屬客戶\"]'); select.value = ''; select.dispatchEvent(new Event('change', { bubbles: true })); }");
   await waitFor("document.querySelector('[aria-label=\"案例集所屬客戶\"]').value === ''");
-  await evaluate("document.querySelector('[aria-label=\"案例集所屬客戶\"]').focus()");
-  await key('ArrowDown', 40);
+  await evaluate("{ const select = document.querySelector('[aria-label=\"案例集所屬客戶\"]'); select.value = 'private:private-customer'; select.dispatchEvent(new Event('change', { bubbles: true })); }");
   await waitFor("document.querySelector('[aria-label=\"案例集所屬客戶\"]').value === 'private:private-customer'");
   await fill('案例集名稱', 'Account project');
   await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '建立案例集').click()");

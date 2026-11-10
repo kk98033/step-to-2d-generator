@@ -25,7 +25,7 @@ class NativeToleranceApiTests(unittest.TestCase):
             (root / '_parts/shaft.stp').write_text('fixture')
             with patch('builtins.open', mock_open(read_data='{"status":"PASS_FOR_ADMIN_TEST_ONLY","engine_sha256":"validated"}')), patch.object(server, '_file_sha256', return_value='validated'), patch.object(server, 'assert_model_access') as authorize, patch.object(server, '_safe_output_dir', return_value=temporary), patch.object(
                 server.identity_store, 'validate_recommendation_tag_ids', return_value=['tag-a']
-            ), patch.object(server.identity_store, 'company_case_ids_for_tags', return_value={'case-a'}), patch.object(
+            ), patch('web_app.backend.case_categories.company_category_case_ids', return_value={'case-a'}), patch.object(
                 server, '_run_cad_annotation_worker', return_value={'status': 'ok', 'recommendations': {}}
             ) as worker:
                 with patch.object(server, '_attach_tolerance_source_drawings', wraps=server._attach_tolerance_source_drawings) as attach:
@@ -54,10 +54,10 @@ class NativeToleranceApiTests(unittest.TestCase):
             with patch('builtins.open', mock_open(read_data='{"status":"PASS_FOR_ADMIN_TEST_ONLY","engine_sha256":"validated"}')), \
                     patch.object(server, '_file_sha256', return_value='validated'), patch.object(server, 'assert_model_access'), \
                     patch.object(server, '_safe_output_dir', return_value=temporary), \
-                    patch.object(server.identity_store, 'validate_recommendation_tag_ids', return_value=[]), \
-                    patch.object(server.identity_store, 'company_case_ids_for_tags', return_value=None), \
+                    patch.object(server.identity_store, 'validate_recommendation_tag_ids', return_value=[]) as validate, \
+                    patch('web_app.backend.case_categories.company_category_case_ids', return_value=None) as category_ids, \
                     patch.object(server.case_library, 'cases', return_value=[{'case': {'case_id': 'NATIVE_own'}}]) as cases, \
-                    patch.object(server.case_library, 'published') as published, \
+                    patch.object(server.case_library, 'published', return_value=[]) as published, \
                     patch.object(server, '_run_cad_annotation_worker', return_value={'status': 'ok', 'recommendations': {}}) as worker:
                 result = server.recommend_experimental_tolerances({'model_id': 'model', 'part_id': 'shaft',
                     'case_source': 'PERSONAL', 'private_customer_id': 'customer', 'collection_ids': ['collection']}, admin)
@@ -65,6 +65,14 @@ class NativeToleranceApiTests(unittest.TestCase):
                 published.assert_not_called()
                 self.assertEqual(worker.call_args.args[0]['allowed_case_ids'], ['NATIVE_own'])
                 self.assertEqual(result['recommendation_scope']['private_customer_id'], 'customer')
+                cases.reset_mock(); worker.reset_mock()
+                validate.return_value = ['company-type']; category_ids.return_value = {'company-case'}
+                server.recommend_experimental_tolerances({'model_id': 'model', 'part_id': 'shaft',
+                    'case_source': 'BOTH', 'private_customer_id': 'customer', 'collection_ids': ['collection'],
+                    'recommendation_tag_ids': ['company-type']}, admin)
+                cases.assert_called_once_with('owner', ['collection'], [], 'ANY', limit=2001, customer_id='customer')
+                published.assert_called_once_with(['company-type'], 'ANY')
+                self.assertEqual(set(worker.call_args.args[0]['allowed_case_ids']), {'company-case', 'NATIVE_own'})
 
     def test_stale_validation_blocks_admin_test(self):
         admin = SimpleNamespace(is_admin=True, id='admin')

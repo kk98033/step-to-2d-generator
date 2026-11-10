@@ -249,11 +249,13 @@ class CaseLibraryStore:
         return {'status': 'APPROVED' if approve else 'REJECTED'}
 
     def published(self, tag_ids=None, match_mode='ANY'):
+        from web_app.backend.case_categories import matches_categories, selected_category_ids
         with self.engine.connect() as conn:
             rows = conn.execute(select(T.published)).mappings().all()
-        selected = set(tag_ids or [])
-        return [json.loads(row['case_json']) for row in rows if not selected or
-                (selected.issubset(set(json.loads(row['tag_ids_json']))) if match_mode == 'ALL' else bool(selected & set(json.loads(row['tag_ids_json']))))]
+        tags = self.identity.list_recommendation_tags()
+        selected = selected_category_ids(tag_ids, tags)
+        return [json.loads(row['case_json']) for row in rows if matches_categories(
+            json.loads(row['case_json']), selected, match_mode, tags, json.loads(row['tag_ids_json']))]
 
     def case_for_source(self, user, case_id):
         with self.engine.connect() as conn:

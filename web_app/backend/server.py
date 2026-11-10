@@ -2636,7 +2636,8 @@ def recommend_experimental_tolerances(
         tags = identity_store.validate_recommendation_tag_ids(tags)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-    allowed = identity_store.company_case_ids_for_tags(tags, match_mode)
+    from web_app.backend.case_categories import company_category_case_ids
+    allowed = company_category_case_ids(identity_store, case_base.cases, tags, match_mode)
     case_source = str(body.get('case_source') or 'COMPANY').upper()
     if case_source not in {'COMPANY', 'PERSONAL', 'BOTH'}:
         raise HTTPException(400, detail='案例來源必須是 COMPANY、PERSONAL 或 BOTH')
@@ -2644,7 +2645,7 @@ def recommend_experimental_tolerances(
         extras = case_library.published(tags, match_mode) if case_source in {'COMPANY', 'BOTH'} else []
         if case_source in {'PERSONAL', 'BOTH'}:
             extras += [row['case'] for row in case_library.cases(current_user.id,
-                body.get('collection_ids') or [], tags, match_mode, limit=2001,
+                body.get('collection_ids') or [], [], match_mode, limit=2001,
                 customer_id=body.get('private_customer_id') or None)]
     except (KeyError, ValueError) as error:
         raise HTTPException(404, detail=str(error)) from error

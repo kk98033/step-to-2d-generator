@@ -90,6 +90,37 @@ class CaseLibraryTests(unittest.TestCase):
         self.assertEqual(self.library.cases(self.one.id, [other['id']], customer_id=self.customer['id']), [])
         self.assertEqual(len(self.library.cases(self.one.id, [other['id']], customer_id=empty['id'])), 1)
 
+    def test_existing_type_tags_classify_historical_and_shared_native_cases_without_rewriting(self):
+        from web_app.backend.case_categories import company_category_case_ids
+        tags = {tag['key']: tag['id'] for tag in self.store.list_recommendation_tags()}
+        payload = copy.deepcopy(self.payloads[0])
+        payload.update(part_type='FAN', inferred_role='component[part].shaft_overall.length')
+        historical = ToleranceCase(**payload)
+        before = historical.to_dict()
+        ids = company_category_case_ids(self.store, [historical], [tags['type:shaft']])
+        self.assertEqual(ids, {historical.case_id})
+        self.assertEqual(company_category_case_ids(self.store, [historical], [tags['type:hole']]), set())
+        self.assertEqual(company_category_case_ids(self.store, [historical], [tags['company:global']]), None)
+        self.assertEqual(company_category_case_ids(self.store, [historical], [tags['company:global'], tags['type:hole']]), set())
+        self.assertEqual(historical.to_dict(), before)
+        self.store.assign_company_case_tags(historical.case_id, [tags['type:hole']], self.admin.id)
+        self.assertEqual(company_category_case_ids(self.store, [historical], [tags['type:hole']]), {historical.case_id})
+        self.assertEqual(company_category_case_ids(self.store, [historical], [tags['type:shaft']]), set())
+        record = self.add()['case_record_ids'][0]
+        request = self.library.request_share(self.one.id, record)
+        self.library.review_share(self.admin, request['id'], True, [])
+        self.assertEqual(len(self.library.published([tags['type:general']])), 1)
+        self.assertEqual(self.library.published([tags['type:hole']]), [])
+
+    def test_company_customer_and_type_categories_combine_with_existing_assignments(self):
+        from web_app.backend.case_categories import company_category_case_ids
+        customer = self.store.create_recommendation_tag({'key': 'client:company-a', 'name': 'Company A', 'dimension': 'CUSTOMER'}, self.admin.id)
+        historical = ToleranceCase(**self.payloads[0])
+        self.store.assign_company_case_tags(historical.case_id, [customer['id']], self.admin.id)
+        general = next(tag['id'] for tag in self.store.list_recommendation_tags() if tag['key'] == 'type:general')
+        self.assertEqual(company_category_case_ids(self.store, [historical], [customer['id'], general], 'ALL'), {historical.case_id})
+        self.assertEqual(company_category_case_ids(self.store, [], [customer['id']]), set())
+
     def test_customer_crud_http_api_validates_names_duplicates_and_ownership(self):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
