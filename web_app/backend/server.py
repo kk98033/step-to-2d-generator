@@ -5230,6 +5230,7 @@ def health_check():
     return {
         "status": "ok",
         "service": "forcecon-step-to-2d",
+        "recommendation_scope_version": 2,
         "version": app.version,
         "models_dir": MODELS_DIR,
         "output_dir": OUTPUT_DIR,

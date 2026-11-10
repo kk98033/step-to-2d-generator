@@ -15,6 +15,7 @@ let generation = 1;
 let modelLoads = 0;
 let experimentalRecommendations = 0;
 let lastRecommendationPayload = null;
+let scopeProtocolVersion = 2;
 const testRole = process.env.CAD_TEST_ROLE || 'ENGINEER';
 let activeEngine = 'legacy_smart';
 let lastRenderPayload = null;
@@ -34,7 +35,8 @@ const server = createServer(async (req, res) => {
   const path = new URL(req.url, 'http://localhost').pathname;
   if (path.startsWith('/api/')) {
     let payload = { status: 'ok' };
-    if (path === '/api/auth/me') payload = { user: { id: 'browser-engineer', role: testRole, display_name: 'Test engineer' } };
+    if (path === '/api/health') payload = { status: 'ok', recommendation_scope_version: scopeProtocolVersion };
+    else if (path === '/api/auth/me') payload = { user: { id: 'browser-engineer', role: testRole, display_name: 'Test engineer' } };
     else if (path === '/api/tolerance/experimental/recommend') {
       let body = ''; for await (const chunk of req) body += chunk;
       lastRecommendationPayload = JSON.parse(body);
@@ -206,6 +208,11 @@ try {
     await evaluate("document.querySelector('[aria-label=\"搜尋我的案例\"]').click()");
     assert.equal(await evaluate("document.querySelector('[aria-label=\"搜尋公司案例\"]').checked && document.querySelector('[aria-label=\"搜尋我的案例\"]').checked"), true);
     await waitFor("[...document.querySelectorAll('button')].some(b => b.textContent.includes('一鍵智慧推薦公差') && !b.disabled)");
+    scopeProtocolVersion = 1;
+    await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.includes('一鍵智慧推薦公差')).click()");
+    await waitFor("document.body.innerText.includes('後端尚未載入新版推薦分類')");
+    assert.equal(experimentalRecommendations, 0, 'an old backend must not receive a new scope request');
+    scopeProtocolVersion = 2;
     await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.includes('一鍵智慧推薦公差')).click()");
     await waitFor("document.body.innerText.includes('已完成 1 條規則推薦')");
     assert.equal(experimentalRecommendations, 1);

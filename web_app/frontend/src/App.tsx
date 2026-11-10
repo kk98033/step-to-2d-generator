@@ -1001,6 +1001,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   const recommendationRequestRef = useRef(0);
   const [toleranceStats, setToleranceStats] = useState<{ total_cases: number; categories: Record<string, number> } | null>(null);
   const [recommendSummary, setRecommendSummary] = useState<{ total_rules: number; high_confidence_count: number; product_family?: string; part_type?: string } | null>(null);
+  const [recommendationScopeError, setRecommendationScopeError] = useState('');
   useEffect(() => {
     recommendationRequestRef.current++;
     setAiRecommendations({});
@@ -1567,7 +1568,18 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
     const requestVersion = ++recommendationRequestRef.current;
     const usingNative = user.role === 'ADMIN' && candidateEngine === 'experimental_v026' && experimentalTolerance;
     setIsRecommendingTolerances(true);
+    setRecommendationScopeError('');
     try {
+      if (usingNative) {
+        const health = await axios.get(`${API_BASE}/api/health`);
+        if (requestVersion !== recommendationRequestRef.current) return;
+        if (health.data?.recommendation_scope_version !== 2) {
+          setRecommendSummary(null);
+          setAiRecommendations({});
+          setRecommendationScopeError('後端尚未載入新版推薦分類。請至系統管理中心的服務控制重新啟動後端，再執行推薦。');
+          return;
+        }
+      }
       const recommendationPayload = {
         model_id: modelId,
         part_id: selectedPart,
@@ -3455,6 +3467,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 7 }}>{recommendationTags.map(tag => <label key={tag.id} style={{ fontSize: 10 }}><input type="checkbox" checked={recommendationTagIds.has(tag.id)} onChange={event => setRecommendationTagIds(previous => { const next = new Set(previous); event.target.checked ? next.add(tag.id) : next.delete(tag.id); return next; })} />{tag.name}</label>)}</div>
                   </div>}
 
+                  {recommendationScopeError && <div role="alert" style={{ border: '1px solid #78350f', background: '#262626', padding: 10, borderRadius: 4, color: '#fbbf24', fontSize: 11, lineHeight: 1.6 }}>{recommendationScopeError}</div>}
                   <div style={{ border: '1px solid #333', background: '#171717', padding: 8, borderRadius: 4 }}>
                     <div style={{ fontSize: 10, color: '#d4d4d4', fontWeight: 700, marginBottom: 7 }}>本次成品儲存標籤</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
