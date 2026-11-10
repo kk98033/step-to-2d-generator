@@ -2644,7 +2644,8 @@ def recommend_experimental_tolerances(
         extras = case_library.published(tags, match_mode) if case_source in {'COMPANY', 'BOTH'} else []
         if case_source in {'PERSONAL', 'BOTH'}:
             extras += [row['case'] for row in case_library.cases(current_user.id,
-                body.get('collection_ids') or [], tags, match_mode, limit=2001)]
+                body.get('collection_ids') or [], tags, match_mode, limit=2001,
+                customer_id=body.get('private_customer_id') or None)]
     except (KeyError, ValueError) as error:
         raise HTTPException(404, detail=str(error)) from error
     if len(extras) > 2000:
@@ -2663,7 +2664,8 @@ def recommend_experimental_tolerances(
             "requested_ids": [str(rule.get("rule_id") or rule.get("id") or "")
                               for rule in body.get("candidate_rules") or []],
         }, os.path.join(output_dir, "_worker_jobs", "native_tolerance_" + uuid.uuid4().hex))
-        result['recommendation_scope'] = {'case_source': case_source, 'collection_ids': body.get('collection_ids') or [], 'tag_ids': tags}
+        result['recommendation_scope'] = {'case_source': case_source, 'collection_ids': body.get('collection_ids') or [], 'tag_ids': tags,
+            'private_customer_id': body.get('private_customer_id') if case_source != 'COMPANY' else None}
         return _attach_tolerance_source_drawings(result, current_user)
     except Exception as error:
         raise HTTPException(status_code=422, detail="Experimental tolerance analysis failed: " + str(error)) from error

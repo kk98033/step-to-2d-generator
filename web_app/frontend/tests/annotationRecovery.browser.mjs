@@ -14,6 +14,7 @@ let completed = false;
 let generation = 1;
 let modelLoads = 0;
 let experimentalRecommendations = 0;
+let lastRecommendationPayload = null;
 const testRole = process.env.CAD_TEST_ROLE || 'ENGINEER';
 let activeEngine = 'legacy_smart';
 let lastRenderPayload = null;
@@ -31,6 +32,8 @@ const server = createServer(async (req, res) => {
     let payload = { status: 'ok' };
     if (path === '/api/auth/me') payload = { user: { id: 'browser-engineer', role: testRole, display_name: 'Test engineer' } };
     else if (path === '/api/tolerance/experimental/recommend') {
+      let body = ''; for await (const chunk of req) body += chunk;
+      lastRecommendationPayload = JSON.parse(body);
       experimentalRecommendations++;
       payload = { status: 'ok', total_rules: 1, recommendations: { 'fixture-rule': {
         rule_id: 'fixture-rule', recommended_mode: 'NONE', tier_level: 'NOT_APPLICABLE',
@@ -43,7 +46,7 @@ const server = createServer(async (req, res) => {
         let body = ''; for await (const chunk of req) body += chunk;
         libraryCollections.push({ ...JSON.parse(body), id: libraryCollections.length ? 'private-collection-2' : 'private-collection', case_count: 0 });
       }
-      payload = { collections: libraryCollections, customers: libraryCustomers };
+      payload = req.method === 'POST' ? libraryCollections.at(-1) : { collections: libraryCollections, customers: libraryCustomers };
     }
     else if (path === '/api/case-library/customers') {
       let body = ''; for await (const chunk of req) body += chunk;
@@ -232,15 +235,16 @@ try {
   await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '建立私人客戶').click()");
   await waitFor("document.body.innerText.includes('私人客戶已建立')");
   assert.equal(await evaluate("document.querySelector('[aria-label=\"案例集所屬客戶\"]').value"), 'private:private-customer', 'new customer is selected automatically');
+  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '從成果加入').click()");
+  await evaluate("{ const select = document.querySelector('[aria-label=\"選擇產圖成果\"]'); select.value = 'native-artifact'; select.dispatchEvent(new Event('change', { bubbles: true })); }");
+  await waitFor("!!document.querySelector('.case-library-confirm') && document.body.innerText.includes('請先選擇或建立案例集')");
+  await evaluate("document.querySelector('.case-library-confirm input').click()");
+  assert.equal(await evaluate("document.querySelector('.case-library-primary').disabled"), true, 'confirmed artifact still needs a destination collection');
   await fill('案例集名稱', 'Private project');
   await evaluate("{ const select = document.querySelector('[aria-label=\"案例集所屬客戶\"]'); select.value = 'private:private-customer'; select.dispatchEvent(new Event('change', { bubbles: true })); }");
   await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '建立案例集').click()");
   await waitFor("document.body.innerText.includes('案例集已建立')");
-  await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '從成果加入').click()");
-  await evaluate("{ const select = document.querySelector('[aria-label=\"選擇產圖成果\"]'); select.value = 'native-artifact'; select.dispatchEvent(new Event('change', { bubbles: true })); }");
-  await waitFor("!!document.querySelector('.case-library-confirm')");
-  assert.equal(await evaluate("document.querySelector('.case-library-primary').disabled"), true);
-  await evaluate("{ const inputs = [...document.querySelectorAll('.case-library-list input')]; inputs.at(-1).click(); document.querySelector('.case-library-confirm input').click(); }");
+  assert.equal(await evaluate("[...document.querySelectorAll('.case-library-list input')].at(-1).checked"), true, 'new inline collection is selected automatically');
   await waitFor("!document.querySelector('.case-library-primary').disabled");
   await evaluate("document.querySelector('.case-library-primary').click()");
   await waitFor("document.body.innerText.includes('已加入推薦案例庫')");
@@ -250,6 +254,20 @@ try {
   await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '已加入案例').click()");
   await waitFor("document.body.innerText.includes('OVERALL_LENGTH')");
   await evaluate("document.querySelector('[aria-label=\"關閉案例庫\"]').click()");
+  if (testRole === 'ADMIN') {
+    await evaluate("{ const select = document.querySelector('[aria-label=\"公差推薦引擎\"]'); select.value = 'native_v1'; select.dispatchEvent(new Event('change', { bubbles: true })); }");
+    await waitFor("!!document.querySelector('[aria-label=\"推薦私人客戶\"] option[value=\"private-customer\"]')");
+    await evaluate("{ const select = document.querySelector('[aria-label=\"推薦私人客戶\"]'); select.value = 'private-customer'; select.dispatchEvent(new Event('change', { bubbles: true })); }");
+    await waitFor("document.querySelector('[aria-label=\"推薦案例來源\"]').value === 'PERSONAL'");
+    await evaluate("document.querySelector('[aria-label=\"推薦案例集 Private project\"]').click()");
+    await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.includes('一鍵智慧推薦公差')).click()");
+    await waitFor("document.body.innerText.includes('已完成 1 條規則推薦')");
+    assert.equal(lastRecommendationPayload.case_source, 'PERSONAL');
+    assert.equal(lastRecommendationPayload.private_customer_id, 'private-customer');
+    assert.deepEqual(lastRecommendationPayload.collection_ids, ['private-collection']);
+    assert.deepEqual(lastRecommendationPayload.recommendation_tag_ids, []);
+    console.log(JSON.stringify({ inlineCollectionAdd: 'PASS', privateCustomerRecommendationScope: 'PASS' }));
+  }
   await evaluate("document.querySelector('button[title=\"工程師帳號與偏好\"]').click()");
   await waitFor("document.body.innerText.includes('舊版推薦偏好') && document.body.innerText.includes('私人客戶與案例集')");
   await evaluate("window.fixtureSettings = document.querySelector('[aria-label=\"關閉帳號設定\"]').closest('main').parentElement; true");
@@ -269,7 +287,8 @@ try {
   };
   await key('Home', 36); await key('Enter', 13);
   await waitFor("document.querySelector('[aria-label=\"案例集所屬客戶\"]').value === ''");
-  await key('ArrowDown', 40); await key('Enter', 13);
+  await evaluate("document.querySelector('[aria-label=\"案例集所屬客戶\"]').focus()");
+  await key('ArrowDown', 40);
   await waitFor("document.querySelector('[aria-label=\"案例集所屬客戶\"]').value === 'private:private-customer'");
   await fill('案例集名稱', 'Account project');
   await evaluate("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '建立案例集').click()");

@@ -79,6 +79,17 @@ class CaseLibraryTests(unittest.TestCase):
         self.assertEqual(self.library.artifact(self.one.id, self.artifact)['id'], self.artifact)
         with self.assertRaises(KeyError): self.library.delete_customer(self.one.id, self.customer['id'])
 
+    def test_customer_scope_does_not_expand_empty_customers_or_cross_collection_memberships(self):
+        self.add()
+        empty = self.library.create_customer(self.one.id, 'Empty customer')
+        other = self.library.create_collection(self.one.id, {'name': 'Other customer project', 'private_customer_id': empty['id']})
+        self.assertEqual(len(self.library.cases(self.one.id, customer_id=self.customer['id'])), 1)
+        self.assertEqual(self.library.cases(self.one.id, customer_id=empty['id']), [])
+        with self.assertRaises(KeyError): self.library.cases(self.two.id, customer_id=self.customer['id'])
+        self.add([other['id']])
+        self.assertEqual(self.library.cases(self.one.id, [other['id']], customer_id=self.customer['id']), [])
+        self.assertEqual(len(self.library.cases(self.one.id, [other['id']], customer_id=empty['id'])), 1)
+
     def test_customer_crud_http_api_validates_names_duplicates_and_ownership(self):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient

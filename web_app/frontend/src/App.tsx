@@ -976,12 +976,17 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
   const [experimentalTolerance, setExperimentalTolerance] = useState(false);
   const [caseSource, setCaseSource] = useState<'COMPANY' | 'PERSONAL' | 'BOTH'>('COMPANY');
   const [caseCollections, setCaseCollections] = useState<any[]>([]);
+  const [caseCustomers, setCaseCustomers] = useState<any[]>([]);
+  const [sourceCustomerId, setSourceCustomerId] = useState('');
   const [sourceCollectionIds, setSourceCollectionIds] = useState<string[]>([]);
   const [caseLibraryOpen, setCaseLibraryOpen] = useState(false);
   const [libraryArtifactId, setLibraryArtifactId] = useState<string | undefined>();
   const refreshCaseCollections = () => axios.get(`${API_BASE}/api/case-library/collections`).then(response => {
     const collections = response.data.collections || [];
     setCaseCollections(collections);
+    const customers = response.data.customers || [];
+    setCaseCustomers(customers);
+    setSourceCustomerId(previous => customers.some((customer: any) => customer.id === previous) ? previous : '');
     setSourceCollectionIds(previous => { const valid = previous.filter(id => collections.some((item: any) => item.id === id)); return valid.length === previous.length ? previous : valid; });
   }).catch(() => undefined);
   useEffect(() => {
@@ -1002,7 +1007,7 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
       ['HISTORICAL_RAG', 'ENGINEER_PERSONAL'].includes(config.tolerance_source || '')
         ? { ...config, tolerance: '', tolerance_config: { mode: 'NONE' }, tolerance_source: 'MANUAL' as const } : config,
     ])));
-  }, [candidateEngine, experimentalTolerance, selectedPart, results?.model_id, caseSource, sourceCollectionIds]);
+  }, [candidateEngine, experimentalTolerance, selectedPart, results?.model_id, caseSource, sourceCollectionIds, sourceCustomerId]);
   const [recommendationTags, setRecommendationTags] = useState<any[]>([]);
   const [recommendationTagIds, setRecommendationTagIds] = useState<Set<string>>(new Set());
   const [storageTagIds, setStorageTagIds] = useState<Set<string>>(new Set());
@@ -1555,7 +1560,8 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
         candidate_rules: candidateRules,
         case_source: caseSource,
         collection_ids: sourceCollectionIds,
-        recommendation_tag_ids: Array.from(recommendationTagIds),
+        private_customer_id: usingNative && caseSource !== 'COMPANY' ? sourceCustomerId || null : null,
+        recommendation_tag_ids: usingNative && caseSource === 'PERSONAL' ? [] : Array.from(recommendationTagIds),
         recommendation_tag_match: recommendationTagMatch,
       };
       const res = usingNative
@@ -3430,17 +3436,27 @@ function WorkspaceApp({ user }: { user: AuthUser }) {
                       </select>
                     </div>
                     {user.role === 'ADMIN' && candidateEngine === 'experimental_v026' && experimentalTolerance && <div style={{ marginBottom: 9 }}>
-                      <select aria-label="推薦案例來源" value={caseSource} onChange={event => setCaseSource(event.target.value as typeof caseSource)} style={{ background: '#262626', border: '1px solid #404040', borderRadius: 3, color: '#ddd', padding: 6, width: '100%' }}>
+                      <select aria-label="推薦案例來源" value={caseSource} onChange={event => { const source = event.target.value as typeof caseSource; setCaseSource(source); if (source === 'COMPANY') { setSourceCustomerId(''); setSourceCollectionIds([]); } }} style={{ background: '#262626', border: '1px solid #404040', borderRadius: 3, color: '#ddd', padding: 6, width: '100%' }}>
                         <option value="COMPANY">公司主資料庫（歷史＋核准共享）</option><option value="PERSONAL">我的推薦案例庫</option><option value="BOTH">公司與我的推薦案例</option>
                       </select>
-                      {caseSource !== 'COMPANY' && <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 6 }}>{caseCollections.map(collection => <label key={collection.id} style={{ fontSize: 10 }}><input type="checkbox" checked={sourceCollectionIds.includes(collection.id)} onChange={() => setSourceCollectionIds(previous => previous.includes(collection.id) ? previous.filter(id => id !== collection.id) : [...previous, collection.id])} />{collection.name}</label>)}<span style={{ color: '#737373', fontSize: 10 }}>未指定案例集時，搜尋自己已加入的全部案例。</span></div>}
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #333' }}>
+                        <label style={{ fontSize: 10, color: '#d4d4d4' }}>我的私人客戶分類
+                          <select aria-label="推薦私人客戶" value={sourceCustomerId} onChange={event => { setSourceCustomerId(event.target.value); setSourceCollectionIds([]); if (caseSource === 'COMPANY') setCaseSource('PERSONAL'); }} style={{ display: 'block', width: '100%', marginTop: 5, padding: 6, background: '#262626', color: '#ddd', border: '1px solid #404040', borderRadius: 3 }}>
+                            <option value="">全部私人客戶與未指定客戶</option>{caseCustomers.map(customer => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
+                          </select>
+                        </label>
+                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 6 }}>{caseCollections.filter(collection => !sourceCustomerId || collection.private_customer_id === sourceCustomerId).map(collection => <label key={collection.id} style={{ fontSize: 10 }}><input aria-label={`推薦案例集 ${collection.name}`} type="checkbox" checked={caseSource !== 'COMPANY' && sourceCollectionIds.includes(collection.id)} onChange={() => { setSourceCollectionIds(previous => { const current = caseSource === 'COMPANY' ? [] : previous; return current.includes(collection.id) ? current.filter(id => id !== collection.id) : [...current, collection.id]; }); if (caseSource === 'COMPANY') setCaseSource('PERSONAL'); }} />{collection.name}（{collection.case_count || 0} 筆）</label>)}</div>
+                        {!caseCollections.some(collection => !sourceCustomerId || collection.private_customer_id === sourceCustomerId) && <p style={{ fontSize: 10, color: '#a3a3a3' }}>此分類尚無案例集；新增案例集並加入成果後才能提供私人推薦。</p>}
+                        <button type="button" onClick={() => { setLibraryArtifactId(undefined); setCaseLibraryOpen(true); }} style={{ marginTop: 6, padding: '4px 7px', background: '#262626', color: '#d4d4d4', border: '1px solid #404040', borderRadius: 3, fontSize: 10 }}>管理私人客戶與案例集</button>
+                        <p style={{ fontSize: 10, color: '#a3a3a3', marginBottom: 0 }}>{caseSource === 'COMPANY' ? '目前只搜尋公司案例；選擇私人客戶或勾選案例集會切換為我的推薦案例庫。' : '未勾選案例集時，搜尋所選私人客戶下已加入的全部案例；空分類不會擴大搜尋至其他客戶。'}</p>
+                      </div>
                     </div>}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {!(candidateEngine === 'experimental_v026' && experimentalTolerance && caseSource === 'PERSONAL') && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                       {recommendationTags.map(tag => {
                         const active = recommendationTagIds.has(tag.id);
                         return <button key={`recommend-${tag.id}`} type="button" onClick={() => setRecommendationTagIds(previous => { const next = new Set(previous); active ? next.delete(tag.id) : next.add(tag.id); return next; })} style={{ border: `1px solid ${active ? '#2563eb' : '#444'}`, background: active ? '#1e3a8a' : '#262626', color: active ? '#bfdbfe' : '#aaa', padding: '4px 6px', fontSize: 9, cursor: 'pointer' }}>{tag.name}</button>;
                       })}
-                    </div>
+                    </div>}
                     <div style={{ fontSize: 9, color: '#737373', marginTop: 7 }}>未選標籤時搜尋所選來源的全部可用案例；選取後僅使用符合範圍的案例。標籤不是權限或核准證明。</div>
                   </div>
 

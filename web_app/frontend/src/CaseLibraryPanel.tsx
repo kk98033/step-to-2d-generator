@@ -17,6 +17,7 @@ export default function CaseLibraryPanel({ onClose, isAdmin, initialArtifactId, 
   const [message, setMessage] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [collectionName, setCollectionName] = useState('');
+  const [creatingCollection, setCreatingCollection] = useState(false);
   const [customerLink, setCustomerLink] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<string | null>(null);
   const [editedCustomerName, setEditedCustomerName] = useState('');
@@ -28,23 +29,22 @@ export default function CaseLibraryPanel({ onClose, isAdmin, initialArtifactId, 
   const [reviewTags, setReviewTags] = useState<Record<string, string[]>>({});
   const [compatibility, setCompatibility] = useState<any>(null);
   const initializedArtifact = useRef('');
+  const loadVersion = useRef(0);
 
   const load = async () => {
+    const version = ++loadVersion.current;
     if (reviewing) {
       const [requests, tags] = await Promise.all([axios.get(`${API}/api/case-library/share-requests`), axios.get(`${API}/api/recommendation-tags`)]);
-      setData((previous: any) => ({ ...previous, ...requests.data, ...tags.data }));
+      if (version === loadVersion.current) setData((previous: any) => ({ ...previous, ...requests.data, ...tags.data }));
       return;
     }
     const responses = await Promise.all([
       axios.get(`${API}/api/case-library/collections`), axios.get(`${API}/api/case-library/artifacts`),
       axios.get(`${API}/api/case-library/cases`), axios.get(`${API}/api/recommendation-tags`),
     ]);
-    setData((previous: any) => ({ ...previous, ...responses[0].data, ...responses[1].data, ...responses[2].data, ...responses[3].data }));
+    if (version === loadVersion.current) setData((previous: any) => ({ ...previous, ...responses[0].data, ...responses[1].data, ...responses[2].data, ...responses[3].data }));
   };
   useEffect(() => { load().catch(error => setMessage(errorMessage(error))); }, []);
-  useEffect(() => {
-    if (customerLink.startsWith('private:') && !data.customers.some((item: any) => `private:${item.id}` === customerLink)) setCustomerLink('');
-  }, [data.customers]);
   useEffect(() => {
     const artifact = data.artifacts.find((item: any) => item.id === artifactId);
     if (!artifact || initializedArtifact.current === artifactId) return;
@@ -61,6 +61,18 @@ export default function CaseLibraryPanel({ onClose, isAdmin, initialArtifactId, 
   };
   const toggle = (values: string[], value: string) => values.includes(value) ? values.filter(item => item !== value) : [...values, value];
   const artifact = data.artifacts.find((item: any) => item.id === artifactId);
+  const collectionForm = <form className="case-library-collection-form" onSubmit={event => { event.preventDefault(); execute(async () => {
+    const [kind, id] = customerLink.split(':');
+    const response = await axios.post(`${API}/api/case-library/collections`, { name: collectionName, private_customer_id: kind === 'private' ? id : null, customer_tag_id: kind === 'global' ? id : null });
+    if (tab === 'artifacts') setCollectionIds(previous => [...new Set([...previous, response.data.id])]);
+    setCollectionName(''); setCreatingCollection(false);
+  }, '案例集已建立'); }}>
+    <label>案例集名稱<input aria-label="案例集名稱" value={collectionName} onChange={event => setCollectionName(event.target.value)} placeholder="案例集／專案名稱" required maxLength={160} /></label>
+    <label>指定客戶<select aria-label="案例集所屬客戶" value={customerLink} onChange={event => setCustomerLink(event.target.value)}><option value="">不指定客戶</option>
+      <optgroup label="我的私人客戶">{data.customers.map((item: any) => <option key={item.id} value={`private:${item.id}`}>{item.name}</option>)}</optgroup>
+      <optgroup label="公司全局客戶分類">{data.tags.filter((item: any) => item.dimension === 'CUSTOMER').map((item: any) => <option key={item.id} value={`global:${item.id}`}>{item.name}</option>)}</optgroup>
+    </select></label><button disabled={busy}><FolderPlus size={15} />建立案例集</button>
+  </form>;
 
   const content = <section className={`case-library${embedded ? ' case-library-embedded' : ''}`} role={embedded ? 'region' : 'dialog'} aria-modal={embedded ? undefined : true} aria-label={reviewing ? '公司共享審核' : '我的推薦案例庫'}>
     <header><div><Database size={19} /><strong>{reviewing ? '公司共享審核' : embedded ? '私人客戶與案例集' : '我的推薦案例庫'}</strong></div>{!embedded && <button aria-label="關閉案例庫" onClick={onClose}><X size={18} /></button>}</header>
@@ -87,19 +99,11 @@ export default function CaseLibraryPanel({ onClose, isAdmin, initialArtifactId, 
             <p>確定刪除「{item.name}」？關聯案例集將改為不指定客戶，既有案例與工程圖會保留。</p>
             <div className="case-library-actions"><button disabled={busy} onClick={() => execute(async () => {
               await axios.delete(`${API}/api/case-library/customers/${item.id}`); setDeletingCustomer(null);
+              if (customerLink === `private:${item.id}`) setCustomerLink('');
             }, '私人客戶已刪除，案例集與原始成果保留')}>確認刪除客戶</button><button disabled={busy} onClick={() => setDeletingCustomer(null)}>取消刪除</button></div>
           </div>}
         </article>)}
-        <h3>建立案例集</h3><form className="case-library-collection-form" onSubmit={event => { event.preventDefault(); execute(async () => {
-          const [kind, id] = customerLink.split(':');
-          await axios.post(`${API}/api/case-library/collections`, { name: collectionName, private_customer_id: kind === 'private' ? id : null, customer_tag_id: kind === 'global' ? id : null }); setCollectionName('');
-        }, '案例集已建立'); }}>
-          <label>案例集名稱<input aria-label="案例集名稱" value={collectionName} onChange={event => setCollectionName(event.target.value)} placeholder="案例集／專案名稱" required maxLength={160} /></label>
-          <label>指定客戶<select aria-label="案例集所屬客戶" value={customerLink} onChange={event => setCustomerLink(event.target.value)}><option value="">不指定客戶</option>
-            <optgroup label="我的私人客戶">{data.customers.map((item: any) => <option key={item.id} value={`private:${item.id}`}>{item.name}</option>)}</optgroup>
-            <optgroup label="公司全局客戶分類">{data.tags.filter((item: any) => item.dimension === 'CUSTOMER').map((item: any) => <option key={item.id} value={`global:${item.id}`}>{item.name}</option>)}</optgroup>
-          </select></label><button disabled={busy}><FolderPlus size={15} />建立案例集</button>
-        </form>
+        <h3>建立案例集</h3>{collectionForm}
         {!data.customers.length && !data.tags.some((item: any) => item.dimension === 'CUSTOMER') && <p className="case-library-note">尚無可選客戶。請先在上方建立私人客戶，或選擇不指定客戶；公司客戶分類由管理員建立。</p>}
         {data.collections.map((item: any) => <article key={item.id}><div><strong>{item.name}</strong><small>{item.case_count} 個尺寸案例 · {item.private_customer_id ? `私人客戶：${data.customers.find((customer: any) => customer.id === item.private_customer_id)?.name || ''}` : item.customer_tag_id ? '引用全局客戶分類，資料仍私人' : '私人案例集'}</small></div>
           <button disabled={busy} onClick={() => execute(() => axios.patch(`${API}/api/case-library/collections/${item.id}`, { is_active: false }), '案例集已封存，原始成果保留')}><Archive size={14} />封存</button></article>)}
@@ -114,9 +118,12 @@ export default function CaseLibraryPanel({ onClose, isAdmin, initialArtifactId, 
           <div className="case-library-list">{artifact.features.map((item: any) => <label key={item.rule_id || item.id}><input type="checkbox" disabled={!artifact.can_curate || busy} checked={ruleIds.includes(item.rule_id || item.id)} onChange={() => setRuleIds(toggle(ruleIds, item.rule_id || item.id))} />
             <span>{item.name || item.rule_id || item.id}<small>{item.nominal_value} · {item.measurement_role || ''} · {item.tolerance || item.tolerance_config?.fit_class || item.tolerance_config?.mode || '未設定公差'}</small></span></label>)}</div>
           <h4>加入哪些案例集</h4><div className="case-library-list">{data.collections.map((item: any) => <label key={item.id}><input type="checkbox" checked={collectionIds.includes(item.id)} onChange={() => setCollectionIds(toggle(collectionIds, item.id))} />{item.name}</label>)}</div>
-          {!data.collections.length && <p>請先到「案例集與客戶」建立自己的案例集。</p>}
+          {!data.collections.length && <p>私人客戶是分類，案例集才是保存尺寸案例的位置。可直接在下方建立並選取。</p>}
+          {!!data.collections.length && <button disabled={busy} onClick={() => setCreatingCollection(previous => !previous)}><FolderPlus size={14} />新增案例集</button>}
+          {(!data.collections.length || creatingCollection) && collectionForm}
           <p className="case-library-note">同一來源、尺寸與公差重複加入會沿用同一筆案例。不同公差保留為不同版本，不會重複投票。</p>
           <label className="case-library-confirm"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />我已核對選取尺寸與圖面公差，同意作為未來推薦依據。</label>
+          {artifact.can_curate && (!ruleIds.length || !collectionIds.length || !confirmed) && <p className="case-library-note">{!ruleIds.length ? '請選取要加入的尺寸。' : !collectionIds.length ? '請先選擇或建立案例集，才能加入案例庫。' : '請勾選上方公差核對確認。'}</p>}
           <button className="case-library-primary" disabled={busy || !artifact.can_curate || !confirmed || !ruleIds.length || !collectionIds.length}
             onClick={() => execute(() => axios.post(`${API}/api/case-library/artifacts/${artifactId}/cases`, { confirmed, rule_ids: ruleIds, collection_ids: collectionIds }), '已加入推薦案例庫；重複尺寸沿用原案例')}><Check size={15} />{busy ? '重新驗證新版幾何…' : '驗證並加入我的案例庫'}</button>
         </>}

@@ -152,18 +152,23 @@ class CaseLibraryStore:
                 result.append(record_id)
         return {'case_record_ids': result, 'case_count': len(result), 'collection_ids': collection_ids}
 
-    def cases(self, owner, collection_ids=None, tag_ids=None, match_mode='ANY', limit=None, offset=0):
+    def cases(self, owner, collection_ids=None, tag_ids=None, match_mode='ANY', limit=None, offset=0, customer_id=None):
         wanted = set(collection_ids or [])
         with self.engine.connect() as conn:
+            if customer_id:
+                self._owned(conn, T.customers, customer_id, owner)
             for cid in wanted:
                 self._owned(conn, T.collections, cid, owner)
             linked = select(T.memberships.c.case_record_id).join(T.collections).where(and_(
                 T.collections.c.owner_user_id == owner, T.collections.c.is_active.is_(True),
                 T.memberships.c.case_record_id == T.payloads.c.case_record_id))
-            query = select(T.payloads).where(and_(T.payloads.c.owner_user_id == owner,
-                T.payloads.c.is_active.is_(True), linked.exists()))
+            scoped_linked = linked
             if wanted:
-                query = query.where(linked.where(T.collections.c.id.in_(wanted)).exists())
+                scoped_linked = scoped_linked.where(T.collections.c.id.in_(wanted))
+            if customer_id:
+                scoped_linked = scoped_linked.where(T.collections.c.private_customer_id == customer_id)
+            query = select(T.payloads).where(and_(T.payloads.c.owner_user_id == owner,
+                T.payloads.c.is_active.is_(True), scoped_linked.exists()))
             tag_conditions = []
             for tag in set(tag_ids or []):
                 tag_conditions.append(or_(linked.where(T.collections.c.customer_tag_id == tag).exists(),
