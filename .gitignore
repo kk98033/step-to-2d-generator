@@ -111,6 +111,8 @@ docs/**
 !docs/generated/
 !docs/generated/api_graph.json
 experimental_lab/**/*.md
+experimental_lab/**/ARCHIVE/
+experimental_lab/**/DRAWING_V2_EXPERIMENT/runs/
 experimental_lab/tolerance_extraction_audit/CURRENT_FINAL/
 experimental_lab/tolerance_extraction_audit/common/config/
 experimental_lab/tolerance_extraction_audit/common/configs/

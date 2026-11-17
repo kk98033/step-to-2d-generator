@@ -5,13 +5,14 @@ param(
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Drawing
 $LabRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+. (Join-Path $PSScriptRoot "archive_paths.ps1")
 if ([string]::IsNullOrWhiteSpace($OutputDir)) {
-    $OutputDir = Join-Path $LabRoot "experiments\2026-10-09\blade_bend_angle_v1"
+    $OutputDir = Join-Path $LabRoot "experiments\replays\blade_bend_angle_v1"
 }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-$Stl = Join-Path $LabRoot "experiments\2026-10-07\projection_pairing_v2\AL0W_BLADE_H-R01\01_original_step_component.stl"
-$OriginalReview = Join-Path $LabRoot "experiments\2026-10-08\current_final\blade_tolerance\02_blade_bend_R2_15_review.png"
+$Stl = Resolve-HistoricalExperiment "2026-10-07\projection_pairing_v2\AL0W_BLADE_H-R01\01_original_step_component.stl"
+$OriginalReview = Resolve-HistoricalExperiment "2026-10-08\current_final\blade_tolerance\02_blade_bend_R2_15_review.png"
 
 # Persisted STEP-to-DXF transform from the existing blade experiment.
 $scale = 1.0010075335

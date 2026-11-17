@@ -12,10 +12,11 @@ import json
 from PIL import Image, ImageDraw, ImageFont
 
 from dxf_projection_views_v2 import DxfProjectionViewExtractorV2
+from archive_paths import historical_input
 
 
 ROOT = Path(__file__).resolve().parents[2]
-EXPERIMENTS = ROOT / "experiments" / "2026-10-08"
+EXPERIMENTS = historical_input("2026-10-08")
 SEMANTIC = (
     EXPERIMENTS
     / "feature_semantic_review_multiview_v3"
@@ -24,8 +25,8 @@ SEMANTIC = (
 )
 POSE_DIR = EXPERIMENTS / "robust_projection_pose_v5"
 POSE_BOARD = POSE_DIR / "AL0W_BLADE_H-R01_robust_pose_with_original.png"
-LOCAL_REPORT = ROOT / "experiments" / "2026-10-09" / "view_instance_projection_v1" / "7AD9_report.json"
-OUTPUT_DIR = EXPERIMENTS / "blade_27_projection_debug"
+LOCAL_REPORT = historical_input("2026-10-09/view_instance_projection_v1/7AD9_report.json")
+OUTPUT_DIR = ROOT / "experiments" / "replays" / "blade_27_projection_debug"
 OUTPUT = OUTPUT_DIR / "AL0W_BLADE_H-R01_7AD9_view_instance_fixed_debug.png"
 
 

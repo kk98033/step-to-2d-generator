@@ -6,16 +6,17 @@ $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Drawing
 
 $LabRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+. (Join-Path $PSScriptRoot "archive_paths.ps1")
 if ([string]::IsNullOrWhiteSpace($Output)) {
-    $Output = Join-Path $LabRoot "experiments\2026-10-09\blade_accuracy_debug\01_blade_accuracy_debug.png"
+    $Output = Join-Path $LabRoot "experiments\replays\blade_accuracy_debug\01_blade_accuracy_debug.png"
 }
 $Output = [System.IO.Path]::GetFullPath($Output)
 $OutputDir = Split-Path -Parent $Output
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-$Stl = Join-Path $LabRoot "experiments\2026-10-07\projection_pairing_v2\AL0W_BLADE_H-R01\01_original_step_component.stl"
-$SectionImage = Join-Path $LabRoot "experiments\2026-10-08\current_final\fan_projection\05_original_vs_central_section.png"
-$RadiusImage = Join-Path $LabRoot "experiments\2026-10-08\current_final\blade_tolerance\02_blade_bend_R2_15_review.png"
+$Stl = Resolve-HistoricalExperiment "2026-10-07\projection_pairing_v2\AL0W_BLADE_H-R01\01_original_step_component.stl"
+$SectionImage = Resolve-HistoricalExperiment "2026-10-08\current_final\fan_projection\05_original_vs_central_section.png"
+$RadiusImage = Resolve-HistoricalExperiment "2026-10-08\current_final\blade_tolerance\02_blade_bend_R2_15_review.png"
 
 $points = [System.Collections.Generic.List[double[]]]::new()
 foreach ($line in [System.IO.File]::ReadLines($Stl)) {
